@@ -8,7 +8,8 @@ import {
   type RootApi,
   type RootSession,
 } from "../../api";
-import { Button, StatusBadge } from "../../design-system";
+import { AppShell } from "../../app";
+import { SourcesPane } from "../sources";
 import { CatalogLibraryBrowser } from "../library/CatalogLibraryBrowser";
 import "./RootRegistryPanel.css";
 
@@ -37,6 +38,10 @@ interface RootRegistryPanelProps {
   selectDirectory?: RootDirectoryPicker;
 }
 
+/**
+ * HomePage entry for the next-gen root session.
+ * Composes UI1 AppShell Sources + catalog Library browser (UI3 surface).
+ */
 export function RootRegistryPanel({
   api = rootApi,
   metadataClient = metadataApi,
@@ -86,56 +91,29 @@ export function RootRegistryPanel({
   }
 
   return (
-    <section className="root-registry-panel" aria-labelledby="root-registry-title">
-      <div className="root-registry-heading">
-        <div>
-          <div className="root-registry-title-row">
-            <h2 id="root-registry-title">Read-only source</h2>
-            <StatusBadge tone="readonly">READ ONLY</StatusBadge>
-          </div>
-          <p>Next-generation root session. Only the native picker may submit an absolute path.</p>
-        </div>
-        {session === null ? (
-          <Button variant="secondary" disabled={busy} onClick={registerRoot}>
-            {busy ? "Registering..." : "Choose root..."}
-          </Button>
-        ) : (
-          <Button variant="secondary" disabled={busy} onClick={closeRoot}>
-            {busy ? "Closing..." : "Close root"}
-          </Button>
-        )}
-      </div>
-
-      {error !== null && (
-        <p className="root-registry-error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {session !== null && library !== null && (
-        <div className="root-registry-content">
-          <dl className="root-session-summary">
-            <div>
-              <dt>Source</dt>
-              <dd>{session.displayName}</dd>
-            </div>
-            <div>
-              <dt>Fingerprint</dt>
-              <dd>{session.deviceFingerprint.slice(0, 12)}</dd>
-            </div>
-            <div>
-              <dt>Mode</dt>
-              <dd>Read only</dd>
-            </div>
-          </dl>
-
+    <AppShell
+      sources={
+        <SourcesPane
+          session={session}
+          busy={busy}
+          error={error}
+          onRegister={registerRoot}
+          onClose={closeRoot}
+        />
+      }
+      main={
+        session !== null && library !== null ? (
           <CatalogLibraryBrowser
             rootId={session.rootId}
             snapshot={library}
             metadataClient={metadataClient}
           />
-        </div>
-      )}
-    </section>
+        ) : (
+          <p className="root-registry-main-empty">
+            Choose a read-only root to browse the catalog library.
+          </p>
+        )
+      }
+    />
   );
 }
