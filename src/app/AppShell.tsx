@@ -9,8 +9,10 @@ export interface AppShellProps extends HTMLAttributes<HTMLElement> {
   main: ReactNode
   /** Optional right Inspector; omitted until UI4. */
   inspector?: ReactNode
-  /** Sources pane width % when inspector is hidden. */
+  /** Controlled Sources pane width %. Omit for uncontrolled resize. */
   sourcesSize?: number
+  /** Uncontrolled initial Sources width % (default 28). */
+  defaultSourcesSize?: number
   onSourcesSizeChange?: (percent: number) => void
 }
 
@@ -22,7 +24,8 @@ export function AppShell({
   sources,
   main,
   inspector,
-  sourcesSize = 28,
+  sourcesSize,
+  defaultSourcesSize = 28,
   onSourcesSizeChange,
   className,
   ...rest
@@ -35,19 +38,23 @@ export function AppShell({
       <SplitPane
         className="mo-app-shell__body"
         primarySize={sourcesSize}
+        defaultPrimarySize={defaultSourcesSize}
         onPrimarySizeChange={onSourcesSizeChange}
         minPrimary={18}
         maxPrimary={showInspector ? 36 : 42}
       >
-        <SplitPane.Primary className="mo-app-shell__sources">
+        <SplitPane.Primary
+          className="mo-app-shell__sources"
+          data-testid="app-shell-sources"
+        >
           {sources}
         </SplitPane.Primary>
-        <SplitPane.Divider />
+        <SplitPane.Divider data-testid="app-shell-divider" />
         <SplitPane.Secondary>
           {showInspector ? (
             <SplitPane
               className="mo-app-shell__body"
-              primarySize={72}
+              defaultPrimarySize={72}
               minPrimary={55}
               maxPrimary={85}
             >
