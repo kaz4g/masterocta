@@ -2,23 +2,33 @@
 .mo-split-pane {
   display: flex;
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
+/*
+ * Pane shells must participate in the flex row themselves.
+ * Domain classes like .audio-panel.dest-panel often live on nested children
+ * (e.g. drop zones), so secondary growth cannot rely on those alone.
+ */
+.mo-split-pane__primary,
+.mo-split-pane__secondary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mo-split-pane__primary {
+  flex: 0 0 auto;
+}
+
+.mo-split-pane__secondary {
+  flex: 1 1 auto;
+}
+
 .mo-split-pane__divider {
-  width: 4px;
-  background-color: rgba(255, 255, 255, 0.08);
-  cursor: ew-resize;
   flex-shrink: 0;
-  transition: background-color 0.2s ease;
-}
-
-.mo-split-pane__divider:hover,
-.mo-split-pane__divider:active {
-  background-color: rgba(255, 255, 255, 0.25);
-}
-
-.mo-split-pane__divider:active {
-  background-color: rgba(255, 255, 255, 0.35);
 }

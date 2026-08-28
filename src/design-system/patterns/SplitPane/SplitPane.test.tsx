@@ -24,8 +24,10 @@ describe('SplitPane', () => {
     render(<ControlledSplit />)
     expect(screen.getByTestId('split')).toHaveClass('mo-split-pane')
     expect(screen.getByTestId('primary')).toHaveStyle({ width: '40%' })
+    expect(screen.getByTestId('primary')).toHaveClass('mo-split-pane__primary')
     expect(screen.getByTestId('divider')).toHaveClass('panel-divider')
     expect(screen.getByTestId('secondary')).toHaveTextContent('Right')
+    expect(screen.getByTestId('secondary')).toHaveClass('mo-split-pane__secondary')
   })
 
   it('hides primary and divider when primaryVisible is false', () => {
@@ -33,12 +35,15 @@ describe('SplitPane', () => {
       <SplitPane primaryVisible={false} primarySize={50}>
         <SplitPane.Primary>Left</SplitPane.Primary>
         <SplitPane.Divider data-testid="divider" />
-        <SplitPane.Secondary>Right</SplitPane.Secondary>
+        <SplitPane.Secondary data-testid="secondary">Right</SplitPane.Secondary>
       </SplitPane>,
     )
     expect(screen.queryByText('Left')).not.toBeInTheDocument()
     expect(screen.queryByTestId('divider')).not.toBeInTheDocument()
-    expect(screen.getByText('Right')).toBeInTheDocument()
+    const secondary = screen.getByTestId('secondary')
+    expect(secondary).toHaveTextContent('Right')
+    // Secondary must remain the flex-growing pane when primary is hidden.
+    expect(secondary).toHaveClass('mo-split-pane__secondary')
   })
 
   it('updates size while dragging the divider', () => {

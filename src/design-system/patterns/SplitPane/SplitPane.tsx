@@ -116,9 +116,10 @@ function SplitPanePrimary({
 }: SplitPanePrimaryProps) {
   const { primarySize, primaryVisible } = useSplitPaneContext('SplitPane.Primary')
   if (!primaryVisible) return null
+  const merged = ['mo-split-pane__primary', className].filter(Boolean).join(' ')
   return (
     <div
-      className={className}
+      className={merged}
       style={{ width: `${primarySize}%`, ...style }}
       {...rest}
     >
@@ -161,8 +162,9 @@ function SplitPaneSecondary({
   ...rest
 }: SplitPaneSecondaryProps) {
   useSplitPaneContext('SplitPane.Secondary')
+  const merged = ['mo-split-pane__secondary', className].filter(Boolean).join(' ')
   return (
-    <div className={className} {...rest}>
+    <div className={merged} {...rest}>
       {children}
     </div>
   )
