@@ -88,6 +88,9 @@ describe("RootRegistryPanel", () => {
     expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
     expect(screen.getByText("KICK.wav")).toBeInTheDocument();
     expect(screen.getByText("LIVE_SET/AUDIO/KICK.wav")).toBeInTheDocument();
+    expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
+    expect(screen.getByText("Notes & details")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Asset inspector")).not.toBeInTheDocument();
     expect(screen.queryByText(rawPath)).not.toBeInTheDocument();
     expect(api.registerRoot).toHaveBeenCalledWith(rawPath);
     expect(api.listLibrary).toHaveBeenCalledWith("root-opaque");
