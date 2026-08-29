@@ -109,7 +109,7 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
 - Add `patterns/StatusBadge` (`readonly` reuses `.root-mode-badge`; other tones
   use `.mo-status-badge--*`).
 - Add `patterns/Toolbar` + `Toolbar.Separator` (canonical `.toolbar-separator`
-  in Toolbar.css; AudioPoolPage.css duplicate kept until DS7).
+  in Toolbar.css; AudioPoolPage.css duplicate removed in DS7).
 - Consumers: RootRegistry READ ONLY; Home / ProjectDetail refresh; Audio Pool
   Browse / Import / Refresh (transfers `copy-table-btn` left unchanged).
 - **Out of scope:** filter-results-info, usage/compat badges, DnD, preview,
