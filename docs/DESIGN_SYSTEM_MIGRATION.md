@@ -143,7 +143,7 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
 - **Out of scope:** Inspector content (UI4), Project workspace rewrite (UI2),
   replacing legacy Home locations with Sources tree, branding (UI6).
 
-### PR-UI2 — Project Workspace (in progress)
+### PR-UI2 — Project Workspace (done)
 
 - Add `features/project-workspace` for catalog-backed project summary in AppShell Main.
 - First consumer: wrap column browser when a Project location is selected in
@@ -151,6 +151,12 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
   sample count). No raw absolute paths.
 - **Out of scope:** rewriting legacy `ProjectDetail`, Pattern/Slot editors, writes,
   Inspector AppShell slot (UI4).
+
+### PR-UI3 — Audio Library region (next)
+
+- Formalize Audio Pool / set-library browsing chrome on AppShell Main (parallel to
+  ProjectWorkspace), without rewriting Audio Pool page DnD.
+- **Out of scope:** legacy AudioPoolPage rewrite, transfers, CSS deletion (DS7).
 
 ### Later (documented only until started)
 
