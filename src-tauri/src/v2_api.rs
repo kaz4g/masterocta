@@ -1259,13 +1259,11 @@ mod tests {
     #[test]
     fn frontend_snapshot_dto_exposes_usage_edges_with_relative_paths_only() {
         use ot_domain::{
-            ContentHashFreshness, ParserProvenance, RootRelativePath, SampleSlotId,
-            SampleSlotKind, StateDocument, StateDocumentKind, StateDocumentParseStatus,
-            StateDocumentRole,
+            ContentHashFreshness, ParserProvenance, RootRelativePath, SampleSlotId, SampleSlotKind,
+            StateDocument, StateDocumentKind, StateDocumentParseStatus, StateDocumentRole,
         };
 
-        let identity =
-            CatalogRootIdentity::new(format!("rootfp:v1:{}", "a".repeat(64))).unwrap();
+        let identity = CatalogRootIdentity::new(format!("rootfp:v1:{}", "a".repeat(64))).unwrap();
         let audio = FileInstance {
             relative_path: RootRelativePath::parse("SET_A/AUDIO/kick.wav").unwrap(),
             content_hash: ContentHash::parse(format!("sha256:{}", "c".repeat(64))).unwrap(),

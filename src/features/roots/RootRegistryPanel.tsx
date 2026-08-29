@@ -143,7 +143,9 @@ export function RootRegistryPanel({
             relativePath={selectedAsset?.relativePath}
           >
             {selectedAsset !== null && (
-              <div key={`${session.rootId}:${selectedAsset.assetId}`}>
+              <div
+                key={`${session.rootId}:${selectedAsset.assetId}:${selectedAsset.relativePath}`}
+              >
                 <WaveformPreview
                   api={audioClient}
                   rootId={session.rootId}

@@ -154,7 +154,7 @@ describe("RootRegistryPanel", () => {
     expect(screen.getByLabelText("Usage graph")).toBeInTheDocument();
     expect(screen.getByLabelText("Usage summary")).toHaveTextContent("1 used");
     expect(
-      screen.getByText(/PROJECT_A · Bank 1 · S001 · Part 1 · T1 · Machine/),
+      screen.getByText(/PROJECT_A · Bank A \(1\) · S001 · Part 1 · T1 · Machine/),
     ).toBeInTheDocument();
     expect(audioClient.getWaveform).toHaveBeenCalledWith(
       "root-opaque",

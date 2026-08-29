@@ -5,8 +5,10 @@ export interface UsageGraphPanelProps {
   /** Selected audio file root-relative path. */
   relativePath: string
   /** Full catalog usage graph for the registered root. */
-  edges: SampleUsageEdge[]
+  edges?: SampleUsageEdge[] | null
 }
+
+const BANK_LETTERS = 'ABCDEFGHIJKLMNOP'
 
 function projectLabel(projectDocumentRelativePath: string): string {
   const parts = projectDocumentRelativePath.split('/').filter(Boolean)
@@ -17,7 +19,13 @@ function projectLabel(projectDocumentRelativePath: string): string {
 function bankLabel(bankDocumentRelativePath: string): string {
   const name = bankDocumentRelativePath.split('/').pop() ?? bankDocumentRelativePath
   const match = /^bank(\d+)/i.exec(name)
-  if (match) return `Bank ${Number(match[1])}`
+  if (match) {
+    const number = Number(match[1])
+    if (Number.isInteger(number) && number >= 1 && number <= BANK_LETTERS.length) {
+      const letter = BANK_LETTERS[number - 1]
+      return `Bank ${letter} (${number})`
+    }
+  }
   return name.replace(/\.(work|strd)$/i, '')
 }
 
@@ -40,9 +48,10 @@ function formatEdge(edge: SampleUsageEdge): string {
 }
 
 export function edgesForRelativePath(
-  edges: SampleUsageEdge[],
+  edges: SampleUsageEdge[] | null | undefined,
   relativePath: string,
 ): SampleUsageEdge[] {
+  if (edges == null || edges.length === 0) return []
   return edges.filter(
     (edge) => edge.referencedFileRelativePath === relativePath,
   )
@@ -52,7 +61,10 @@ export function edgesForRelativePath(
  * Read-only Usage Graph for a selected catalog audio file.
  * Filters M3-C2 usage edges by root-relative path — no absolute paths.
  */
-export function UsageGraphPanel({ relativePath, edges }: UsageGraphPanelProps) {
+export function UsageGraphPanel({
+  relativePath,
+  edges = [],
+}: UsageGraphPanelProps) {
   const matched = edgesForRelativePath(edges, relativePath)
   const audibleCount = matched.filter((edge) => edge.audible).length
   const referencedCount = matched.length - audibleCount

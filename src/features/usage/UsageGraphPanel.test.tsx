@@ -66,10 +66,10 @@ describe('UsageGraphPanel', () => {
     expect(screen.getByLabelText('Usage summary')).toHaveTextContent('1 used')
     expect(screen.getByLabelText('Usage summary')).toHaveTextContent('1 referenced')
     expect(
-      screen.getByText(/PROJECT_A · Bank 1 · S001 · Part 1 · T1 · Machine/),
+      screen.getByText(/PROJECT_A · Bank A \(1\) · S001 · Part 1 · T1 · Machine/),
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/PROJECT_A · Bank 2 · F012 · Pattern 2 · T4 · Step 8 · Lock/),
+      screen.getByText(/PROJECT_A · Bank B \(2\) · F012 · Pattern 2 · T4 · Step 8 · Lock/),
     ).toBeInTheDocument()
     expect(screen.queryByText('SNARE.wav')).not.toBeInTheDocument()
     expect(screen.queryByText(/\/private\//)).not.toBeInTheDocument()
@@ -83,6 +83,15 @@ describe('UsageGraphPanel', () => {
       />,
     )
 
+    expect(
+      screen.getByText('Not referenced in any indexed project of this root.'),
+    ).toBeInTheDocument()
+  })
+
+  it('tolerates missing usageEdges without crashing', () => {
+    render(
+      <UsageGraphPanel relativePath="LIVE_SET/AUDIO/KICK.wav" edges={null} />,
+    )
     expect(
       screen.getByText('Not referenced in any indexed project of this root.'),
     ).toBeInTheDocument()
