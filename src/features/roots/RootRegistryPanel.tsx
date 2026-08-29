@@ -120,6 +120,7 @@ export function RootRegistryPanel({
       main={
         catalogReady ? (
           <CatalogLibraryBrowser
+            key={session.rootId}
             rootId={session.rootId}
             snapshot={library}
             audioClient={audioClient}
@@ -140,7 +141,7 @@ export function RootRegistryPanel({
             relativePath={selectedAsset?.relativePath}
           >
             {selectedAsset !== null && (
-              <>
+              <div key={`${session.rootId}:${selectedAsset.assetId}`}>
                 <WaveformPreview
                   api={audioClient}
                   rootId={session.rootId}
@@ -153,7 +154,7 @@ export function RootRegistryPanel({
                   assetId={selectedAsset.assetId}
                   displayName={selectedAsset.displayName}
                 />
-              </>
+              </div>
             )}
           </InspectorPane>
         ) : undefined

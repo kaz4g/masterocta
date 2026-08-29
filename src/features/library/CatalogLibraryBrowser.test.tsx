@@ -229,5 +229,8 @@ describe("CatalogLibraryBrowser", () => {
       displayName: "POOL.wav",
       relativePath: "LIVE_SET/AUDIO/POOL.wav",
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /PROJECT_A/ }));
+    expect(onSelectedAssetChange).toHaveBeenLastCalledWith(null);
   });
 });
