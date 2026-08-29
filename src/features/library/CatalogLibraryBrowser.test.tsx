@@ -47,6 +47,7 @@ const snapshot: LibrarySnapshot = {
       storageScope: "project_local",
     },
   ],
+  usageEdges: [],
 };
 
 describe("CatalogLibraryBrowser", () => {
@@ -118,7 +119,7 @@ describe("CatalogLibraryBrowser", () => {
     render(
       <CatalogLibraryBrowser
         rootId="root-opaque"
-        snapshot={{ sets: [], standaloneProjects: [], audioFiles: [] }}
+        snapshot={{ sets: [], standaloneProjects: [], audioFiles: [], usageEdges: [] }}
       />,
     );
 

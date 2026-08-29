@@ -18,6 +18,7 @@ import {
 } from "../library/CatalogLibraryBrowser";
 import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor";
 import { SourcesPane } from "../sources";
+import { UsageGraphPanel } from "../usage";
 import { WaveformPreview } from "../waveform/WaveformPreview";
 import "./RootRegistryPanel.css";
 
@@ -49,7 +50,8 @@ interface RootRegistryPanelProps {
 
 /**
  * HomePage entry for the next-gen root session.
- * Composes UI1 AppShell Sources + catalog Main + UI4 Inspector (notes/waveform).
+ * Composes UI1 AppShell Sources + catalog Main + UI4/UI5 Inspector
+ * (waveform, usage graph, tags/notes).
  */
 export function RootRegistryPanel({
   api = rootApi,
@@ -147,6 +149,10 @@ export function RootRegistryPanel({
                   rootId={session.rootId}
                   assetId={selectedAsset.assetId}
                   displayName={selectedAsset.displayName}
+                />
+                <UsageGraphPanel
+                  relativePath={selectedAsset.relativePath}
+                  edges={library.usageEdges}
                 />
                 <ManualAssetMetadataEditor
                   api={metadataClient}
