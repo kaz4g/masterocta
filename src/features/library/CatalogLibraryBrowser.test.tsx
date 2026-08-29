@@ -199,6 +199,7 @@ describe("CatalogLibraryBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: /POOL\.wav/ }));
 
     expect(await screen.findByDisplayValue("kick")).toBeInTheDocument();
+    expect(screen.getByLabelText("Usage graph")).toBeInTheDocument();
     expect(metadataClient.loadManualAssetMetadata).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:pool",

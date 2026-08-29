@@ -174,8 +174,10 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
 
 - Expose catalog `usage_edges` on `LibrarySnapshot` DTO (relative paths only).
 - Add `features/usage/UsageGraphPanel` in AppShell Inspector (between waveform
-  and tags/notes): filter edges by selected file relative path; show used /
-  referenced summaries and machine/lock detail lines.
+  and tags/notes): filter edges by selected file relative path (case-insensitive);
+  show used / referenced / missing summaries; distinguish Working (.work) vs
+  Saved (.strd); machine/lock detail lines. Also shown in the inline catalog
+  inspector for parity.
 - **Out of scope:** Change Drawer, physical delete / unreferenced proof, legacy
   ProjectDetail / AudioFileTable rewrite, slot-assignment-only badges beyond
   usage edges.

@@ -10,6 +10,11 @@ export interface UsageGraphPanelProps {
 
 const BANK_LETTERS = 'ABCDEFGHIJKLMNOP'
 
+/** Normalize root-relative paths for comparison (case / separators). */
+export function relativePathKey(path: string): string {
+  return path.replace(/\\/g, '/').toLowerCase()
+}
+
 function projectLabel(projectDocumentRelativePath: string): string {
   const parts = projectDocumentRelativePath.split('/').filter(Boolean)
   if (parts.length >= 2) return parts[parts.length - 2]
@@ -29,22 +34,35 @@ function bankLabel(bankDocumentRelativePath: string): string {
   return name.replace(/\.(work|strd)$/i, '')
 }
 
+/** Working (.work) vs SavedCheckpoint (.strd) — independent M3-C2 projections. */
+function stateRoleLabel(documentRelativePath: string): string | null {
+  if (/\.work$/i.test(documentRelativePath)) return 'Working'
+  if (/\.strd$/i.test(documentRelativePath)) return 'Saved'
+  return null
+}
+
 function slotLabel(kind: SampleUsageEdge['slotKind'], number: number): string {
   const prefix = kind === 'flex' ? 'F' : 'S'
   return `${prefix}${String(number).padStart(3, '0')}`
+}
+
+function isMissingReference(status: SampleUsageEdge['referenceStatus']): boolean {
+  return status === 'missing' || status === 'invalid_path'
 }
 
 function formatEdge(edge: SampleUsageEdge): string {
   const project = projectLabel(edge.projectDocumentRelativePath)
   const bank = bankLabel(edge.bankDocumentRelativePath)
   const slot = slotLabel(edge.slotKind, edge.slotNumber)
+  const role = stateRoleLabel(edge.bankDocumentRelativePath)
+  const roleSuffix = role != null ? ` · ${role}` : ''
   if (edge.usageKind === 'machine') {
     const part = (edge.partIndex ?? 0) + 1
-    return `${project} · ${bank} · ${slot} · Part ${part} · T${edge.trackIndex + 1} · Machine`
+    return `${project} · ${bank} · ${slot} · Part ${part} · T${edge.trackIndex + 1} · Machine${roleSuffix}`
   }
   const pattern = (edge.patternIndex ?? 0) + 1
   const step = (edge.stepIndex ?? 0) + 1
-  return `${project} · ${bank} · ${slot} · Pattern ${pattern} · T${edge.trackIndex + 1} · Step ${step} · Lock`
+  return `${project} · ${bank} · ${slot} · Pattern ${pattern} · T${edge.trackIndex + 1} · Step ${step} · Lock${roleSuffix}`
 }
 
 export function edgesForRelativePath(
@@ -52,9 +70,11 @@ export function edgesForRelativePath(
   relativePath: string,
 ): SampleUsageEdge[] {
   if (edges == null || edges.length === 0) return []
-  return edges.filter(
-    (edge) => edge.referencedFileRelativePath === relativePath,
-  )
+  const key = relativePathKey(relativePath)
+  return edges.filter((edge) => {
+    const referenced = edge.referencedFileRelativePath
+    return referenced != null && relativePathKey(referenced) === key
+  })
 }
 
 /**
@@ -68,8 +88,8 @@ export function UsageGraphPanel({
   const matched = edgesForRelativePath(edges, relativePath)
   const audibleCount = matched.filter((edge) => edge.audible).length
   const referencedCount = matched.length - audibleCount
-  const missingCount = matched.filter(
-    (edge) => edge.referenceStatus === 'missing' || edge.referenceStatus === 'invalid_path',
+  const missingCount = matched.filter((edge) =>
+    isMissingReference(edge.referenceStatus),
   ).length
 
   return (
@@ -91,18 +111,31 @@ export function UsageGraphPanel({
         </p>
       ) : (
         <ul className="mo-usage-graph__list">
-          {matched.map((edge, index) => (
-            <li
-              key={`${edge.bankDocumentRelativePath}:${edge.slotKind}:${edge.slotNumber}:${edge.usageKind}:${edge.trackIndex}:${edge.partIndex}:${edge.patternIndex}:${edge.stepIndex}:${index}`}
-              data-audible={edge.audible}
-              data-status={edge.referenceStatus}
-            >
-              <span className="mo-usage-graph__badge" data-audible={edge.audible}>
-                {edge.audible ? 'Used' : 'Referenced'}
-              </span>
-              <span className="mo-usage-graph__detail">{formatEdge(edge)}</span>
-            </li>
-          ))}
+          {matched.map((edge, index) => {
+            const missing = isMissingReference(edge.referenceStatus)
+            return (
+              <li
+                key={`${edge.bankDocumentRelativePath}:${edge.slotKind}:${edge.slotNumber}:${edge.usageKind}:${edge.trackIndex}:${edge.partIndex}:${edge.patternIndex}:${edge.stepIndex}:${index}`}
+                data-audible={edge.audible}
+                data-status={edge.referenceStatus}
+              >
+                <span className="mo-usage-graph__badges">
+                  <span
+                    className="mo-usage-graph__badge"
+                    data-audible={edge.audible}
+                  >
+                    {edge.audible ? 'Used' : 'Referenced'}
+                  </span>
+                  {missing && (
+                    <span className="mo-usage-graph__badge" data-tone="missing">
+                      Missing
+                    </span>
+                  )}
+                </span>
+                <span className="mo-usage-graph__detail">{formatEdge(edge)}</span>
+              </li>
+            )
+          })}
         </ul>
       )}
 

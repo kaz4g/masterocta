@@ -64,6 +64,12 @@
   min-width: 0;
 }
 
+.mo-usage-graph__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mo-space-1);
+}
+
 .mo-usage-graph__badge {
   display: inline-block;
   padding: 0.1rem 0.35rem;
@@ -80,6 +86,11 @@
 .mo-usage-graph__badge[data-audible='true'] {
   border-color: color-mix(in srgb, var(--mo-success) 55%, transparent);
   color: var(--mo-success);
+}
+
+.mo-usage-graph__badge[data-tone='missing'] {
+  border-color: color-mix(in srgb, var(--mo-danger) 55%, transparent);
+  color: var(--mo-danger);
 }
 
 .mo-usage-graph__detail {
