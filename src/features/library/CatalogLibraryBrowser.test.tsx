@@ -125,6 +125,46 @@ describe("CatalogLibraryBrowser", () => {
     expect(screen.getByText("No catalog entries are available.")).toBeInTheDocument();
   });
 
+  it("clears the selected file when switching locations", async () => {
+    const audioClient: AudioApi = {
+      getWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v1",
+        sampleRate: 44100,
+        channels: 2,
+        frameCount: 44100,
+        durationSeconds: 1,
+        samplesPerPeak: 256,
+        peaks: [{ min: -0.5, max: 0.5 }],
+      }),
+      createPreviewToken: vi.fn(),
+      readPreview: vi.fn(),
+    };
+    const metadataClient: MetadataApi = {
+      loadManualAssetMetadata: vi.fn().mockResolvedValue({
+        tags: ["kick"],
+        note: "Live set",
+      }),
+      replaceManualAssetMetadata: vi.fn(),
+    };
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={snapshot}
+        audioClient={audioClient}
+        metadataClient={metadataClient}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /POOL\.wav/ }));
+    expect(await screen.findByDisplayValue("kick")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /PROJECT_A/ }));
+    expect(screen.queryByDisplayValue("kick")).not.toBeInTheDocument();
+    expect(screen.getByText("Select an audio file to edit local metadata.")).toBeInTheDocument();
+    expect(screen.getByText("Project workspace")).toBeInTheDocument();
+    expect(within(screen.getByLabelText("Sources")).getByRole("button", { name: /LIVE_SET/ })).toBeInTheDocument();
+  });
+
   it("opens manual metadata for the selected opaque AssetId", async () => {
     const audioClient: AudioApi = {
       getWaveform: vi.fn().mockResolvedValue({
