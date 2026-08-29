@@ -152,12 +152,13 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
 - **Out of scope:** rewriting legacy `ProjectDetail`, Pattern/Slot editors, writes,
   Inspector AppShell slot (UI4).
 
-### PR-UI3 — Audio Library region (in progress)
+### PR-UI3 — Audio Library region (done)
 
 - Add `features/library/AudioLibrary` chrome for Set Audio Pool / unclassified
   browsing on AppShell Main (parallel to ProjectWorkspace).
-- First consumer: wrap `CatalogLibraryBrowser` columns when location is
-  `audio_pool` or `unclassified`. Relative paths only.
+- First consumer: wrap `CatalogLibraryBrowser` detail panes (files + inspector)
+  when location is `audio_pool` or `unclassified`. Browse/Locations stay outside
+  region chrome. Relative paths only; selection clears on source/location change.
 - **Out of scope:** legacy `AudioPoolPage` DnD rewrite, transfers, CSS deletion (DS7).
 
 ### Later (documented only until started)
