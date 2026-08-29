@@ -1,6 +1,6 @@
 # Design System Migration
 
-Status: Phase A on main; UI1 on main; **UI2 landing (#32); UI3 Audio Library in progress**  
+Status: Phase A–UI2 on main; **UI3 Audio Library landing on main**  
 Updated: 2026-08-29
 
 ## Purpose
