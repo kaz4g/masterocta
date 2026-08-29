@@ -11,6 +11,7 @@ import { audioApi, metadataApi } from "../../api";
 import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor";
 import { ProjectWorkspace } from "../project-workspace";
 import { WaveformPreview } from "../waveform/WaveformPreview";
+import { AudioLibrary } from "./AudioLibrary";
 import "./CatalogLibraryBrowser.css";
 
 interface CatalogLibraryBrowserProps {
@@ -254,6 +255,18 @@ export function CatalogLibraryBrowser({
         >
           {columns}
         </ProjectWorkspace>
+      ) : selectedLocation?.kind === "audio_pool" ? (
+        <AudioLibrary
+          scope="audio_pool"
+          parentPath={selectedLocation.parentPath}
+          fileCount={audioFiles.length}
+        >
+          {columns}
+        </AudioLibrary>
+      ) : selectedLocation?.kind === "unclassified" ? (
+        <AudioLibrary scope="unclassified" fileCount={audioFiles.length}>
+          {columns}
+        </AudioLibrary>
       ) : (
         columns
       )}

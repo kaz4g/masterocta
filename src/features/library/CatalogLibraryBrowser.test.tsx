@@ -57,6 +57,8 @@ describe("CatalogLibraryBrowser", () => {
     expect(within(poolFiles).getByText("POOL.wav")).toBeInTheDocument();
     expect(within(poolFiles).queryByText("PROJECT.wav")).not.toBeInTheDocument();
     expect(screen.queryByText("Project workspace")).not.toBeInTheDocument();
+    expect(screen.getByText("Audio library")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Audio Pool" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /PROJECT_A/ }));
     const projectFiles = screen.getByLabelText("Audio files");
@@ -66,6 +68,7 @@ describe("CatalogLibraryBrowser", () => {
     expect(screen.getByRole("heading", { name: "PROJECT_A" })).toBeInTheDocument();
     expect(screen.getByText("Project workspace")).toBeInTheDocument();
     expect(screen.getByText("1 local sample")).toBeInTheDocument();
+    expect(screen.queryByText("Audio library")).not.toBeInTheDocument();
   });
 
   it("keeps standalone Projects in a separate source", () => {
