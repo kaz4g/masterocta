@@ -1,4 +1,5 @@
 import { type HTMLAttributes, type ReactNode } from 'react'
+import { PRODUCT_WORKSPACE_LABEL } from '../branding'
 import { SplitPane } from '../design-system'
 import './AppShell.css'
 
@@ -34,7 +35,7 @@ export function AppShell({
   const showInspector = inspector != null
 
   return (
-    <section className={merged} aria-label="MasterOCTa workspace" {...rest}>
+    <section className={merged} aria-label={PRODUCT_WORKSPACE_LABEL} {...rest}>
       <SplitPane
         className="mo-app-shell__body"
         primarySize={sourcesSize}
