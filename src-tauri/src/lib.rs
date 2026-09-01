@@ -1405,6 +1405,7 @@ pub fn run() {
             v2_api::v2_rename_authorize,
             v2_api::v2_rename_create_backup,
             v2_api::v2_rename_prepare,
+            v2_api::v2_rename_apply,
             v2_api::v2_rename_get_status,
             v2_api::v2_rename_recovery_status,
             v2_api::v2_clone_record_source_evidence,
