@@ -413,6 +413,45 @@ describe("compare", () => {
     }
   });
 
+  it("stops when project post-write hashes are incomplete even if other diffs match", () => {
+    const root = makeTree();
+    try {
+      const pre = captureRoot(root);
+      const source = pre.entries.find(
+        (entry) => entry.relative_path === "SET/AUDIO/source.wav",
+      );
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.wav"), "wav-bytes-aa");
+      rmSync(path.join(root, "SET", "AUDIO", "source.wav"));
+      const post = captureRoot(root);
+      const dest = post.entries.find(
+        (entry) => entry.relative_path === "SET/AUDIO/dest.wav",
+      );
+      const expected = {
+        schema: EXPECTED_SCHEMA,
+        changes: [
+          {
+            op: "removed",
+            relative_path: "SET/AUDIO/source.wav",
+            sha256: source.sha256,
+          },
+          {
+            op: "added",
+            relative_path: "SET/AUDIO/dest.wav",
+            sha256: dest.sha256,
+          },
+        ],
+        incomplete_project_post_hashes: ["SET/PROJECT/project.work"],
+      };
+      const report = compareManifests(pre, post, expected);
+      assert.equal(report.verdict, "STOP");
+      assert.equal(report.unrelated_entries_unchanged, false);
+      assert.match(report.stop_reason, /INCOMPLETE_EXPECTED/);
+      assert.match(report.stop_reason, /SET\/PROJECT\/project\.work/);
+    } finally {
+      cleanup(root);
+    }
+  });
+
   it("rejects duplicate and malformed entries", () => {
     const raw = JSON.stringify({
       schema: MANIFEST_SCHEMA,
@@ -605,6 +644,9 @@ describe("expected-from-prepared", () => {
       const expected = JSON.parse(readFileSync(expectedPath, "utf8"));
       assert.equal(expected.schema, EXPECTED_SCHEMA);
       assert.equal(expected.changes.length, 2);
+      assert.deepEqual(expected.incomplete_project_post_hashes, [
+        "SET/PROJECT/project.work",
+      ]);
     } finally {
       cleanup(outputDir);
     }

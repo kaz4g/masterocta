@@ -566,7 +566,50 @@ export function parseExpectedChanges(raw, label) {
     }
     changes.push(item);
   }
-  return { ...expected, changes };
+  const incomplete = parseIncompleteProjectPostHashes(
+    expected.incomplete_project_post_hashes,
+    label,
+  );
+  return {
+    ...expected,
+    changes,
+    incomplete_project_post_hashes: incomplete,
+  };
+}
+
+function parseIncompleteProjectPostHashes(value, label) {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new ManifestStop(
+      "MALFORMED_EXPECTED",
+      `${label} incomplete_project_post_hashes must be an array`,
+    );
+  }
+  const paths = [];
+  const seen = new Set();
+  for (const relativePath of value) {
+    if (typeof relativePath !== "string" || relativePath === "") {
+      throw new ManifestStop(
+        "MALFORMED_EXPECTED",
+        `${label} incomplete_project_post_hashes contains an invalid path`,
+      );
+    }
+    assertContainedRelativePath(
+      relativePath,
+      `${label} incomplete_project_post_hashes path`,
+    );
+    if (seen.has(relativePath)) {
+      throw new ManifestStop(
+        "DUPLICATE_PATH",
+        `${label} incomplete_project_post_hashes duplicates ${JSON.stringify(relativePath)}`,
+      );
+    }
+    seen.add(relativePath);
+    paths.push(relativePath);
+  }
+  return paths;
 }
 
 function expectedMatchesDiff(expected, diff) {
@@ -654,6 +697,8 @@ export function compareManifests(pre, post, expected) {
   const unexplained = remaining.map((diff) => ({ ...diff, expected: false }));
   const missing = unmatchedExpected.length > 0;
   const extra = unexplained.length > 0;
+  const incompleteProjects = expected.incomplete_project_post_hashes ?? [];
+  const incomplete = incompleteProjects.length > 0;
   let stopReason = null;
   if (missing && extra) {
     stopReason = "EXPECTED_MISMATCH: missing expected changes and unexplained diffs";
@@ -662,6 +707,10 @@ export function compareManifests(pre, post, expected) {
   } else if (extra) {
     stopReason = "UNEXPECTED_DIFF: unexplained add/remove/modify/type change";
   }
+  if (incomplete) {
+    const incompleteReason = `INCOMPLETE_EXPECTED: rewritten project post-write SHA256 is missing: ${incompleteProjects.join(", ")}`;
+    stopReason = stopReason ? `${stopReason}; ${incompleteReason}` : incompleteReason;
+  }
   return {
     schema: COMPARE_SCHEMA,
     verdict: stopReason ? "STOP" : "PASS",
@@ -669,9 +718,10 @@ export function compareManifests(pre, post, expected) {
     pre_entry_count: pre.entry_count,
     post_entry_count: post.entry_count,
     unchanged_count: unchangedCount,
-    unrelated_entries_unchanged: unexplained.length === 0 && !missing,
+    unrelated_entries_unchanged: unexplained.length === 0 && !missing && !incomplete,
     diffs: [...matched, ...unexplained],
     unmatched_expected: unmatchedExpected,
+    incomplete_project_post_hashes: incompleteProjects,
   };
 }
 
@@ -834,6 +884,11 @@ export function formatSummary(report) {
       `missing expected ${change.op} ${JSON.stringify(change.relative_path)}`,
     );
   }
+  for (const relativePath of report.incomplete_project_post_hashes ?? []) {
+    lines.push(
+      `incomplete project post-write sha256 ${JSON.stringify(relativePath)}`,
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -913,6 +968,7 @@ function runCli(argv) {
     writeManifestAtomic(output, {
       schema: expected.schema,
       changes: expected.changes,
+      incomplete_project_post_hashes: expected.incomplete_project_post_hashes,
     });
     if (expected.incomplete_project_post_hashes.length > 0) {
       process.stderr.write(

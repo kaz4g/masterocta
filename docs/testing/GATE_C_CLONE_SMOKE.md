@@ -94,11 +94,15 @@ That command does **not** invent rewritten Project post-write SHA256 values.
 The public `rename-plan:v1` DTO and prepared-plan snapshot keep pre-write
 project hashes only; apply-time `staged_content_hash` is not exported as a
 Human Gate file. If rewritten projects exist, the command exits 1 after writing
-audio/sidecar expected changes and names the project paths that still need
-post-write SHA256.
+audio/sidecar expected changes and records those project paths in
+`incomplete_project_post_hashes`. Compare against that incomplete file is STOP,
+even when audio/sidecar diffs match and Project bytes are unchanged.
+`unrelated_entries_unchanged: true` is forbidden until every rewritten Project
+post-write SHA256 is filled.
 
 Fill each rewritten project as `content_changed` with the post-write SHA256
-from apply-time rewrite evidence. If that evidence is unavailable, do not
+from apply-time rewrite evidence, then remove it from
+`incomplete_project_post_hashes`. If that evidence is unavailable, do not
 guess. Run compare anyway so every diff is listed, then match each diff to the
 displayed plan by path. Dest audio and dest sidecar SHA256 must equal the
 source hashes already in the prepared plan. Project byte identity is also
