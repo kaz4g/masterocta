@@ -1895,6 +1895,64 @@ mod tests {
     }
 
     #[test]
+    fn unused_destination_absent_from_baseline_computes_hash_this_scan() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("SET/AUDIO")).unwrap();
+        fs::write(root.path().join("SET/AUDIO/source.wav"), b"source-bytes").unwrap();
+        fs::write(root.path().join("SET/AUDIO/dest.wav"), b"dest-bytes").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let topology = LibrarySnapshot::default();
+
+        let (_assets, initial) = scan_audio_inventory(&canonical, &topology, &[]).unwrap();
+        let source_baseline = initial
+            .iter()
+            .find(|file| file.relative_path.as_str() == "SET/AUDIO/source.wav")
+            .unwrap()
+            .clone();
+        let baseline = vec![source_baseline.clone()];
+        assert!(
+            !baseline
+                .iter()
+                .any(|file| file.relative_path.as_str() == "SET/AUDIO/dest.wav"),
+            "baseline must omit the unused destination path"
+        );
+
+        let expected_dest_hash = test_hash('d');
+        let mut dest_hasher_calls = 0;
+        let (_assets, scanned) =
+            scan_audio_inventory_with(&canonical, &topology, &baseline, &mut |path, _metadata| {
+                if path.ends_with("dest.wav") {
+                    dest_hasher_calls += 1;
+                    Ok(expected_dest_hash.clone())
+                } else {
+                    Ok(test_hash('s'))
+                }
+            })
+            .unwrap();
+
+        assert_eq!(
+            dest_hasher_calls, 1,
+            "destination path must invoke the hasher"
+        );
+        let dest = scanned
+            .iter()
+            .find(|file| file.relative_path.as_str() == "SET/AUDIO/dest.wav")
+            .unwrap();
+        assert_eq!(dest.hash_freshness, ContentHashFreshness::ComputedThisScan);
+        assert_eq!(dest.content_hash, expected_dest_hash);
+        assert_ne!(dest.content_hash, source_baseline.content_hash);
+
+        let failing =
+            scan_audio_inventory_with(&canonical, &topology, &baseline, &mut |_path, _metadata| {
+                Err(StorageError::new("HASH_FAILED: injected"))
+            });
+        assert!(
+            failing.is_err(),
+            "hasher errors must fail the scan instead of reusing metadata"
+        );
+    }
+
+    #[test]
     fn duplicate_bytes_create_one_asset_and_multiple_file_instances() {
         let root = TempDir::new().unwrap();
         fs::write(root.path().join("first.wav"), b"same bytes").unwrap();
