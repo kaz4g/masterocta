@@ -178,6 +178,9 @@ jobs:
       - name: Run frontend unit tests
         run: pnpm run test:frontend
 
+      - name: Run Gate C byte-manifest tests
+        run: pnpm run test:gate-c-manifest
+
       - name: Build frontend
         run: pnpm run build
 
