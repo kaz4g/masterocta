@@ -53,8 +53,34 @@ Transition:
   longer applies, keep the past record and reassess.
 - FAT-HASH condition satisfaction is not Gate C PASS and is not M5 COMPLETE.
 
-Current FAT-HASH-1 state: `ASSESSMENT_REQUIRED` / `UNSET`. This ledger update
-does not complete that assessment.
+Current FAT-HASH-1 state: `ASSESSED` / `ACCEPTED_WITH_EVIDENCE`.
+
+Assessment evidence:
+
+| Field | Value |
+|---|---|
+| evidence implementation head | `e0d04b55f9826362d9052f4679aa2d1c24c685bf` |
+| merged main commit | `affd2fb3983f824b01462dfda99a15aebf979123` |
+| assessed tree | `713c0187d29b828737e7a3252e187fe1cc654a0b` |
+| pull request | [#93](https://github.com/kaz4g/masterocta/pull/93) |
+| CI workflow | `CI` |
+| CI run | [`33991886715`](https://github.com/kaz4g/masterocta/actions/runs/33991886715), `completed` / `success` |
+
+The completed successful workflow run is the authoritative CI evidence; an
+unchecked checkbox in the PR description is not evidence. PR #93 proves that a
+stale catalog destination blocks planning even when the live destination is
+absent, a successful unused-destination plan has no destination baseline, the
+first post-apply rescan records `ComputedThisScan` rather than
+`ReusedUnchangedMetadata`, live destination tamper fails with
+`DESTINATION_HASH_MISMATCH`, and independent byte-manifest comparison stops on
+same-size / same-mtime / different-content.
+
+The FAT-HASH-derived RC2 blocker is cleared for these assessed identities.
+General incremental catalog hash reuse and coarse-timestamp regression remain
+open as hardening; they are not evidence inputs for the independently live-
+hashed and byte-manifested Gate C judgments.
+
+This FAT-HASH-only decision is not RC2 creation, Gate C PASS, or M5 COMPLETE.
 
 ## RC1
 
@@ -312,6 +338,23 @@ All of the following must be true before RC2 may be created:
   as a unique, immutable tuple with provenance consistency.
 
 If any condition is unmet, keep RC2 `NOT_CREATED`.
+
+### Current RC2 blockers after FAT-HASH-1 assessment
+
+FAT-HASH-1 is no longer an RC2 blocker. RC2 remains `NOT_CREATED` until at
+least all of the following are complete and mutually consistent:
+
+- machine-readable Project post-write SHA256 evidence export
+- an immutable RC candidate workflow
+- source-to-artifact provenance, including run/attempt-bound final digests
+- a confirmed non-public candidate storage path and access boundary
+- required CI and all freeze-time source, workflow, artifact, DMG, and
+  codesign verification
+
+RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
+commit, source tree, artifact, artifact SHA256, and all other identity fields
+remain `UNSET`. Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5
+remains `INCOMPLETE`.
 
 Human Gate C, including disposable-clone pre-run manifest capture, runs after
 RC2 freeze and artifact-identity confirmation. An unrun Human Gate C
