@@ -55,12 +55,16 @@ Transition:
 | verdict | `UNSET` |
 | assessed SHA | `UNSET` |
 | assessed scope | Gate C rename Apply, committed verification, post-apply rescan, Missing / Invalid / Unresolved counts, unrelated-byte proof |
-| this update | adds `scripts/gate-c-byte-manifest.mjs` and tests; does **not** complete the assessment |
+| this update | Gate C mandatory tests 1–3 recorded; assessment remains incomplete until it is closed with a recorded SHA |
 
-This investigation records code evidence. It does not run Human Gate C and
-does not access removable media. Unrun FAT-HASH tests remain `NOT_RUN`.
-Unconfirmed items are `UNKNOWN`. Do not record `ASSESSED` or
-`ACCEPTED_WITH_EVIDENCE` from this update alone.
+This investigation records code evidence and targeted test execution. It
+does not run Human Gate C and does not access removable media. Do not record
+`ASSESSED` or finalize `ACCEPTED_WITH_EVIDENCE` from this update alone.
+
+candidate verdict: `ACCEPTED_WITH_EVIDENCE`
+
+reason: required Gate C invariants held in targeted tests; assessed SHA
+remains `UNSET` until the assessment is closed
 
 While status is `ASSESSMENT_REQUIRED` / `UNSET`, or `ASSESSED` / `BLOCKED`, RC2
 stays `NOT_CREATED`.
@@ -115,14 +119,14 @@ remaining uncertainty.
 | Judgment or process | Information used | Hash reuse? | Code / existing-test evidence | Confirmed / unconfirmed | Gate C impact |
 |---|---|---|---|---|---|
 | Ordinary catalog inventory of an unchanged path | Live size/mtime vs previous `FileInstance` at the same relative path | Yes, when `can_reuse_hash()` is true | `src-tauri/src/legacy_read_adapter.rs` `scan_audio_inventory_with()`, `can_reuse_hash()`; test `unchanged_metadata_reuses_hash_while_size_new_path_and_unknown_mtime_require_hashing` | CONFIRMED that reuse exists. Same-size / same-mtime / different-content is `NOT_RUN`. Coarse-timestamp regression is `NOT_RUN`. | General catalog risk. Not an automatic RC2 blocker. |
-| Rename destination occupancy | Live destination file via `destination_exists_live()`; catalog and live sibling paths via `observe_destination_state()` / `classify_destination_state()` | No content-hash reuse in occupancy | `src-tauri/src/v2_api.rs` `destination_exists_live()`; `src-tauri/src/rename_planning_facts.rs` `observe_destination_state()`; `src-tauri/crates/ot-plan/src/rename.rs` `classify_destination_state()` (exact path in sibling list is `Existing` → `DestinationOccupied`) | CONFIRMED that a live destination file blocks planning. CONFIRMED that a catalog sibling path equal to the intended destination also classifies as `Existing`. Dedicated stale-baseline-destination test is `NOT_RUN`. | Gate C requires an unused destination stem. A remaining catalog entry for that path is not treated as “unused”. |
-| First post-rename scan of destination audio | Previous catalog `file_instances` keyed by relative path | Reuse only if that destination path already has a baseline entry whose size and mtime match | `scan_audio_inventory_with()` builds `baseline_by_path` from stored catalog; `scan_library_sync()` loads that baseline before rescan. Missing path takes the hasher branch (`ComputedThisScan`). | CONFIRMED path-keyed reuse. CONFIRMED hashing branch when no baseline path exists. Whether a Gate C unused destination can still have a baseline entry after a successful plan is `UNKNOWN` without a dedicated test (`NOT_RUN`). | Destination bytes used by Gate C committed verification are not taken from this catalog hash. See live destination hash below. |
+| Rename destination occupancy | Live destination file via `destination_exists_live()`; catalog and live sibling paths via `observe_destination_state()` / `classify_destination_state()` | No content-hash reuse in occupancy | `src-tauri/src/v2_api.rs` `destination_exists_live()`; `src-tauri/src/rename_planning_facts.rs` `observe_destination_state()`; `src-tauri/crates/ot-plan/src/rename.rs` `classify_destination_state()`; test `rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent` | CONFIRMED: stale catalog sibling blocks planning with `DESTINATION_OCCUPIED` even when live destination is absent | Gate C requires an unused destination stem. A remaining catalog entry for that path is not treated as “unused”. |
+| First post-rename scan of destination audio | Previous catalog `file_instances` keyed by relative path | Reuse only if that destination path already has a baseline entry whose size and mtime match | `scan_audio_inventory_with()`; `scan_library_sync()`; tests `unused_destination_absent_from_baseline_computes_hash_this_scan`, `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash` | CONFIRMED: missing baseline path invokes hasher (`ComputedThisScan`); successful unused-destination plan leaves no dest baseline before apply; first post-apply rescan with pre-apply baseline computes dest hash and matches `plan.source_content_hash` | Destination bytes used by Gate C committed verification are not taken from this catalog hash. See live destination hash below. |
 | Committed verification of destination audio | Live destination file bytes | No. Direct hash | `src-tauri/src/v2_api.rs` `evaluate_rename_committed_verification()` → `verify_audio_postconditions()` → `hash_live_source()` | CONFIRMED | Protects destination audio identity for `COMMITTED` / `VERIFIED`. Do not treat as catalog-reuse dependent. |
 | Committed verification of rewritten Project documents | Live Project file bytes vs recorded rewrite hash | No. Direct hash | `verify_project_document_hashes()` → `hash_live_source()`; test `rename_committed_verification_rejects_project_tamper_and_invalid_references` | CONFIRMED | Protects Project rewrite identity for `COMMITTED` / `VERIFIED`. |
 | Committed verification of sidecar | Live sidecar bytes vs plan sidecar hash | No. Direct hash | `verify_sidecar_postconditions()` → `hash_live_source()` | CONFIRMED | Protects sidecar identity for `COMMITTED` / `VERIFIED`. |
 | Catalog destination hash compared after rescan | Post-scan `file_instances` hash vs `plan.source_content_hash` | Uses the post-scan catalog hash, which may be reused if a baseline dest entry existed | `evaluate_rename_committed_verification()` `DESTINATION_HASH_MISMATCH` | CONFIRMED as an extra catalog check after live audio hash. A stale dest catalog hash would fail this check, not skip the live hash. | Not shown to create a false `COMMITTED` / `VERIFIED` pass. Residual if dest baseline reuse exists remains `UNKNOWN`. |
 | Missing / Invalid / Unresolved | Live Project/Bank path resolution against current inventory **paths** | No content-hash comparison | `scan_state_inventory()` uses `inventory_paths` from `file_instances` relative paths; `resolve_project_reference()`; `count_sample_reference_status()` / `count_unresolved_planned_references()` | CONFIRMED path-based. Whether a same-path stale file with different bytes can still be `Resolved` is expected (`UNKNOWN` as a byte-identity question, but that identity is covered by live destination hash). | Counts do not consume reused content hashes. Gate C still requires counts = 0 **and** live destination/project/sidecar hashes. |
-| Unrelated-byte invariance | Pre/post clone per-file path, type, size, and SHA-256 | Independent of catalog reuse | `scripts/gate-c-byte-manifest.mjs`; tests `scripts/gate-c-byte-manifest.test.mjs`; also `clone_runtime.rs` `scan_baseline_entries()` and `gate_c_clone_rescan.rs` `snapshot_manifest()` | CONFIRMED procedure and unit tests. Actual Human Gate C clone capture is post-freeze execution evidence. | Catalog reuse does not supply unrelated-byte proof. |
+| Unrelated-byte invariance | Pre/post clone per-file path, type, size, and SHA-256 | Independent of catalog reuse | `scripts/gate-c-byte-manifest.mjs`; test `detects same-size same-mtime different content` in `scripts/gate-c-byte-manifest.test.mjs` | CONFIRMED: aligned pre/post mtime with same size and different SHA-256 yields `content_changed`, `verdict: STOP`, `unrelated_entries_unchanged: false` | Catalog reuse does not supply unrelated-byte proof. |
 | Rename source planning | Live source bytes | No. Direct hash | `build_rename_planning_facts()` `hash_live_file()`; `ot-plan` `StaleSourceHashFreshness` | CONFIRMED | Source planning does not reuse catalog hash. |
 | Catalog vs live projection before plan | State documents, slots, usage edges, sidecars | Does not compare `file_instances` hashes | `verify_catalog_matches_live_scan()` | CONFIRMED | Not a content-hash reuse path. |
 
@@ -157,8 +161,11 @@ planning if a catalog baseline entry for that path remains. Gate C “unused
 destination” is not established by a live `NotFound` alone.
 
 A dedicated test that a stale catalog destination entry blocks planning, or
-that a successful Gate C plan implies no destination baseline entry, is
-`NOT_RUN`.
+that a successful Gate C plan implies no destination baseline entry, is now
+covered by `rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent`
+and `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash`.
+The stale-destination test re-establishes clone verification after deleting the
+live file so planning reaches occupancy logic instead of `CLONE_TAMPERED`.
 
 ### Forced live hashing on Gate C committed verification
 
@@ -198,8 +205,10 @@ hashed.
 | Code confirmation that Missing / Invalid / Unresolved use inventory paths | counts = 0 | CONFIRMED in this investigation |
 | Code and procedure confirmation that unrelated-byte verification does not use catalog hash reuse, and that an independent content-hash manifest generate/compare procedure is defined | independence of unrelated-byte proof from catalog reuse | CONFIRMED: `scripts/gate-c-byte-manifest.mjs` hashes file bytes with SHA-256, never catalog reuse; tests in `scripts/gate-c-byte-manifest.test.mjs` cover deterministic capture, same-size/same-mtime content change, expected-only PASS, and unexpected STOP. Actual Human Gate C clone capture remains post-freeze execution evidence and is not required here. |
 | Code confirmation that reuse is path-keyed | first post-rename destination scan | CONFIRMED |
-| Automated test: successful unused-destination plan implies no destination baseline path, so first dest scan hashes | destination content at first post-rename scan | `NOT_RUN` |
-| Recorded residual risk and implementation policy | assessment completeness | incomplete; status remains `ASSESSMENT_REQUIRED` |
+| Automated test: successful unused-destination plan implies no destination baseline path, so first dest scan hashes | destination content at first post-rename scan | PASS: `unused_destination_absent_from_baseline_computes_hash_this_scan`, `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash` |
+| Automated test: stale catalog destination blocks planning when live file is absent | unused destination occupancy | PASS: `rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent` |
+| Automated test: byte-manifest detects same-size same-mtime content change | unrelated-byte proof independence | PASS: `detects same-size same-mtime different content` |
+| Recorded residual risk and implementation policy | assessment completeness | incomplete; status remains `ASSESSMENT_REQUIRED`; candidate verdict `ACCEPTED_WITH_EVIDENCE`; assessed SHA remains `UNSET` |
 
 Same-size / same-mtime / different-content catalog reuse and coarse-timestamp
 regressions are **not** Gate C required evidence while dest/project/sidecar
@@ -208,8 +217,62 @@ required for `ASSESSED` only if a later finding shows a required Gate C
 judgment consumes a reused catalog hash.
 
 Existing tests already cover ordinary reuse-on-unchanged-metadata, destination
-occupancy, Project tamper rejection, and synthetic unrelated-sentinel
-invariance. The unused-destination baseline-path test above remains `NOT_RUN`.
+occupancy, Project tamper rejection, synthetic unrelated-sentinel invariance, and
+the Gate C mandatory tests listed above. General catalog same-size /
+same-mtime / different-content reuse regressions remain hardening-only `NOT_RUN`
+items.
+
+## Gate C mandatory test execution record (2026-09-05)
+
+Production path exercised:
+
+- planning: `plan_rename_sample_sync` → `destination_exists_live` →
+  `build_rename_planning_facts` → `observe_destination_state` /
+  `classify_destination_state`
+- apply rescan: `apply_rename_sync` → `run_rename_committed_rescan` →
+  `scan_library_sync` → `scan_audio_inventory_with`
+- committed verification: `evaluate_rename_committed_verification` →
+  `verify_audio_postconditions` → `hash_live_source`
+- unrelated bytes: `scripts/gate-c-byte-manifest.mjs` compare path
+
+| Test | Location | Result |
+|---|---|---|
+| `rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent` | `src-tauri/src/v2_api.rs` | PASS |
+| `unused_destination_absent_from_baseline_computes_hash_this_scan` | `src-tauri/src/legacy_read_adapter.rs` | PASS |
+| `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash` | `src-tauri/src/v2_api.rs` | PASS |
+| `detects same-size same-mtime different content` | `scripts/gate-c-byte-manifest.test.mjs` | PASS |
+
+Commands run locally:
+
+```bash
+cd src-tauri
+cargo test -p masterocta --features test-seams rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent
+cargo test -p masterocta unused_destination_absent_from_baseline_computes_hash_this_scan
+cargo test -p masterocta --features test-seams unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash
+node --test scripts/gate-c-byte-manifest.test.mjs
+pnpm run test:gate-c-manifest
+cargo fmt --all -- --check
+git diff --check
+```
+
+Observed outcomes:
+
+- stale catalog `SET/AUDIO/unused.wav` with live file deleted blocks
+  `pad.wav` → `unused.wav` with `DESTINATION_OCCUPIED`
+- baseline without dest path computes dest hash (`ComputedThisScan`); hasher
+  errors fail the scan
+- unused plan leaves dest out of pre-apply catalog; first post-apply rescan with
+  pre-apply baseline computes dest hash matching `plan.source_content_hash`;
+  live tamper yields `DESTINATION_HASH_MISMATCH`
+- byte-manifest same-size / same-mtime / different-content reports `STOP`
+
+status after this record: `ASSESSMENT_REQUIRED`
+
+verdict after this record: `UNSET`
+
+candidate verdict: `ACCEPTED_WITH_EVIDENCE`
+
+assessed SHA: `UNSET` (assessment not closed)
 
 ## Human Gate C execution evidence
 

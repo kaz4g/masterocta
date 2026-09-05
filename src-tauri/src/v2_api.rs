@@ -6353,6 +6353,72 @@ mod tests {
     }
 
     #[test]
+    fn rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent() {
+        let root = TempDir::new().unwrap();
+        build_gate_c_planning_fixture(root.path());
+
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        let rename_runtime = open_test_rename_runtime(data_directory.path());
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+
+        let dto = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        assert!(
+            dto.audio_files
+                .iter()
+                .any(|file| file.relative_path == "SET/AUDIO/unused.wav"),
+            "expected stale catalog destination baseline in fixture"
+        );
+
+        fs::remove_file(root.path().join("SET/AUDIO/unused.wav")).unwrap();
+        assert!(!root.path().join("SET/AUDIO/unused.wav").exists());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+
+        let source_id = dto
+            .audio_files
+            .iter()
+            .find(|file| file.relative_path == "SET/AUDIO/pad.wav")
+            .unwrap()
+            .file_instance_id
+            .clone();
+
+        let before = collect_fixture_manifest(root.path());
+        let RenamePlanResponseDto::Blocked(blocked) = plan_rename_sample_sync(
+            &registry,
+            &catalog,
+            &clone_runtime,
+            &rename_runtime,
+            &root_id,
+            &source_id,
+            "SET/AUDIO/unused.wav",
+        )
+        .unwrap() else {
+            panic!("expected blocked rename for stale catalog destination");
+        };
+        let after = collect_fixture_manifest(root.path());
+        assert_eq!(before, after);
+
+        assert_eq!(blocked.schema, "rename-blocked:v1");
+        assert!(
+            blocked
+                .block_reasons
+                .iter()
+                .any(|reason| reason.code == "DESTINATION_OCCUPIED"),
+            "expected DESTINATION_OCCUPIED, got {:?}",
+            blocked.block_reasons
+        );
+        assert!(rename_runtime
+            .get_plan(
+                &root_id,
+                "plan:v1:0000000000000000000000000000000000000000000000000000000000000000"
+            )
+            .is_err());
+    }
+
+    #[test]
     fn rename_plan_api_reports_unused_sample_warning() {
         let root = TempDir::new().unwrap();
         build_gate_c_planning_fixture(root.path());
@@ -8004,6 +8070,101 @@ mod tests {
             Some("PLANNED_REFERENCES_UNRESOLVED")
         );
         assert!(wrong_destination.unresolved_reference_count > 0);
+    }
+
+    #[test]
+    fn unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash() {
+        let fixture = setup_rename_through_backup();
+
+        let snapshot_before_apply =
+            list_library_sync(&fixture.registry, &fixture.catalog, &fixture.root_id).unwrap();
+        assert!(
+            !snapshot_before_apply
+                .file_instances
+                .iter()
+                .any(|file| file.relative_path.as_str() == "SET/AUDIO/new-pad.wav"),
+            "planned unused destination must be absent from catalog before apply"
+        );
+
+        let plan = fixture
+            .rename_runtime
+            .get_plan(&fixture.root_id, &fixture.plan_id)
+            .unwrap();
+        let baseline_before_apply = snapshot_before_apply.file_instances;
+
+        prepare_fixture_rename(&fixture);
+        let continuation = continue_fixture_rename(
+            &fixture,
+            &fixture.prepared_runtime,
+            &fixture.clone_runtime,
+            &fixture.rename_runtime,
+        );
+        apply_rename_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.clone_runtime,
+            &fixture.write,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+            &fixture.operation_id,
+            &continuation.continuation_authority_id,
+        )
+        .unwrap();
+
+        let resolved = fixture.registry.resolve(&fixture.root_id).unwrap();
+        let storage = RegisteredLegacyLibrary::new(
+            fixture.root_id.clone(),
+            resolved.canonical_path.clone(),
+            baseline_before_apply,
+        );
+        let first_rescan = ListLibrary::new(&storage)
+            .execute(&fixture.root_id)
+            .unwrap();
+        let dest = first_rescan
+            .file_instances
+            .iter()
+            .find(|file| file.relative_path.as_str() == "SET/AUDIO/new-pad.wav")
+            .unwrap();
+        assert_eq!(
+            dest.hash_freshness,
+            ot_domain::ContentHashFreshness::ComputedThisScan
+        );
+        assert_ne!(
+            dest.hash_freshness,
+            ot_domain::ContentHashFreshness::ReusedUnchangedMetadata
+        );
+        assert_eq!(dest.content_hash, plan.source_content_hash);
+
+        let project_rewrites = fixture
+            .rename_runtime
+            .committed_project_rewrites(
+                &OperationId::parse(fixture.operation_id.clone()).unwrap(),
+                &resolved.session.device_fingerprint,
+            )
+            .unwrap();
+        let prepared_plan = fixture
+            .prepared_runtime
+            .load_prepared_plan(&OperationId::parse(fixture.operation_id.clone()).unwrap())
+            .unwrap();
+
+        fs::write(
+            fixture._root.path().join("SET/AUDIO/new-pad.wav"),
+            b"tampered-destination-bytes",
+        )
+        .unwrap();
+        let mismatched = evaluate_rename_committed_verification(
+            &resolved,
+            &first_rescan,
+            &prepared_plan,
+            &project_rewrites,
+            true,
+        );
+        assert_eq!(
+            mismatched.verification_code,
+            Some("DESTINATION_HASH_MISMATCH")
+        );
     }
 
     fn set_rename_journal_status(

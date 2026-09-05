@@ -302,11 +302,13 @@ describe("compare", () => {
     const root = makeTree();
     const target = path.join(root, "SET", "UNRELATED", "keep.txt");
     try {
-      const pre = captureRoot(root);
       const stats = {
         atime: new Date("2020-01-01T00:00:00Z"),
         mtime: new Date("2020-01-01T00:00:00Z"),
       };
+      writeFileSync(target, "sentinel");
+      utimesSync(target, stats.atime, stats.mtime);
+      const pre = captureRoot(root);
       writeFileSync(target, "sentineX");
       utimesSync(target, stats.atime, stats.mtime);
       const post = captureRoot(root);
@@ -317,12 +319,15 @@ describe("compare", () => {
         (entry) => entry.relative_path === "SET/UNRELATED/keep.txt",
       );
       assert.equal(preFile.byte_size, postFile.byte_size);
+      assert.equal(preFile.modified_at_unix_ns, postFile.modified_at_unix_ns);
       assert.notEqual(preFile.sha256, postFile.sha256);
       const report = compareManifests(pre, post, null);
       assert.equal(
         report.diffs.some((diff) => diff.class === "content_changed"),
         true,
       );
+      assert.equal(report.verdict, "STOP");
+      assert.equal(report.unrelated_entries_unchanged, false);
     } finally {
       cleanup(root);
     }
