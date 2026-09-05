@@ -8090,7 +8090,6 @@ mod tests {
             .rename_runtime
             .get_plan(&fixture.root_id, &fixture.plan_id)
             .unwrap();
-        let baseline_before_apply = snapshot_before_apply.file_instances;
 
         prepare_fixture_rename(&fixture);
         let continuation = continue_fixture_rename(
@@ -8099,7 +8098,7 @@ mod tests {
             &fixture.clone_runtime,
             &fixture.rename_runtime,
         );
-        apply_rename_sync(
+        let applied = apply_rename_sync(
             &fixture.registry,
             &fixture.catalog,
             &fixture.clone_runtime,
@@ -8112,17 +8111,14 @@ mod tests {
             &continuation.continuation_authority_id,
         )
         .unwrap();
+        assert_eq!(applied.mutation_state, "committed");
+        assert_eq!(applied.verification_state, "passed");
+        assert!(applied.rescan_completed);
+        assert_eq!(applied.verification_code, None);
 
-        let resolved = fixture.registry.resolve(&fixture.root_id).unwrap();
-        let storage = RegisteredLegacyLibrary::new(
-            fixture.root_id.clone(),
-            resolved.canonical_path.clone(),
-            baseline_before_apply,
-        );
-        let first_rescan = ListLibrary::new(&storage)
-            .execute(&fixture.root_id)
-            .unwrap();
-        let dest = first_rescan
+        let stored =
+            list_library_sync(&fixture.registry, &fixture.catalog, &fixture.root_id).unwrap();
+        let dest = stored
             .file_instances
             .iter()
             .find(|file| file.relative_path.as_str() == "SET/AUDIO/new-pad.wav")
@@ -8137,6 +8133,7 @@ mod tests {
         );
         assert_eq!(dest.content_hash, plan.source_content_hash);
 
+        let resolved = fixture.registry.resolve(&fixture.root_id).unwrap();
         let project_rewrites = fixture
             .rename_runtime
             .committed_project_rewrites(
@@ -8156,7 +8153,7 @@ mod tests {
         .unwrap();
         let mismatched = evaluate_rename_committed_verification(
             &resolved,
-            &first_rescan,
+            &stored,
             &prepared_plan,
             &project_rewrites,
             true,

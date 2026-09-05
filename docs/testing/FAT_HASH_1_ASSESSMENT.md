@@ -120,7 +120,7 @@ remaining uncertainty.
 |---|---|---|---|---|---|
 | Ordinary catalog inventory of an unchanged path | Live size/mtime vs previous `FileInstance` at the same relative path | Yes, when `can_reuse_hash()` is true | `src-tauri/src/legacy_read_adapter.rs` `scan_audio_inventory_with()`, `can_reuse_hash()`; test `unchanged_metadata_reuses_hash_while_size_new_path_and_unknown_mtime_require_hashing` | CONFIRMED that reuse exists. Same-size / same-mtime / different-content is `NOT_RUN`. Coarse-timestamp regression is `NOT_RUN`. | General catalog risk. Not an automatic RC2 blocker. |
 | Rename destination occupancy | Live destination file via `destination_exists_live()`; catalog and live sibling paths via `observe_destination_state()` / `classify_destination_state()` | No content-hash reuse in occupancy | `src-tauri/src/v2_api.rs` `destination_exists_live()`; `src-tauri/src/rename_planning_facts.rs` `observe_destination_state()`; `src-tauri/crates/ot-plan/src/rename.rs` `classify_destination_state()`; test `rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent` | CONFIRMED: stale catalog sibling blocks planning with `DESTINATION_OCCUPIED` even when live destination is absent | Gate C requires an unused destination stem. A remaining catalog entry for that path is not treated as “unused”. |
-| First post-rename scan of destination audio | Previous catalog `file_instances` keyed by relative path | Reuse only if that destination path already has a baseline entry whose size and mtime match | `scan_audio_inventory_with()`; `scan_library_sync()`; tests `unused_destination_absent_from_baseline_computes_hash_this_scan`, `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash` | CONFIRMED: missing baseline path invokes hasher (`ComputedThisScan`); successful unused-destination plan leaves no dest baseline before apply; first post-apply rescan with pre-apply baseline computes dest hash and matches `plan.source_content_hash` | Destination bytes used by Gate C committed verification are not taken from this catalog hash. See live destination hash below. |
+| First post-rename scan of destination audio | Previous catalog `file_instances` keyed by relative path | Reuse only if that destination path already has a baseline entry whose size and mtime match | `scan_audio_inventory_with()`; `scan_library_sync()` / `run_rename_committed_rescan()`; tests `unused_destination_absent_from_baseline_computes_hash_this_scan`, `unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash` | CONFIRMED: missing baseline path invokes hasher (`ComputedThisScan`); successful unused-destination plan leaves no dest baseline before apply; apply's committed rescan stores dest as `ComputedThisScan` matching `plan.source_content_hash` | Destination bytes used by Gate C committed verification are not taken from this catalog hash. See live destination hash below. |
 | Committed verification of destination audio | Live destination file bytes | No. Direct hash | `src-tauri/src/v2_api.rs` `evaluate_rename_committed_verification()` → `verify_audio_postconditions()` → `hash_live_source()` | CONFIRMED | Protects destination audio identity for `COMMITTED` / `VERIFIED`. Do not treat as catalog-reuse dependent. |
 | Committed verification of rewritten Project documents | Live Project file bytes vs recorded rewrite hash | No. Direct hash | `verify_project_document_hashes()` → `hash_live_source()`; test `rename_committed_verification_rejects_project_tamper_and_invalid_references` | CONFIRMED | Protects Project rewrite identity for `COMMITTED` / `VERIFIED`. |
 | Committed verification of sidecar | Live sidecar bytes vs plan sidecar hash | No. Direct hash | `verify_sidecar_postconditions()` → `hash_live_source()` | CONFIRMED | Protects sidecar identity for `COMMITTED` / `VERIFIED`. |
@@ -245,13 +245,12 @@ Production path exercised:
 Commands run locally:
 
 ```bash
-cd src-tauri
-cargo test -p masterocta --features test-seams rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent
-cargo test -p masterocta unused_destination_absent_from_baseline_computes_hash_this_scan
-cargo test -p masterocta --features test-seams unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash
+( cd src-tauri && cargo test -p masterocta --features test-seams rename_plan_rejects_stale_catalog_destination_when_live_file_is_absent )
+( cd src-tauri && cargo test -p masterocta unused_destination_absent_from_baseline_computes_hash_this_scan )
+( cd src-tauri && cargo test -p masterocta --features test-seams unused_destination_plan_implies_no_baseline_and_first_rescan_computes_hash )
+( cd src-tauri && cargo fmt --all -- --check )
 node --test scripts/gate-c-byte-manifest.test.mjs
 pnpm run test:gate-c-manifest
-cargo fmt --all -- --check
 git diff --check
 ```
 
@@ -261,9 +260,9 @@ Observed outcomes:
   `pad.wav` → `unused.wav` with `DESTINATION_OCCUPIED`
 - baseline without dest path computes dest hash (`ComputedThisScan`); hasher
   errors fail the scan
-- unused plan leaves dest out of pre-apply catalog; first post-apply rescan with
-  pre-apply baseline computes dest hash matching `plan.source_content_hash`;
-  live tamper yields `DESTINATION_HASH_MISMATCH`
+- unused plan leaves dest out of pre-apply catalog; apply commits with
+  `verification_state: passed` and stores dest as `ComputedThisScan` matching
+  `plan.source_content_hash`; live tamper yields `DESTINATION_HASH_MISMATCH`
 - byte-manifest same-size / same-mtime / different-content reports `STOP`
 
 status after this record: `ASSESSMENT_REQUIRED`
