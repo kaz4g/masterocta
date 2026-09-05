@@ -8,6 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   constants,
   lstatSync,
   mkdirSync,
@@ -15,6 +16,7 @@ import {
   readFileSync,
   readdirSync,
   readSync,
+  realpathSync,
   closeSync,
   renameSync,
   unlinkSync,
@@ -60,9 +62,81 @@ export function compareUtf8(left, right) {
   return Buffer.from(left, "utf8").compare(Buffer.from(right, "utf8"));
 }
 
+function resolvedPathForContainment(inputPath) {
+  const absolute = path.resolve(inputPath);
+  const missing = [];
+  let current = absolute;
+  for (;;) {
+    try {
+      return missing.reduce(
+        (acc, part) => path.join(acc, part),
+        realpathSync(current),
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw new ManifestStop(
+          "UNREADABLE",
+          `could not resolve ${JSON.stringify(inputPath)}: ${error.code ?? error.message}`,
+        );
+      }
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw new ManifestStop(
+        "UNREADABLE",
+        `could not resolve ${JSON.stringify(inputPath)}`,
+      );
+    }
+    missing.unshift(path.basename(current));
+    current = parent;
+  }
+}
+
+function pathIsInsideRoot(rootPath, candidatePath) {
+  const rootReal = realpathSync(rootPath);
+  const candidateReal = resolvedPathForContainment(candidatePath);
+  const relative = path.relative(rootReal, candidateReal);
+  if (relative === "") {
+    return true;
+  }
+  if (path.isAbsolute(relative)) {
+    return false;
+  }
+  return !relative.split(path.sep).includes("..");
+}
+
+function assertOutputOutsideRoot(rootPath, outputPath) {
+  if (pathIsInsideRoot(rootPath, outputPath)) {
+    throw new ManifestStop(
+      "OUTPUT_INSIDE_ROOT",
+      "write the manifest outside the clone root",
+    );
+  }
+}
+
+function sameResolvedPath(left, right) {
+  return resolvedPathForContainment(left) === resolvedPathForContainment(right);
+}
+
+function assertReportDoesNotClobberInputs(reportPath, inputPaths) {
+  for (const inputPath of inputPaths) {
+    if (inputPath && sameResolvedPath(reportPath, inputPath)) {
+      throw new ManifestStop(
+        "OUTPUT_ALIASES_INPUT",
+        "report path must not overwrite pre, post, or expected files",
+      );
+    }
+  }
+}
+
+function isContentHash(value) {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
 function posixRelative(root, target) {
   const relative = path.relative(root, target);
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  const parts = relative.split(path.sep);
+  if (relative === "" || parts.includes("..") || path.isAbsolute(relative)) {
     throw new ManifestStop(
       "PATH_ESCAPE",
       "captured path left the clone root",
@@ -307,8 +381,13 @@ export function writeManifestAtomic(outputPath, manifest) {
   mkdirSync(directory, { recursive: true });
   const partial = destination + PARTIAL_SUFFIX;
   try {
-    writeFileSync(partial, serializeManifest(manifest), { flag: "w" });
+    writeFileSync(partial, serializeManifest(manifest), {
+      flag: "w",
+      mode: 0o600,
+    });
+    chmodSync(partial, 0o600);
     renameSync(partial, destination);
+    chmodSync(destination, 0o600);
   } catch (error) {
     try {
       unlinkSync(partial);
@@ -328,16 +407,7 @@ export function writeManifestAtomic(outputPath, manifest) {
 export function captureToFile(rootPath, outputPath) {
   const root = path.resolve(rootPath);
   const destination = path.resolve(outputPath);
-  const relativeToRoot = path.relative(root, destination);
-  const insideRoot =
-    relativeToRoot === "" ||
-    (!relativeToRoot.startsWith("..") && !path.isAbsolute(relativeToRoot));
-  if (insideRoot) {
-    throw new ManifestStop(
-      "OUTPUT_INSIDE_ROOT",
-      "write the manifest outside the clone root",
-    );
-  }
+  assertOutputOutsideRoot(root, destination);
   const manifest = captureRoot(root);
   writeManifestAtomic(destination, manifest);
   return manifest;
@@ -556,12 +626,21 @@ export function parseExpectedChanges(raw, label) {
     }
     seen.add(key);
     if (
-      (item.op === "added" || item.op === "content_changed") &&
-      (typeof item.sha256 !== "string" || item.sha256 === "")
+      item.op === "added" ||
+      item.op === "content_changed" ||
+      item.op === "removed"
     ) {
+      if (!isContentHash(item.sha256)) {
+        throw new ManifestStop(
+          "INCOMPLETE_EXPECTED",
+          `expected ${item.op} ${JSON.stringify(item.relative_path)} is missing a valid sha256`,
+        );
+      }
+    }
+    if (item.op === "removed" && item.entry_type !== "file") {
       throw new ManifestStop(
         "INCOMPLETE_EXPECTED",
-        `expected ${item.op} ${JSON.stringify(item.relative_path)} is missing sha256`,
+        `expected removed ${JSON.stringify(item.relative_path)} must be a file with a preimage hash`,
       );
     }
     changes.push(item);
@@ -622,9 +701,10 @@ function expectedMatchesDiff(expected, diff) {
   if (expected.op === "removed") {
     return (
       diff.pre !== null &&
-      (expected.entry_type === undefined ||
-        expected.entry_type === diff.pre.entry_type) &&
-      (expected.sha256 === undefined || expected.sha256 === diff.pre.sha256)
+      expected.entry_type === "file" &&
+      diff.pre.entry_type === "file" &&
+      isContentHash(expected.sha256) &&
+      expected.sha256 === diff.pre.sha256
     );
   }
   if (expected.op === "added") {
@@ -953,6 +1033,11 @@ function runCli(argv) {
     const report = compareManifests(pre, post, expected);
     process.stdout.write(formatSummary(report));
     if (reportPath) {
+      assertReportDoesNotClobberInputs(reportPath, [
+        prePath,
+        postPath,
+        expectedPath,
+      ]);
       writeManifestAtomic(reportPath, report);
     }
     return report.verdict === "PASS" ? 0 : 2;

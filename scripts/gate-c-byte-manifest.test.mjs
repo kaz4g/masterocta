@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -13,7 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   COMPARE_SCHEMA,
@@ -204,11 +205,30 @@ describe("capture", () => {
     writeFileSync(target, "secret");
     chmodSync(target, 0);
     try {
-      assert.throws(() => captureRoot(root), (error) => {
-        assert.equal(error instanceof ManifestStop, true);
-        assert.equal(error.code, "UNREADABLE");
-        return true;
-      });
+      if (process.getuid?.() === 0) {
+        chmodSync(root, 0o755);
+        chmodSync(path.join(root, "SET"), 0o755);
+        chmodSync(path.join(root, "SET", "AUDIO"), 0o755);
+        chmodSync(path.join(root, "SET", "PROJECT"), 0o755);
+        chmodSync(path.join(root, "SET", "UNRELATED"), 0o755);
+        const probe = spawnSync(
+          process.execPath,
+          [
+            "-e",
+            `import { captureRoot } from ${JSON.stringify(pathToFileURL(scriptPath).href)};
+captureRoot(${JSON.stringify(root)});`,
+          ],
+          { encoding: "utf8", uid: 65534, gid: 65534 },
+        );
+        assert.notEqual(probe.status, 0, probe.stdout + probe.stderr);
+        assert.match(probe.stderr, /UNREADABLE|EACCES|EPERM|permission denied/i);
+      } else {
+        assert.throws(() => captureRoot(root), (error) => {
+          assert.equal(error instanceof ManifestStop, true);
+          assert.equal(error.code, "UNREADABLE");
+          return true;
+        });
+      }
     } finally {
       chmodSync(target, 0o644);
       cleanup(root);
@@ -217,13 +237,40 @@ describe("capture", () => {
 
   it("rejects writing the manifest inside the clone root", () => {
     const root = makeTree();
+    const outputDir = mkdtempSync(path.join(tmpdir(), "gate-c-out-"));
     try {
       assert.throws(
         () => captureToFile(root, path.join(root, "manifest.json")),
         (error) => error instanceof ManifestStop && error.code === "OUTPUT_INSIDE_ROOT",
       );
+      assert.throws(
+        () => captureToFile(root, path.join(root, "..manifest.json")),
+        (error) => error instanceof ManifestStop && error.code === "OUTPUT_INSIDE_ROOT",
+      );
+      const alias = path.join(outputDir, "into-clone");
+      symlinkSync(root, alias);
+      assert.throws(
+        () => captureToFile(root, path.join(alias, "manifest.json")),
+        (error) => error instanceof ManifestStop && error.code === "OUTPUT_INSIDE_ROOT",
+      );
     } finally {
       cleanup(root);
+      cleanup(outputDir);
+    }
+  });
+
+  it("writes evidence files with mode 0600", () => {
+    const outputDir = mkdtempSync(path.join(tmpdir(), "gate-c-mode-"));
+    const output = path.join(outputDir, "pre.json");
+    try {
+      writeManifestAtomic(output, {
+        schema: MANIFEST_SCHEMA,
+        exclusion_policy: EXCLUSION_POLICY,
+        entries: [],
+      });
+      assert.equal(statSync(output).mode & 0o777, 0o600);
+    } finally {
+      cleanup(outputDir);
     }
   });
 });
@@ -351,6 +398,7 @@ describe("compare", () => {
           {
             op: "removed",
             relative_path: "SET/AUDIO/source.ot",
+            entry_type: "file",
             sha256: sidecar.sha256,
           },
           {
@@ -395,6 +443,7 @@ describe("compare", () => {
           {
             op: "removed",
             relative_path: "SET/AUDIO/source.wav",
+            entry_type: "file",
             sha256: source.sha256,
           },
           {
@@ -408,6 +457,37 @@ describe("compare", () => {
       assert.equal(report.verdict, "STOP");
       assert.equal(report.unrelated_entries_unchanged, false);
       assert.ok(report.stop_reason.includes("UNEXPECTED_DIFF"));
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  it("does not PASS when an expected removal omits its preimage hash", () => {
+    const root = makeTree();
+    try {
+      const pre = captureRoot(root);
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.wav"), "wav-bytes-aa");
+      rmSync(path.join(root, "SET", "AUDIO", "source.wav"));
+      const post = captureRoot(root);
+      const dest = post.entries.find(
+        (entry) => entry.relative_path === "SET/AUDIO/dest.wav",
+      );
+      const report = compareManifests(pre, post, {
+        schema: EXPECTED_SCHEMA,
+        changes: [
+          {
+            op: "removed",
+            relative_path: "SET/AUDIO/source.wav",
+          },
+          {
+            op: "added",
+            relative_path: "SET/AUDIO/dest.wav",
+            sha256: dest.sha256,
+          },
+        ],
+      });
+      assert.equal(report.verdict, "STOP");
+      assert.equal(report.unrelated_entries_unchanged, false);
     } finally {
       cleanup(root);
     }
@@ -432,6 +512,7 @@ describe("compare", () => {
           {
             op: "removed",
             relative_path: "SET/AUDIO/source.wav",
+            entry_type: "file",
             sha256: source.sha256,
           },
           {
@@ -545,6 +626,42 @@ describe("expected-from-prepared", () => {
             schema: EXPECTED_SCHEMA,
             changes: [
               { op: "content_changed", relative_path: "SET/PROJECT/project.work" },
+            ],
+          }),
+          "expected",
+        ),
+      (error) =>
+        error instanceof ManifestStop && error.code === "INCOMPLETE_EXPECTED",
+    );
+  });
+
+  it("rejects expected removals that omit a preimage hash or file type", () => {
+    assert.throws(
+      () =>
+        parseExpectedChanges(
+          JSON.stringify({
+            schema: EXPECTED_SCHEMA,
+            changes: [
+              { op: "removed", relative_path: "SET/AUDIO/source.wav" },
+            ],
+          }),
+          "expected",
+        ),
+      (error) =>
+        error instanceof ManifestStop && error.code === "INCOMPLETE_EXPECTED",
+    );
+    assert.throws(
+      () =>
+        parseExpectedChanges(
+          JSON.stringify({
+            schema: EXPECTED_SCHEMA,
+            changes: [
+              {
+                op: "removed",
+                relative_path: "SET/AUDIO/source.wav",
+                entry_type: "directory",
+                sha256: "sha256:" + "ab".repeat(32),
+              },
             ],
           }),
           "expected",
@@ -690,6 +807,7 @@ describe("cli", () => {
           {
             op: "removed",
             relative_path: "SET/AUDIO/source.wav",
+            entry_type: "file",
             sha256: source.sha256,
           },
           {
@@ -719,6 +837,26 @@ describe("cli", () => {
       assert.match(compare.stdout, /unrelated_entries_unchanged: true/);
       const report = JSON.parse(readFileSync(reportPath, "utf8"));
       assert.equal(report.verdict, "PASS");
+      const clobber = spawnSync(
+        process.execPath,
+        [
+          scriptPath,
+          "compare",
+          "--pre",
+          prePath,
+          "--post",
+          postPath,
+          "--expected",
+          expectedPath,
+          "--report",
+          prePath,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.notEqual(clobber.status, 0, clobber.stdout + clobber.stderr);
+      assert.match(clobber.stderr, /OUTPUT_ALIASES_INPUT/);
+      const preAfter = loadManifestFile(prePath, "pre");
+      assert.equal(preAfter.schema, MANIFEST_SCHEMA);
     } finally {
       cleanup(root);
       cleanup(outputDir);
