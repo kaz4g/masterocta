@@ -32,7 +32,10 @@ use ot_domain::{
     SampleStorageScope, SampleUsageEdge, SampleUsageKind, StateDocumentParseStatus,
     StateDocumentRole,
 };
-use ot_executor::{OperationId, RenameJournalStatus, RenameProjectRewriteRecord};
+use ot_executor::{
+    OperationId, RenameJournalStatus, RenameOperationJournal, RenameProjectRewriteRecord,
+    RenameStagedFileRecord, RenameStagedFileRole,
+};
 use ot_plan::{
     plan_additive_copy, plan_rename_sample, validate_rename_plan_freshness, AdditiveCopyIntent,
     AdditiveCopyPlanningFacts, BlockedRenameImpact, ChangePlan, PlanSeed, RenameBlockReason,
@@ -43,6 +46,7 @@ use ot_plan::{
 use ot_storage_ports::{CatalogError, CatalogRootIdentity, CatalogRootObservation};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -767,6 +771,8 @@ pub struct RenameReferenceUpdateDto {
 pub struct RenameStateDocumentImpactDto {
     relative_path: String,
     role: &'static str,
+    byte_size: u64,
+    content_hash: String,
     reference_updates: Vec<RenameReferenceUpdateDto>,
 }
 
@@ -787,6 +793,8 @@ pub struct RenameUsageEdgeImpactDto {
 pub struct RenameSidecarImpactDto {
     source_sidecar_relative_path: String,
     destination_sidecar_relative_path: String,
+    byte_size: u64,
+    content_hash: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -798,6 +806,8 @@ pub struct RenamePlanDto {
     operation: &'static str,
     source_file_instance_id: String,
     source_relative_path: String,
+    source_byte_size: u64,
+    source_content_hash: String,
     destination_relative_path: String,
     state_document_impacts: Vec<RenameStateDocumentImpactDto>,
     usage_edge_impacts: Vec<RenameUsageEdgeImpactDto>,
@@ -826,6 +836,7 @@ pub struct BlockedRenamePlanDto {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[allow(clippy::large_enum_variant)]
 #[serde(tag = "outcome", rename_all = "camelCase")]
 pub enum RenamePlanResponseDto {
     #[serde(rename = "planned")]
@@ -900,6 +911,49 @@ pub struct RenameCommittedVerificationDto {
     missing_reference_count: u64,
     invalid_reference_count: u64,
     unresolved_reference_count: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCommittedAudioEvidenceDto {
+    source_relative_path: String,
+    source_sha256: String,
+    destination_relative_path: String,
+    destination_sha256: String,
+    byte_size: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCommittedSidecarEvidenceDto {
+    source_relative_path: String,
+    source_sha256: String,
+    destination_relative_path: String,
+    destination_sha256: String,
+    byte_size: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCommittedProjectEvidenceDto {
+    relative_path: String,
+    pre_write_sha256: String,
+    post_write_sha256: String,
+    byte_size: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameCommittedEvidenceDto {
+    schema: &'static str,
+    operation_id: String,
+    plan_id: String,
+    mutation_state: &'static str,
+    verification_state: &'static str,
+    rescan_completed: bool,
+    audio: RenameCommittedAudioEvidenceDto,
+    sidecars: Vec<RenameCommittedSidecarEvidenceDto>,
+    project_rewrites: Vec<RenameCommittedProjectEvidenceDto>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1283,6 +1337,8 @@ fn rename_plan_from_impact(plan: &RenameImpactPlan) -> RenamePlanDto {
         operation: "rename_sample",
         source_file_instance_id: plan.source_file_instance_id.as_str().to_owned(),
         source_relative_path: plan.source_relative_path.as_str().to_owned(),
+        source_byte_size: plan.source_byte_size,
+        source_content_hash: plan.source_content_hash.as_str().to_owned(),
         destination_relative_path: plan.destination_relative_path.as_str().to_owned(),
         state_document_impacts: plan
             .state_document_impacts
@@ -1340,6 +1396,8 @@ fn rename_state_document_impact_dto(
     RenameStateDocumentImpactDto {
         relative_path: impact.relative_path.as_str().to_owned(),
         role: state_document_role_name(impact.role),
+        byte_size: impact.byte_size,
+        content_hash: impact.content_hash.as_str().to_owned(),
         reference_updates: impact
             .reference_updates
             .iter()
@@ -1377,6 +1435,8 @@ fn rename_sidecar_impact_dto(impact: &RenameSidecarImpact) -> RenameSidecarImpac
             .destination_sidecar_relative_path
             .as_str()
             .to_owned(),
+        byte_size: impact.byte_size,
+        content_hash: impact.content_hash.as_str().to_owned(),
     }
 }
 
@@ -2871,6 +2931,301 @@ pub(crate) fn verify_rename_committed_sync(
     ))
 }
 
+fn committed_evidence_invalid(message: &'static str) -> ApiError {
+    ApiError::new("COMMITTED_EVIDENCE_INVALID", message, false)
+}
+
+fn parse_evidence_hash(hash: &str) -> Result<(), ApiError> {
+    ContentHash::parse(hash)
+        .map(|_| ())
+        .map_err(|_| committed_evidence_invalid("committed evidence contains a malformed SHA256"))
+}
+
+fn unique_staged_file<'a>(
+    journal: &'a RenameOperationJournal,
+    relative_path: &str,
+    role: RenameStagedFileRole,
+) -> Result<&'a RenameStagedFileRecord, ApiError> {
+    let mut matches = journal
+        .staged_files
+        .iter()
+        .filter(|record| record.relative_path == relative_path && record.role == role);
+    let record = matches.next().ok_or_else(|| {
+        committed_evidence_invalid("committed staged-file evidence is incomplete")
+    })?;
+    if matches.next().is_some() {
+        return Err(committed_evidence_invalid(
+            "committed staged-file evidence contains a duplicate path",
+        ));
+    }
+    Ok(record)
+}
+
+fn unique_staged_project<'a>(
+    journal: &'a RenameOperationJournal,
+    relative_path: &str,
+) -> Result<&'a RenameStagedFileRecord, ApiError> {
+    let mut matches = journal.staged_files.iter().filter(|record| {
+        record.relative_path == relative_path
+            && matches!(
+                record.role,
+                RenameStagedFileRole::ProjectWorking | RenameStagedFileRole::ProjectSavedCheckpoint
+            )
+    });
+    let record = matches
+        .next()
+        .ok_or_else(|| committed_evidence_invalid("Project rewrite evidence is incomplete"))?;
+    if matches.next().is_some() {
+        return Err(committed_evidence_invalid(
+            "Project rewrite evidence contains a duplicate path",
+        ));
+    }
+    Ok(record)
+}
+
+fn build_rename_committed_evidence(
+    operation_id: &OperationId,
+    plan: &RenameImpactPlan,
+    journal: &RenameOperationJournal,
+    outcome: &RenameVerificationOutcome,
+) -> Result<RenameCommittedEvidenceDto, ApiError> {
+    if journal.status != RenameJournalStatus::Committed
+        || journal.operation_id != operation_id.as_str()
+        || journal.plan_id != plan.id.as_str()
+        || !outcome.rescan_completed
+        || outcome.verification_state != "passed"
+        || outcome.missing_reference_count != 0
+        || outcome.invalid_reference_count != 0
+        || outcome.unresolved_reference_count != 0
+    {
+        return Err(ApiError::new(
+            outcome
+                .verification_code
+                .unwrap_or("COMMITTED_EVIDENCE_UNAVAILABLE"),
+            "verified committed evidence is unavailable",
+            true,
+        ));
+    }
+
+    let destination_audio = unique_staged_file(
+        journal,
+        plan.destination_relative_path.as_str(),
+        RenameStagedFileRole::DestinationAudio,
+    )?;
+    parse_evidence_hash(&destination_audio.backup_content_hash)?;
+    parse_evidence_hash(&destination_audio.staged_content_hash)?;
+    if destination_audio.backup_content_hash != plan.source_content_hash.as_str()
+        || destination_audio.staged_content_hash != plan.source_content_hash.as_str()
+        || destination_audio.byte_size != plan.source_byte_size
+    {
+        return Err(committed_evidence_invalid(
+            "committed audio evidence does not match the prepared plan",
+        ));
+    }
+    let audio_record_count = journal
+        .staged_files
+        .iter()
+        .filter(|record| record.role == RenameStagedFileRole::DestinationAudio)
+        .count();
+    if audio_record_count != 1 {
+        return Err(committed_evidence_invalid(
+            "committed audio evidence contains an unexpected record count",
+        ));
+    }
+
+    let mut sidecars = Vec::with_capacity(plan.sidecar_impacts.len());
+    let mut sidecar_paths = BTreeSet::new();
+    let mut sorted_sidecar_impacts: Vec<_> = plan.sidecar_impacts.iter().collect();
+    sorted_sidecar_impacts.sort_by(|left, right| {
+        left.destination_sidecar_relative_path
+            .as_str()
+            .cmp(right.destination_sidecar_relative_path.as_str())
+    });
+    for impact in sorted_sidecar_impacts {
+        let destination_path = impact.destination_sidecar_relative_path.as_str();
+        if !sidecar_paths.insert(destination_path) {
+            return Err(committed_evidence_invalid(
+                "prepared sidecar evidence contains a duplicate path",
+            ));
+        }
+        let staged = unique_staged_file(
+            journal,
+            destination_path,
+            RenameStagedFileRole::DestinationSidecar,
+        )?;
+        parse_evidence_hash(&staged.backup_content_hash)?;
+        parse_evidence_hash(&staged.staged_content_hash)?;
+        if staged.backup_content_hash != impact.content_hash.as_str()
+            || staged.staged_content_hash != impact.content_hash.as_str()
+            || staged.byte_size != impact.byte_size
+        {
+            return Err(committed_evidence_invalid(
+                "committed sidecar evidence does not match the prepared plan",
+            ));
+        }
+        sidecars.push(RenameCommittedSidecarEvidenceDto {
+            source_relative_path: impact.source_sidecar_relative_path.as_str().to_owned(),
+            source_sha256: impact.content_hash.as_str().to_owned(),
+            destination_relative_path: destination_path.to_owned(),
+            destination_sha256: staged.staged_content_hash.clone(),
+            byte_size: staged.byte_size,
+        });
+    }
+    let sidecar_record_count = journal
+        .staged_files
+        .iter()
+        .filter(|record| record.role == RenameStagedFileRole::DestinationSidecar)
+        .count();
+    if sidecar_record_count != sidecars.len() {
+        return Err(committed_evidence_invalid(
+            "committed sidecar evidence contains an unexpected record count",
+        ));
+    }
+
+    let mut expected_projects = BTreeMap::new();
+    for impact in &plan.state_document_impacts {
+        if impact.reference_updates.is_empty() {
+            continue;
+        }
+        if expected_projects
+            .insert(
+                impact.relative_path.as_str().to_owned(),
+                (impact.content_hash.as_str().to_owned(), impact.byte_size),
+            )
+            .is_some()
+        {
+            return Err(committed_evidence_invalid(
+                "prepared Project evidence contains a duplicate path",
+            ));
+        }
+    }
+    let mut project_rewrites = BTreeMap::new();
+    for rewrite in &journal.project_rewrites {
+        RootRelativePath::parse(&rewrite.relative_path)
+            .map_err(|_| committed_evidence_invalid("Project evidence path is invalid"))?;
+        parse_evidence_hash(&rewrite.backup_content_hash)?;
+        parse_evidence_hash(&rewrite.staged_content_hash)?;
+        let (expected_preimage, _) =
+            expected_projects
+                .get(&rewrite.relative_path)
+                .ok_or_else(|| {
+                    committed_evidence_invalid(
+                        "Project rewrite evidence contains an unexpected path",
+                    )
+                })?;
+        if &rewrite.backup_content_hash != expected_preimage {
+            return Err(committed_evidence_invalid(
+                "Project pre-write SHA256 does not match the prepared plan",
+            ));
+        }
+        let staged = unique_staged_project(journal, &rewrite.relative_path)?;
+        parse_evidence_hash(&staged.backup_content_hash)?;
+        parse_evidence_hash(&staged.staged_content_hash)?;
+        if staged.backup_content_hash != rewrite.backup_content_hash
+            || staged.staged_content_hash != rewrite.staged_content_hash
+        {
+            return Err(committed_evidence_invalid(
+                "Project rewrite and staged-file evidence do not match",
+            ));
+        }
+        if project_rewrites
+            .insert(
+                rewrite.relative_path.clone(),
+                RenameCommittedProjectEvidenceDto {
+                    relative_path: rewrite.relative_path.clone(),
+                    pre_write_sha256: rewrite.backup_content_hash.clone(),
+                    post_write_sha256: rewrite.staged_content_hash.clone(),
+                    byte_size: staged.byte_size,
+                },
+            )
+            .is_some()
+        {
+            return Err(committed_evidence_invalid(
+                "Project rewrite evidence contains a duplicate path",
+            ));
+        }
+    }
+    if project_rewrites.len() != expected_projects.len() {
+        return Err(committed_evidence_invalid(
+            "Project rewrite evidence is incomplete",
+        ));
+    }
+    let staged_project_count = journal
+        .staged_files
+        .iter()
+        .filter(|record| {
+            matches!(
+                record.role,
+                RenameStagedFileRole::ProjectWorking | RenameStagedFileRole::ProjectSavedCheckpoint
+            )
+        })
+        .count();
+    if staged_project_count != project_rewrites.len() {
+        return Err(committed_evidence_invalid(
+            "committed Project evidence contains an unexpected record count",
+        ));
+    }
+
+    Ok(RenameCommittedEvidenceDto {
+        schema: "rename-committed-evidence:v1",
+        operation_id: operation_id.as_str().to_owned(),
+        plan_id: plan.id.as_str().to_owned(),
+        mutation_state: "committed",
+        verification_state: "passed",
+        rescan_completed: true,
+        audio: RenameCommittedAudioEvidenceDto {
+            source_relative_path: plan.source_relative_path.as_str().to_owned(),
+            source_sha256: plan.source_content_hash.as_str().to_owned(),
+            destination_relative_path: plan.destination_relative_path.as_str().to_owned(),
+            destination_sha256: destination_audio.staged_content_hash.clone(),
+            byte_size: destination_audio.byte_size,
+        },
+        sidecars,
+        project_rewrites: project_rewrites.into_values().collect(),
+    })
+}
+
+pub(crate) fn get_rename_committed_evidence_sync(
+    registry: &RootRegistry,
+    catalog: &SharedCatalog,
+    rename_runtime: &SharedRenameWriteRuntime,
+    prepared_runtime: &SharedPreparedRenameRuntime,
+    root_id: &RootId,
+    operation_id: &str,
+) -> Result<RenameCommittedEvidenceDto, ApiError> {
+    let resolved = registry.resolve(root_id)?;
+    let operation_id = OperationId::parse(operation_id).map_err(|_| {
+        ApiError::new(
+            "INVALID_OPERATION_ID",
+            "operation ID is not a versioned identifier",
+            true,
+        )
+    })?;
+    let status = rename_runtime
+        .session_status_for_operation(
+            root_id,
+            operation_id.as_str(),
+            resolved.session.device_fingerprint.as_str(),
+        )
+        .map_err(rename_runtime_error)?;
+    if status.journal_status != Some(RenameJournalStatus::Committed) {
+        return Err(ApiError::new(
+            "INVALID_TRANSITION",
+            "rename operation is not in a committed state",
+            true,
+        ));
+    }
+    let (plan, journal) = prepared_runtime
+        .validate_committed_for_evidence(
+            &operation_id,
+            resolved.session.device_fingerprint.as_str(),
+        )
+        .map_err(prepared_rename_runtime_error)?;
+    let outcome =
+        run_rename_committed_rescan(registry, catalog, root_id, &plan, &journal.project_rewrites);
+    build_rename_committed_evidence(&operation_id, &plan, &journal, &outcome)
+}
+
 fn run_rename_rollback_rescan(
     registry: &RootRegistry,
     catalog: &SharedCatalog,
@@ -4214,6 +4569,34 @@ pub async fn v2_rename_verify_committed(
     let prepared_runtime = Arc::clone(prepared_runtime.inner());
     tauri::async_runtime::spawn_blocking(move || {
         verify_rename_committed_sync(
+            &registry,
+            &catalog,
+            &rename_runtime,
+            &prepared_runtime,
+            &root_id,
+            &operation_id,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_rename_get_committed_evidence(
+    root_id: String,
+    operation_id: String,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    rename_runtime: State<'_, SharedRenameWriteRuntime>,
+    prepared_runtime: State<'_, SharedPreparedRenameRuntime>,
+) -> Result<RenameCommittedEvidenceDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let rename_runtime = Arc::clone(rename_runtime.inner());
+    let prepared_runtime = Arc::clone(prepared_runtime.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        get_rename_committed_evidence_sync(
             &registry,
             &catalog,
             &rename_runtime,
@@ -6331,7 +6714,15 @@ mod tests {
             .any(|impact| impact.role == "saved_checkpoint"));
         let json = serde_json::to_string(&plan).unwrap();
         assert!(!json.contains(root.path().to_str().unwrap()));
-        assert!(!json.contains("sha256:"));
+        assert!(plan.source_content_hash.starts_with("sha256:"));
+        assert!(plan
+            .sidecar_impacts
+            .iter()
+            .all(|impact| impact.content_hash.starts_with("sha256:")));
+        assert!(plan
+            .state_document_impacts
+            .iter()
+            .all(|impact| impact.content_hash.starts_with("sha256:")));
 
         let fetched = rename_runtime.get_plan(&root_id, &plan.plan_id).unwrap();
         assert_eq!(fetched.id.as_str(), plan.plan_id);
@@ -7640,6 +8031,230 @@ mod tests {
         .unwrap()
     }
 
+    fn commit_fixture_rename(fixture: &RenameThroughBackupFixture) {
+        prepare_fixture_rename(fixture);
+        let continuation = continue_fixture_rename(
+            fixture,
+            &fixture.prepared_runtime,
+            &fixture.clone_runtime,
+            &fixture.rename_runtime,
+        );
+        let applied = apply_rename_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.clone_runtime,
+            &fixture.write,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+            &fixture.operation_id,
+            &continuation.continuation_authority_id,
+        )
+        .unwrap();
+        assert_eq!(applied.mutation_state, "committed");
+        assert_eq!(applied.verification_state, "passed");
+    }
+
+    #[test]
+    fn rename_committed_evidence_is_complete_deterministic_and_private() {
+        let fixture = setup_rename_through_backup();
+        commit_fixture_rename(&fixture);
+
+        let first = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+        )
+        .unwrap();
+        let second = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+        )
+        .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.schema, "rename-committed-evidence:v1");
+        assert_eq!(first.mutation_state, "committed");
+        assert_eq!(first.verification_state, "passed");
+        assert!(first.rescan_completed);
+        assert_eq!(first.operation_id, fixture.operation_id);
+        assert_eq!(first.plan_id, fixture.plan_id);
+        assert_eq!(first.audio.source_relative_path, "SET/AUDIO/pad.wav");
+        assert_eq!(
+            first.audio.destination_relative_path,
+            "SET/AUDIO/new-pad.wav"
+        );
+        assert_eq!(first.project_rewrites.len(), 2);
+        assert!(first
+            .project_rewrites
+            .windows(2)
+            .all(|pair| pair[0].relative_path < pair[1].relative_path));
+        for rewrite in &first.project_rewrites {
+            let live_hash = hash_live_source(&fixture._root.path().join(&rewrite.relative_path))
+                .unwrap()
+                .1;
+            assert_eq!(rewrite.post_write_sha256, live_hash.as_str());
+        }
+
+        let serialized = serde_json::to_string(&first).unwrap();
+        assert!(!serialized.contains(fixture._root.path().to_str().unwrap()));
+        assert!(!serialized.contains("rootId"));
+        assert!(!serialized.contains("fingerprint"));
+        assert!(!serialized.contains("uuid"));
+    }
+
+    #[test]
+    fn rename_committed_evidence_rejects_before_apply_and_live_tamper() {
+        let fixture = setup_rename_through_backup();
+        prepare_fixture_rename(&fixture);
+        let before_apply = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+        )
+        .unwrap_err();
+        assert_eq!(before_apply.code, "INVALID_TRANSITION");
+
+        let continuation = continue_fixture_rename(
+            &fixture,
+            &fixture.prepared_runtime,
+            &fixture.clone_runtime,
+            &fixture.rename_runtime,
+        );
+        apply_rename_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.clone_runtime,
+            &fixture.write,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+            &fixture.operation_id,
+            &continuation.continuation_authority_id,
+        )
+        .unwrap();
+        let operation_id = OperationId::parse(&fixture.operation_id).unwrap();
+        let (plan, journal) = fixture
+            .prepared_runtime
+            .validate_committed_for_evidence(
+                &operation_id,
+                &fixture
+                    .registry
+                    .resolve(&fixture.root_id)
+                    .unwrap()
+                    .session
+                    .device_fingerprint,
+            )
+            .unwrap();
+        fs::write(
+            fixture
+                ._root
+                .path()
+                .join(&journal.project_rewrites[0].relative_path),
+            b"tampered-project-after-commit",
+        )
+        .unwrap();
+
+        let tampered = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.operation_id,
+        )
+        .unwrap_err();
+        assert_eq!(tampered.code, "AFFECTED_PROJECT_HASH_MISMATCH");
+        assert_eq!(plan.id.as_str(), fixture.plan_id);
+    }
+
+    #[test]
+    fn rename_committed_evidence_rejects_malformed_duplicate_missing_and_mismatched_records() {
+        let fixture = setup_rename_through_backup();
+        commit_fixture_rename(&fixture);
+        let operation_id = OperationId::parse(&fixture.operation_id).unwrap();
+        let resolved = fixture.registry.resolve(&fixture.root_id).unwrap();
+        let (plan, journal) = fixture
+            .prepared_runtime
+            .validate_committed_for_evidence(&operation_id, &resolved.session.device_fingerprint)
+            .unwrap();
+        let wrong_root = fixture
+            .prepared_runtime
+            .validate_committed_for_evidence(
+                &operation_id,
+                &format!("rootfp:v1:{}", "0".repeat(64)),
+            )
+            .unwrap_err();
+        assert_eq!(wrong_root.code(), "ROOT_FINGERPRINT_MISMATCH");
+        let passed = RenameVerificationOutcome {
+            verification_state: "passed",
+            verification_code: None,
+            rescan_completed: true,
+            observed_file_count: 1,
+            missing_reference_count: 0,
+            invalid_reference_count: 0,
+            unresolved_reference_count: 0,
+        };
+
+        let mut malformed = journal.clone();
+        malformed.project_rewrites[0].staged_content_hash = "sha256:not-a-hash".to_owned();
+        assert_eq!(
+            build_rename_committed_evidence(&operation_id, &plan, &malformed, &passed)
+                .unwrap_err()
+                .code,
+            "COMMITTED_EVIDENCE_INVALID"
+        );
+
+        let mut duplicate = journal.clone();
+        duplicate
+            .project_rewrites
+            .push(duplicate.project_rewrites[0].clone());
+        assert_eq!(
+            build_rename_committed_evidence(&operation_id, &plan, &duplicate, &passed)
+                .unwrap_err()
+                .code,
+            "COMMITTED_EVIDENCE_INVALID"
+        );
+
+        let mut missing = journal.clone();
+        missing.project_rewrites.clear();
+        assert_eq!(
+            build_rename_committed_evidence(&operation_id, &plan, &missing, &passed)
+                .unwrap_err()
+                .code,
+            "COMMITTED_EVIDENCE_INVALID"
+        );
+
+        let mut mismatched = journal.clone();
+        mismatched.plan_id = format!("plan:v1:{}", "0".repeat(64));
+        assert_eq!(
+            build_rename_committed_evidence(&operation_id, &plan, &mismatched, &passed)
+                .unwrap_err()
+                .code,
+            "COMMITTED_EVIDENCE_UNAVAILABLE"
+        );
+
+        let mut recovery = journal;
+        recovery.status = RenameJournalStatus::RecoveryRequired;
+        assert_eq!(
+            build_rename_committed_evidence(&operation_id, &plan, &recovery, &passed)
+                .unwrap_err()
+                .code,
+            "COMMITTED_EVIDENCE_UNAVAILABLE"
+        );
+    }
+
     #[test]
     fn rename_apply_rejects_missing_continuation_authority() {
         let fixture = setup_rename_through_backup();
@@ -7693,6 +8308,17 @@ mod tests {
         assert_eq!(applied.mutation_state, "committed");
         assert_eq!(applied.verification_state, "passed");
         assert!(applied.rescan_completed);
+        let evidence = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &restarted_rename,
+            &restarted_prepared,
+            &fixture.root_id,
+            &fixture.operation_id,
+        )
+        .unwrap();
+        assert_eq!(evidence.operation_id, fixture.operation_id);
+        assert!(!evidence.project_rewrites.is_empty());
     }
 
     #[test]
@@ -7756,6 +8382,17 @@ mod tests {
         .unwrap();
         assert_eq!(applied.mutation_state, "committed");
         assert_eq!(applied.verification_state, "passed");
+        let evidence = get_rename_committed_evidence_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &restarted_rename,
+            &restarted_prepared,
+            &new_root_id,
+            &fixture.operation_id,
+        )
+        .unwrap();
+        assert_eq!(evidence.operation_id, fixture.operation_id);
+        assert_eq!(evidence.verification_state, "passed");
     }
 
     #[test]

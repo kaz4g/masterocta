@@ -17,6 +17,7 @@ import { describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  COMMITTED_EVIDENCE_SCHEMA,
   COMPARE_SCHEMA,
   EXPECTED_SCHEMA,
   EXCLUSION_POLICY,
@@ -26,6 +27,7 @@ import {
   captureToFile,
   compareManifests,
   decodeUtf8EntryName,
+  expectedFromCommittedEvidence,
   expectedFromPreparedPlan,
   isIgnoredHostMetadata,
   loadManifestFile,
@@ -769,6 +771,357 @@ describe("expected-from-prepared", () => {
       assert.deepEqual(expected.incomplete_project_post_hashes, [
         "SET/PROJECT/project.work",
       ]);
+    } finally {
+      cleanup(outputDir);
+    }
+  });
+});
+
+function committedEvidenceInputs(overrides = {}) {
+  const hash = (character) => `sha256:${character.repeat(64)}`;
+  const plan = {
+    schema: "rename-plan:v1",
+    planId: "plan:v1:test-plan",
+    operationId: "rename:v1:test-operation",
+    sourceRelativePath: "SET/AUDIO/source.wav",
+    destinationRelativePath: "SET/AUDIO/dest.wav",
+    sourceByteSize: 12,
+    sourceContentHash: hash("a"),
+    sidecarImpacts: [
+      {
+        sourceSidecarRelativePath: "SET/AUDIO/source.ot",
+        destinationSidecarRelativePath: "SET/AUDIO/dest.ot",
+        byteSize: 10,
+        contentHash: hash("b"),
+      },
+    ],
+    stateDocumentImpacts: [
+      {
+        relativePath: "SET/PROJECT/project.work",
+        byteSize: 10,
+        contentHash: hash("c"),
+        referenceUpdates: [{ slotNumber: 1 }],
+      },
+    ],
+  };
+  const evidence = {
+    schema: COMMITTED_EVIDENCE_SCHEMA,
+    operationId: plan.operationId,
+    planId: plan.planId,
+    mutationState: "committed",
+    verificationState: "passed",
+    rescanCompleted: true,
+    audio: {
+      sourceRelativePath: plan.sourceRelativePath,
+      sourceSha256: hash("a"),
+      destinationRelativePath: plan.destinationRelativePath,
+      destinationSha256: hash("a"),
+      byteSize: 12,
+    },
+    sidecars: [
+      {
+        sourceRelativePath: "SET/AUDIO/source.ot",
+        sourceSha256: hash("b"),
+        destinationRelativePath: "SET/AUDIO/dest.ot",
+        destinationSha256: hash("b"),
+        byteSize: 10,
+      },
+    ],
+    projectRewrites: [
+      {
+        relativePath: "SET/PROJECT/project.work",
+        preWriteSha256: hash("c"),
+        postWriteSha256: hash("d"),
+        byteSize: 10,
+      },
+    ],
+  };
+  return {
+    plan: { ...plan, ...(overrides.plan ?? {}) },
+    evidence: { ...evidence, ...(overrides.evidence ?? {}) },
+  };
+}
+
+function syncPlanPreimages(plan, evidence) {
+  plan.sourceContentHash = evidence.audio.sourceSha256;
+  plan.sourceByteSize = evidence.audio.byteSize;
+  for (const [index, sidecar] of evidence.sidecars.entries()) {
+    plan.sidecarImpacts[index].contentHash = sidecar.sourceSha256;
+    plan.sidecarImpacts[index].byteSize = sidecar.byteSize;
+  }
+  for (const rewrite of evidence.projectRewrites) {
+    const document = plan.stateDocumentImpacts.find(
+      (impact) => impact.relativePath === rewrite.relativePath,
+    );
+    if (document) {
+      document.contentHash = rewrite.preWriteSha256;
+      document.byteSize = rewrite.byteSize;
+    }
+  }
+}
+
+describe("expected-from-evidence", () => {
+  it("preserves audio, sidecar, and Project pre/post hashes deterministically", () => {
+    const { plan, evidence } = committedEvidenceInputs();
+    const first = expectedFromCommittedEvidence(evidence, plan);
+    const second = expectedFromCommittedEvidence(
+      {
+        ...evidence,
+        sidecars: [...evidence.sidecars].reverse(),
+        projectRewrites: [...evidence.projectRewrites].reverse(),
+      },
+      plan,
+    );
+    assert.deepEqual(first, second);
+    assert.equal(first.schema, EXPECTED_SCHEMA);
+    assert.equal(first.operation_id, evidence.operationId);
+    assert.equal(first.plan_id, evidence.planId);
+    assert.deepEqual(first.incomplete_project_post_hashes, []);
+    const project = first.changes.find(
+      (change) => change.relative_path === "SET/PROJECT/project.work",
+    );
+    assert.equal(project.op, "content_changed");
+    assert.equal(project.pre_sha256, evidence.projectRewrites[0].preWriteSha256);
+    assert.equal(project.sha256, evidence.projectRewrites[0].postWriteSha256);
+  });
+
+  it("passes only the evidence-bound rename and Project rewrite", () => {
+    const root = makeTree();
+    try {
+      const pre = captureRoot(root);
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.wav"), "wav-bytes-aa");
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.ot"), "sidecar-aa");
+      rmSync(path.join(root, "SET", "AUDIO", "source.wav"));
+      rmSync(path.join(root, "SET", "AUDIO", "source.ot"));
+      writeFileSync(path.join(root, "SET", "PROJECT", "project.work"), "project-v2");
+      const post = captureRoot(root);
+      const preEntry = (relativePath) =>
+        pre.entries.find((entry) => entry.relative_path === relativePath);
+      const postEntry = (relativePath) =>
+        post.entries.find((entry) => entry.relative_path === relativePath);
+      const { plan, evidence } = committedEvidenceInputs();
+      evidence.audio.sourceSha256 = preEntry("SET/AUDIO/source.wav").sha256;
+      evidence.audio.destinationSha256 = postEntry("SET/AUDIO/dest.wav").sha256;
+      evidence.audio.byteSize = postEntry("SET/AUDIO/dest.wav").byte_size;
+      evidence.sidecars[0].sourceSha256 = preEntry("SET/AUDIO/source.ot").sha256;
+      evidence.sidecars[0].destinationSha256 =
+        postEntry("SET/AUDIO/dest.ot").sha256;
+      evidence.sidecars[0].byteSize = postEntry("SET/AUDIO/dest.ot").byte_size;
+      evidence.projectRewrites[0].preWriteSha256 =
+        preEntry("SET/PROJECT/project.work").sha256;
+      evidence.projectRewrites[0].postWriteSha256 =
+        postEntry("SET/PROJECT/project.work").sha256;
+      evidence.projectRewrites[0].byteSize =
+        postEntry("SET/PROJECT/project.work").byte_size;
+      syncPlanPreimages(plan, evidence);
+
+      const expected = expectedFromCommittedEvidence(evidence, plan);
+      const report = compareManifests(pre, post, expected);
+      assert.equal(report.verdict, "PASS");
+      assert.equal(report.unrelated_entries_unchanged, true);
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  it("stops on an unrelated Project rewrite or wrong Project preimage", () => {
+    const root = makeTree();
+    try {
+      writeFileSync(
+        path.join(root, "SET", "PROJECT", "unrelated.work"),
+        "unrelated-v1",
+      );
+      const pre = captureRoot(root);
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.wav"), "wav-bytes-aa");
+      writeFileSync(path.join(root, "SET", "AUDIO", "dest.ot"), "sidecar-aa");
+      rmSync(path.join(root, "SET", "AUDIO", "source.wav"));
+      rmSync(path.join(root, "SET", "AUDIO", "source.ot"));
+      writeFileSync(path.join(root, "SET", "PROJECT", "project.work"), "project-v2");
+      writeFileSync(
+        path.join(root, "SET", "PROJECT", "unrelated.work"),
+        "unrelated-v2",
+      );
+      const post = captureRoot(root);
+      const entry = (manifest, relativePath) =>
+        manifest.entries.find((item) => item.relative_path === relativePath);
+      const { plan, evidence } = committedEvidenceInputs();
+      evidence.audio.sourceSha256 = entry(pre, "SET/AUDIO/source.wav").sha256;
+      evidence.audio.destinationSha256 = entry(post, "SET/AUDIO/dest.wav").sha256;
+      evidence.audio.byteSize = entry(post, "SET/AUDIO/dest.wav").byte_size;
+      evidence.sidecars[0].sourceSha256 = entry(
+        pre,
+        "SET/AUDIO/source.ot",
+      ).sha256;
+      evidence.sidecars[0].destinationSha256 = entry(
+        post,
+        "SET/AUDIO/dest.ot",
+      ).sha256;
+      evidence.sidecars[0].byteSize = entry(
+        post,
+        "SET/AUDIO/dest.ot",
+      ).byte_size;
+      evidence.projectRewrites[0].preWriteSha256 = entry(
+        pre,
+        "SET/PROJECT/project.work",
+      ).sha256;
+      evidence.projectRewrites[0].postWriteSha256 = entry(
+        post,
+        "SET/PROJECT/project.work",
+      ).sha256;
+      evidence.projectRewrites[0].byteSize = entry(
+        post,
+        "SET/PROJECT/project.work",
+      ).byte_size;
+      syncPlanPreimages(plan, evidence);
+      const expected = expectedFromCommittedEvidence(evidence, plan);
+      assert.equal(compareManifests(pre, post, expected).verdict, "STOP");
+
+      const wrongPreimage = structuredClone(expected);
+      wrongPreimage.changes.find(
+        (change) => change.op === "content_changed",
+      ).pre_sha256 = `sha256:${"0".repeat(64)}`;
+      assert.equal(compareManifests(pre, post, wrongPreimage).verdict, "STOP");
+    } finally {
+      cleanup(root);
+    }
+  });
+
+  it("fail-closes identity, schema, hash, duplicate, path, and completeness errors", () => {
+    const { plan, evidence } = committedEvidenceInputs();
+    const cases = [
+      {
+        mutate(value) {
+          value.evidence.schema = "rename-committed-evidence:v2";
+        },
+        code: "SCHEMA_MISMATCH",
+      },
+      {
+        mutate(value) {
+          value.evidence.operationId = "rename:v1:other";
+        },
+        code: "IDENTITY_MISMATCH",
+      },
+      {
+        mutate(value) {
+          delete value.evidence.projectRewrites[0].postWriteSha256;
+        },
+        code: "INCOMPLETE_EVIDENCE",
+      },
+      {
+        mutate(value) {
+          value.evidence.audio.sourceSha256 = "sha256:not-valid";
+        },
+        code: "INCOMPLETE_EVIDENCE",
+      },
+      {
+        mutate(value) {
+          value.evidence.projectRewrites.push(
+            structuredClone(value.evidence.projectRewrites[0]),
+          );
+        },
+        code: "INCOMPLETE_EVIDENCE",
+      },
+      {
+        mutate(value) {
+          value.plan.stateDocumentImpacts[0].relativePath = "../escape.work";
+          value.evidence.projectRewrites[0].relativePath = "../escape.work";
+        },
+        code: "PATH_ESCAPE",
+      },
+      {
+        mutate(value) {
+          value.evidence.verificationState = "failed";
+        },
+        code: "INCOMPLETE_EVIDENCE",
+      },
+      {
+        mutate(value) {
+          delete value.plan.sourceContentHash;
+        },
+        code: "INCOMPLETE_EVIDENCE",
+      },
+      {
+        mutate(value) {
+          value.plan.sourceContentHash = `sha256:${"f".repeat(64)}`;
+        },
+        code: "IDENTITY_MISMATCH",
+      },
+      {
+        mutate(value) {
+          value.plan.sidecarImpacts[0].contentHash = `sha256:${"f".repeat(64)}`;
+        },
+        code: "IDENTITY_MISMATCH",
+      },
+      {
+        mutate(value) {
+          value.plan.stateDocumentImpacts[0].contentHash = `sha256:${"f".repeat(64)}`;
+        },
+        code: "IDENTITY_MISMATCH",
+      },
+    ];
+    for (const testCase of cases) {
+      const value = {
+        plan: structuredClone(plan),
+        evidence: structuredClone(evidence),
+      };
+      testCase.mutate(value);
+      assert.throws(
+        () => expectedFromCommittedEvidence(value.evidence, value.plan),
+        (error) =>
+          error instanceof ManifestStop && error.code === testCase.code,
+      );
+    }
+  });
+
+  it("accepts masterocta-prepared-rename-plan:v1 with preimage binding", () => {
+    const { plan, evidence } = committedEvidenceInputs();
+    const preparedEnvelope = {
+      schema: "masterocta-prepared-rename-plan:v1",
+      planId: plan.planId,
+      operationId: plan.operationId,
+      plan: {
+        planId: plan.planId,
+        operationId: plan.operationId,
+        sourceRelativePath: plan.sourceRelativePath,
+        destinationRelativePath: plan.destinationRelativePath,
+        sourceByteSize: plan.sourceByteSize,
+        sourceContentHash: plan.sourceContentHash,
+        sidecarImpacts: plan.sidecarImpacts,
+        stateDocumentImpacts: plan.stateDocumentImpacts,
+      },
+    };
+    const expected = expectedFromCommittedEvidence(evidence, preparedEnvelope);
+    assert.equal(expected.changes.length, 5);
+  });
+
+  it("writes deterministic expected JSON through the CLI", () => {
+    const outputDir = mkdtempSync(path.join(tmpdir(), "gate-c-evidence-"));
+    try {
+      const { plan, evidence } = committedEvidenceInputs();
+      const planPath = path.join(outputDir, "plan.json");
+      const evidencePath = path.join(outputDir, "evidence.json");
+      const firstPath = path.join(outputDir, "first.json");
+      const secondPath = path.join(outputDir, "second.json");
+      writeFileSync(planPath, JSON.stringify(plan));
+      writeFileSync(evidencePath, JSON.stringify(evidence));
+      for (const output of [firstPath, secondPath]) {
+        const result = spawnSync(
+          process.execPath,
+          [
+            scriptPath,
+            "expected-from-evidence",
+            "--plan",
+            planPath,
+            "--evidence",
+            evidencePath,
+            "--output",
+            output,
+          ],
+          { encoding: "utf8" },
+        );
+        assert.equal(result.status, 0, result.stderr + result.stdout);
+      }
+      assert.equal(readFileSync(firstPath, "utf8"), readFileSync(secondPath, "utf8"));
     } finally {
       cleanup(outputDir);
     }

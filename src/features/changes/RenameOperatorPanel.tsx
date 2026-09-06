@@ -162,6 +162,7 @@ export function RenameOperatorPanel({
   const [recoveryApproved, setRecoveryApproved] = useState<Record<string, boolean>>({});
   const [continuationGrant, setContinuationGrant] = useState<ContinuationGrant | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, TransactionOutcome>>({});
+  const [evidenceNotices, setEvidenceNotices] = useState<Record<string, string>>({});
   const expiryTimerRef = useRef<number | null>(null);
 
   const operations = useMemo(() => operatorOperations(renameRecovery), [renameRecovery]);
@@ -185,6 +186,7 @@ export function RenameOperatorPanel({
     setApplyApproved({});
     setRecoveryApproved({});
     setOutcomes({});
+    setEvidenceNotices({});
     setError(null);
   }, [session.rootId]);
 
@@ -432,6 +434,32 @@ export function RenameOperatorPanel({
     }
   }
 
+  async function copyCommittedEvidence(operationId: string) {
+    setPanelBusy(true);
+    setError(null);
+    setEvidenceNotices((current) => {
+      const next = { ...current };
+      delete next[operationId];
+      return next;
+    });
+    try {
+      const evidence = await api.getCommittedEvidence(session.rootId, operationId);
+      if (navigator.clipboard?.writeText === undefined) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+      await navigator.clipboard.writeText(`${JSON.stringify(evidence, null, 2)}\n`);
+      setEvidenceNotices((current) => ({
+        ...current,
+        [operationId]:
+          "Committed evidence JSON copied. Save it as private evidence outside the clone root and repository.",
+      }));
+    } catch (reason) {
+      setError(`Committed evidence was not copied: ${messageFrom(reason)}`);
+    } finally {
+      setPanelBusy(false);
+    }
+  }
+
   async function recoverOperation(operation: RenameStatus) {
     if (interactionBusy || !recoveryApproved[operation.operationId]) return;
     setPanelBusy(true);
@@ -576,6 +604,12 @@ export function RenameOperatorPanel({
         );
         const recoveryOutcome = outcome?.recovery;
         const rollbackVerification = outcome?.rollbackVerification;
+        const evidenceReady = committedVerification?.mutationState === "committed"
+          && committedVerification.verificationState === "passed"
+          && committedVerification.rescanCompleted
+          && committedVerification.missingReferenceCount === 0
+          && committedVerification.invalidReferenceCount === 0
+          && committedVerification.unresolvedReferenceCount === 0;
         const canContinue = operation.state === "prepared"
           && continuation?.state === "ready_to_continue"
           && continuation.preparedSnapshotAvailable
@@ -674,19 +708,24 @@ export function RenameOperatorPanel({
               </>
             )}
 
-            {(applyOutcome?.mutationState === "committed"
+            {(operation.state === "committed"
+              || applyOutcome?.mutationState === "committed"
               || committedVerification?.mutationState === "committed") && (
               <div className="mo-rename-operator__result" role="status" aria-live="polite">
                 <StatusBadge tone={
-                  (committedVerification?.verificationState ?? applyOutcome?.verificationState) === "passed"
+                  evidenceReady
                     ? "safe"
-                    : "danger"
+                    : committedVerification === undefined
+                      ? "warning"
+                      : "danger"
                 }>
                   COMMITTED
                   {" / "}
-                  {(committedVerification?.verificationState ?? applyOutcome?.verificationState) === "passed"
+                  {evidenceReady
                     ? "VERIFIED"
-                    : "VERIFICATION FAILED"}
+                    : committedVerification === undefined
+                      ? "VERIFICATION REQUIRED"
+                      : "VERIFICATION FAILED"}
                 </StatusBadge>
                 <dl>
                   <div><dt>Missing</dt><dd>{committedVerification?.missingReferenceCount ?? applyOutcome?.missingReferenceCount ?? 0}</dd></div>
@@ -694,7 +733,7 @@ export function RenameOperatorPanel({
                   <div><dt>Unresolved</dt><dd>{committedVerification?.unresolvedReferenceCount ?? applyOutcome?.unresolvedReferenceCount ?? 0}</dd></div>
                   <div><dt>Rescan</dt><dd>{(committedVerification?.rescanCompleted ?? applyOutcome?.rescanCompleted) ? "completed" : "pending"}</dd></div>
                 </dl>
-                {(committedVerification?.verificationState ?? applyOutcome?.verificationState) === "failed" && (
+                {!evidenceReady && (
                   <Button
                     variant="secondary"
                     disabled={interactionBusy}
@@ -702,6 +741,24 @@ export function RenameOperatorPanel({
                   >
                     Re-run verification
                   </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  disabled={interactionBusy || !evidenceReady}
+                  onClick={() => copyCommittedEvidence(operation.operationId)}
+                >
+                  Copy committed evidence JSON
+                </Button>
+                {!evidenceReady && (
+                  <p className="mo-rename-operator__blocking">
+                    Evidence export requires a fresh passed verification, completed rescan, and
+                    zero Missing / Invalid / Unresolved references.
+                  </p>
+                )}
+                {evidenceNotices[operation.operationId] !== undefined && (
+                  <p className="mo-rename-operator__status">
+                    {evidenceNotices[operation.operationId]}
+                  </p>
                 )}
               </div>
             )}

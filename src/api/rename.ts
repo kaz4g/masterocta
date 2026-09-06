@@ -16,6 +16,8 @@ export interface RenameReferenceUpdate {
 export interface RenameStateDocumentImpact {
   relativePath: string;
   role: "working" | "saved_checkpoint";
+  byteSize: number;
+  contentHash: string;
   referenceUpdates: RenameReferenceUpdate[];
 }
 
@@ -32,6 +34,8 @@ export interface RenameUsageEdgeImpact {
 export interface RenameSidecarImpact {
   sourceSidecarRelativePath: string;
   destinationSidecarRelativePath: string;
+  byteSize: number;
+  contentHash: string;
 }
 
 export interface RenamePlan {
@@ -41,6 +45,8 @@ export interface RenamePlan {
   operation: "rename_sample";
   sourceFileInstanceId: string;
   sourceRelativePath: string;
+  sourceByteSize: number;
+  sourceContentHash: string;
   destinationRelativePath: string;
   stateDocumentImpacts: RenameStateDocumentImpact[];
   usageEdgeImpacts: RenameUsageEdgeImpact[];
@@ -186,6 +192,35 @@ export interface RenameCommittedVerification {
   unresolvedReferenceCount: number;
 }
 
+export interface RenameCommittedEvidence {
+  schema: "rename-committed-evidence:v1";
+  operationId: string;
+  planId: string;
+  mutationState: "committed";
+  verificationState: "passed";
+  rescanCompleted: true;
+  audio: {
+    sourceRelativePath: string;
+    sourceSha256: string;
+    destinationRelativePath: string;
+    destinationSha256: string;
+    byteSize: number;
+  };
+  sidecars: Array<{
+    sourceRelativePath: string;
+    sourceSha256: string;
+    destinationRelativePath: string;
+    destinationSha256: string;
+    byteSize: number;
+  }>;
+  projectRewrites: Array<{
+    relativePath: string;
+    preWriteSha256: string;
+    postWriteSha256: string;
+    byteSize: number;
+  }>;
+}
+
 export interface RenameRecoveryResult {
   schema: "rename-recovery-result:v1";
   operationId: string;
@@ -255,6 +290,10 @@ export interface RenameApi {
     rootId: string,
     operationId: string,
   ): Promise<RenameCommittedVerification>;
+  getCommittedEvidence(
+    rootId: string,
+    operationId: string,
+  ): Promise<RenameCommittedEvidence>;
   recover(
     rootId: string,
     operationId: string,
@@ -330,6 +369,11 @@ export function createRenameApi(client: IpcClient = ipcClient): RenameApi {
         rootId,
         operationId,
       }),
+    getCommittedEvidence: (rootId, operationId) =>
+      client.request<RenameCommittedEvidence>(
+        "v2_rename_get_committed_evidence",
+        { rootId, operationId },
+      ),
     recover: (rootId, operationId, approvedOperationId) =>
       client.request<RenameRecoveryResult>("v2_rename_recover", {
         rootId,

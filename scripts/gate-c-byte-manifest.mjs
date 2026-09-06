@@ -29,6 +29,9 @@ export const MANIFEST_SCHEMA = "masterocta-gate-c-byte-manifest:v1";
 export const EXCLUSION_POLICY = "host-metadata-allowlist:v1";
 export const EXPECTED_SCHEMA = "masterocta-gate-c-expected-changes:v1";
 export const COMPARE_SCHEMA = "masterocta-gate-c-byte-manifest-compare:v1";
+export const COMMITTED_EVIDENCE_SCHEMA = "rename-committed-evidence:v1";
+export const RENAME_PLAN_SCHEMA = "rename-plan:v1";
+export const PREPARED_RENAME_PLAN_SCHEMA = "masterocta-prepared-rename-plan:v1";
 export const EXCLUSION_POLICY_NAMES = [
   ".Spotlight-V100",
   ".Trashes",
@@ -721,6 +724,8 @@ function expectedMatchesDiff(expected, diff) {
       diff.pre !== null &&
       diff.post !== null &&
       diff.post.entry_type === (expected.entry_type ?? "file") &&
+      (expected.pre_sha256 === undefined ||
+        expected.pre_sha256 === diff.pre.sha256) &&
       expected.sha256 === diff.post.sha256 &&
       (expected.byte_size === undefined ||
         expected.byte_size === diff.post.byte_size)
@@ -944,6 +949,404 @@ export function expectedFromPreparedPlan(plan) {
   };
 }
 
+function requireHash(value, label) {
+  if (!isContentHash(value)) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      `${label} is missing a valid SHA256`,
+    );
+  }
+  return value;
+}
+
+function requireByteSize(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      `${label} is missing a valid byte size`,
+    );
+  }
+  return value;
+}
+
+function normalizedPlanField(payload, snakeName, camelName) {
+  return payload[snakeName] ?? payload[camelName];
+}
+
+function normalizePlanEnvelope(planInput) {
+  const envelope = requireObject(
+    planInput,
+    "MALFORMED_EVIDENCE",
+    "rename plan is not an object",
+  );
+  if (envelope.schema === RENAME_PLAN_SCHEMA) {
+    return {
+      schema: RENAME_PLAN_SCHEMA,
+      planId: normalizedPlanField(envelope, "plan_id", "planId"),
+      operationId: normalizedPlanField(envelope, "operation_id", "operationId"),
+      payload: envelope,
+    };
+  }
+  if (envelope.schema === PREPARED_RENAME_PLAN_SCHEMA) {
+    const payload = requireObject(
+      envelope.plan,
+      "MALFORMED_EVIDENCE",
+      "prepared rename plan payload is not an object",
+    );
+    const planId =
+      normalizedPlanField(envelope, "plan_id", "planId") ??
+      normalizedPlanField(payload, "plan_id", "planId");
+    const operationId =
+      normalizedPlanField(envelope, "operation_id", "operationId") ??
+      normalizedPlanField(payload, "operation_id", "operationId");
+    return {
+      schema: PREPARED_RENAME_PLAN_SCHEMA,
+      planId,
+      operationId,
+      payload,
+    };
+  }
+  throw new ManifestStop(
+    "SCHEMA_MISMATCH",
+    `rename plan schema is ${JSON.stringify(envelope.schema)}`,
+  );
+}
+
+function requirePlanContentHash(value, label) {
+  if (!isContentHash(value)) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      `${label} is missing a valid SHA256 preimage`,
+    );
+  }
+  return value;
+}
+
+function requireMatchingPreimage(observed, expected, label) {
+  if (observed !== expected) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      `${label} does not match the rename plan preimage`,
+    );
+  }
+}
+
+function requireMatchingByteSize(observed, expected, label) {
+  if (!Number.isSafeInteger(expected) || expected < 0) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      `${label} is missing a valid byte size in the rename plan`,
+    );
+  }
+  if (observed !== expected) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      `${label} byte size does not match the rename plan preimage`,
+    );
+  }
+}
+
+export function expectedFromCommittedEvidence(evidenceInput, planInput) {
+  const evidence = requireObject(
+    evidenceInput,
+    "MALFORMED_EVIDENCE",
+    "committed evidence is not an object",
+  );
+  if (evidence.schema !== COMMITTED_EVIDENCE_SCHEMA) {
+    throw new ManifestStop(
+      "SCHEMA_MISMATCH",
+      `committed evidence schema is ${JSON.stringify(evidence.schema)}`,
+    );
+  }
+  if (
+    evidence.mutationState !== "committed" ||
+    evidence.verificationState !== "passed" ||
+    evidence.rescanCompleted !== true
+  ) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      "evidence is not from a verified committed transaction",
+    );
+  }
+
+  const { planId, operationId, payload: plan } = normalizePlanEnvelope(planInput);
+  if (
+    typeof evidence.planId !== "string" ||
+    typeof evidence.operationId !== "string" ||
+    evidence.planId === "" ||
+    evidence.operationId === "" ||
+    evidence.planId !== planId ||
+    evidence.operationId !== operationId
+  ) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      "committed evidence does not match the rename plan identity",
+    );
+  }
+
+  const audio = requireObject(
+    evidence.audio,
+    "INCOMPLETE_EVIDENCE",
+    "committed evidence is missing audio identity",
+  );
+  const sourcePath = normalizedPlanField(
+    plan,
+    "source_relative_path",
+    "sourceRelativePath",
+  );
+  const destinationPath = normalizedPlanField(
+    plan,
+    "destination_relative_path",
+    "destinationRelativePath",
+  );
+  if (
+    audio.sourceRelativePath !== sourcePath ||
+    audio.destinationRelativePath !== destinationPath
+  ) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      "committed audio paths do not match the rename plan",
+    );
+  }
+  const sourceHash = requireHash(audio.sourceSha256, "audio source");
+  const destinationHash = requireHash(
+    audio.destinationSha256,
+    "audio destination",
+  );
+  if (sourceHash !== destinationHash) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      "rename audio source and destination SHA256 differ",
+    );
+  }
+  const sourceSize = requireByteSize(audio.byteSize, "audio");
+  const planSourceHash = requirePlanContentHash(
+    normalizedPlanField(plan, "source_content_hash", "sourceContentHash"),
+    "audio",
+  );
+  requireMatchingPreimage(sourceHash, planSourceHash, "committed audio SHA256");
+  requireMatchingByteSize(
+    sourceSize,
+    normalizedPlanField(plan, "source_byte_size", "sourceByteSize"),
+    "audio",
+  );
+
+  const changes = [];
+  const seenPaths = new Set();
+  appendExpectedChange(changes, seenPaths, {
+    op: "removed",
+    relative_path: sourcePath,
+    entry_type: "file",
+    sha256: sourceHash,
+  });
+  appendExpectedChange(changes, seenPaths, {
+    op: "added",
+    relative_path: destinationPath,
+    entry_type: "file",
+    byte_size: sourceSize,
+    sha256: destinationHash,
+  });
+
+  const evidenceSidecars = evidence.sidecars;
+  if (!Array.isArray(evidenceSidecars)) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      "committed evidence sidecars are missing",
+    );
+  }
+  const planSidecars =
+    normalizedPlanField(plan, "sidecar_impacts", "sidecarImpacts") ?? [];
+  if (!Array.isArray(planSidecars) || evidenceSidecars.length !== planSidecars.length) {
+    throw new ManifestStop(
+      "IDENTITY_MISMATCH",
+      "committed sidecar evidence does not match the rename plan",
+    );
+  }
+  const expectedSidecarPaths = new Map();
+  for (const impact of planSidecars) {
+    const source = normalizedPlanField(
+      impact,
+      "source_sidecar_relative_path",
+      "sourceSidecarRelativePath",
+    );
+    const destination = normalizedPlanField(
+      impact,
+      "destination_sidecar_relative_path",
+      "destinationSidecarRelativePath",
+    );
+    assertContainedRelativePath(source, "plan sidecar source");
+    assertContainedRelativePath(destination, "plan sidecar destination");
+    const key = `${source}\u0000${destination}`;
+    if (expectedSidecarPaths.has(key)) {
+      throw new ManifestStop(
+        "DUPLICATE_PATH",
+        "rename plan duplicates a sidecar path pair",
+      );
+    }
+    expectedSidecarPaths.set(key, {
+      contentHash: requirePlanContentHash(
+        normalizedPlanField(impact, "content_hash", "contentHash"),
+        `sidecar ${JSON.stringify(source)}`,
+      ),
+      byteSize: normalizedPlanField(impact, "byte_size", "byteSize"),
+    });
+  }
+  const observedSidecarPaths = new Set();
+  for (const sidecarValue of evidenceSidecars) {
+    const sidecar = requireObject(
+      sidecarValue,
+      "MALFORMED_EVIDENCE",
+      "committed sidecar evidence contains a malformed entry",
+    );
+    const key = `${sidecar.sourceRelativePath}\u0000${sidecar.destinationRelativePath}`;
+    const preimagePlan = expectedSidecarPaths.get(key);
+    if (!preimagePlan || observedSidecarPaths.has(key)) {
+      throw new ManifestStop(
+        "IDENTITY_MISMATCH",
+        "committed sidecar paths are duplicate or absent from the rename plan",
+      );
+    }
+    observedSidecarPaths.add(key);
+    const preimage = requireHash(sidecar.sourceSha256, "sidecar source");
+    const postimage = requireHash(sidecar.destinationSha256, "sidecar destination");
+    if (preimage !== postimage) {
+      throw new ManifestStop(
+        "IDENTITY_MISMATCH",
+        "rename sidecar source and destination SHA256 differ",
+      );
+    }
+    const byteSize = requireByteSize(sidecar.byteSize, "sidecar");
+    requireMatchingPreimage(
+      preimage,
+      preimagePlan.contentHash,
+      `committed sidecar ${JSON.stringify(sidecar.sourceRelativePath)} SHA256`,
+    );
+    requireMatchingByteSize(
+      byteSize,
+      preimagePlan.byteSize,
+      `committed sidecar ${JSON.stringify(sidecar.sourceRelativePath)}`,
+    );
+    appendExpectedChange(changes, seenPaths, {
+      op: "removed",
+      relative_path: sidecar.sourceRelativePath,
+      entry_type: "file",
+      sha256: preimage,
+    });
+    appendExpectedChange(changes, seenPaths, {
+      op: "added",
+      relative_path: sidecar.destinationRelativePath,
+      entry_type: "file",
+      byte_size: byteSize,
+      sha256: postimage,
+    });
+  }
+
+  const documents =
+    normalizedPlanField(plan, "state_document_impacts", "stateDocumentImpacts") ?? [];
+  if (!Array.isArray(documents)) {
+    throw new ManifestStop(
+      "MALFORMED_EVIDENCE",
+      "rename plan state-document impacts are malformed",
+    );
+  }
+  const expectedProjectPaths = new Map();
+  for (const document of documents) {
+    const updates =
+      normalizedPlanField(document, "reference_updates", "referenceUpdates") ?? [];
+    if (!Array.isArray(updates)) {
+      throw new ManifestStop(
+        "MALFORMED_EVIDENCE",
+        "rename plan reference updates are malformed",
+      );
+    }
+    if (updates.length === 0) continue;
+    const relativePath = normalizedPlanField(
+      document,
+      "relative_path",
+      "relativePath",
+    );
+    assertContainedRelativePath(relativePath, "plan Project path");
+    if (expectedProjectPaths.has(relativePath)) {
+      throw new ManifestStop(
+        "DUPLICATE_PATH",
+        `rename plan duplicates Project ${JSON.stringify(relativePath)}`,
+      );
+    }
+    expectedProjectPaths.set(relativePath, {
+      contentHash: requirePlanContentHash(
+        normalizedPlanField(document, "content_hash", "contentHash"),
+        `Project ${JSON.stringify(relativePath)} pre-write`,
+      ),
+      byteSize: normalizedPlanField(document, "byte_size", "byteSize"),
+    });
+  }
+  if (
+    !Array.isArray(evidence.projectRewrites) ||
+    evidence.projectRewrites.length !== expectedProjectPaths.size
+  ) {
+    throw new ManifestStop(
+      "INCOMPLETE_EVIDENCE",
+      "Project rewrite evidence is missing or has an unexpected record count",
+    );
+  }
+  const observedProjects = new Set();
+  for (const rewriteValue of evidence.projectRewrites) {
+    const rewrite = requireObject(
+      rewriteValue,
+      "MALFORMED_EVIDENCE",
+      "Project rewrite evidence contains a malformed entry",
+    );
+    assertContainedRelativePath(rewrite.relativePath, "Project rewrite path");
+    const preimagePlan = expectedProjectPaths.get(rewrite.relativePath);
+    if (!preimagePlan || observedProjects.has(rewrite.relativePath)) {
+      throw new ManifestStop(
+        "DUPLICATE_PATH",
+        "Project rewrite path is duplicate or absent from the rename plan",
+      );
+    }
+    observedProjects.add(rewrite.relativePath);
+    const preWriteHash = requireHash(
+      rewrite.preWriteSha256,
+      "Project pre-write identity",
+    );
+    requireMatchingPreimage(
+      preWriteHash,
+      preimagePlan.contentHash,
+      `Project ${JSON.stringify(rewrite.relativePath)} pre-write SHA256`,
+    );
+    const byteSize = requireByteSize(rewrite.byteSize, "Project rewrite");
+    requireMatchingByteSize(
+      byteSize,
+      preimagePlan.byteSize,
+      `Project ${JSON.stringify(rewrite.relativePath)}`,
+    );
+    appendExpectedChange(changes, seenPaths, {
+      op: "content_changed",
+      relative_path: rewrite.relativePath,
+      entry_type: "file",
+      pre_sha256: preWriteHash,
+      sha256: requireHash(
+        rewrite.postWriteSha256,
+        "Project post-write identity",
+      ),
+      byte_size: byteSize,
+    });
+  }
+
+  changes.sort(
+    (left, right) =>
+      compareUtf8(left.relative_path, right.relative_path) ||
+      compareUtf8(left.op, right.op),
+  );
+  return {
+    schema: EXPECTED_SCHEMA,
+    operation_id: evidence.operationId,
+    plan_id: evidence.planId,
+    changes,
+    incomplete_project_post_hashes: [],
+  };
+}
+
 export function formatSummary(report) {
   const lines = [
     `verdict: ${report.verdict}`,
@@ -977,6 +1380,7 @@ function usage() {
   node scripts/gate-c-byte-manifest.mjs capture --root <clone-root> --output <manifest.json>
   node scripts/gate-c-byte-manifest.mjs compare --pre <pre.json> --post <post.json> [--expected <expected.json>] [--report <report.json>]
   node scripts/gate-c-byte-manifest.mjs expected-from-prepared --plan <prepared-plan.json> --output <expected.json>
+  node scripts/gate-c-byte-manifest.mjs expected-from-evidence --plan <rename-plan.json> --evidence <committed-evidence.json> --output <expected.json>
 
 Keep generated manifests outside the repository. They may contain personal sample names.
 Do not commit capture output.
@@ -1064,6 +1468,20 @@ function runCli(argv) {
       );
       return 1;
     }
+    process.stdout.write(`wrote expected changes to ${output}\n`);
+    return 0;
+  }
+  if (command === "expected-from-evidence") {
+    const planPath = takeOption(args, "--plan");
+    const evidencePath = takeOption(args, "--evidence");
+    const output = takeOption(args, "--output");
+    if (!planPath || !evidencePath || !output) {
+      throw new ManifestStop("USAGE", usage());
+    }
+    const plan = JSON.parse(readFileSync(planPath, "utf8"));
+    const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
+    const expected = expectedFromCommittedEvidence(evidence, plan);
+    writeManifestAtomic(output, expected);
     process.stdout.write(`wrote expected changes to ${output}\n`);
     return 0;
   }
