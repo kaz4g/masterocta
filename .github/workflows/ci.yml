@@ -181,6 +181,9 @@ jobs:
       - name: Run Gate C byte-manifest tests
         run: pnpm run test:gate-c-manifest
 
+      - name: Run Gate C candidate contract tests
+        run: pnpm run test:gate-c-candidate
+
       - name: Build frontend
         run: pnpm run build
 
