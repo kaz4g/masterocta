@@ -341,41 +341,81 @@ If any condition is unmet, keep RC2 `NOT_CREATED`.
 
 ### Current RC2 blockers after FAT-HASH-1 assessment
 
-FAT-HASH-1 is no longer an RC2 blocker. RC2 remains `NOT_CREATED` until at
-least all of the following are complete and mutually consistent:
+FAT-HASH-1 is no longer an RC2 blocker. The Project post-write SHA256 evidence
+export blocker is **cleared** on `main` by Phase 2 merge evidence below.
 
-- machine-readable Project post-write SHA256 evidence export merged to `main`
-  with required CI evidence
-- an immutable RC candidate workflow
-- source-to-artifact provenance, including run/attempt-bound final digests
-- a confirmed non-public candidate storage path and access boundary
+Phase 2 merge evidence:
+
+| Field | Value |
+|---|---|
+| Phase 2 head | `aa754afd89a5f60ccee97032abb6d3c1239897e9` |
+| Phase 2 merge | `cc6523fc34ccd69e8242188f74d9df59a3102e1f` |
+| Phase 2 merged tree | `3078a03a3a047c9aa8764e40c5a80de5823381d3` |
+| Phase 2 PR | [#95](https://github.com/kaz4g/masterocta/pull/95) |
+| Phase 2 CI | [`34011073593`](https://github.com/kaz4g/masterocta/actions/runs/34011073593), `completed` / `success` |
+
+RC2 remains `NOT_CREATED` until at least all of the following are complete and
+mutually consistent:
+
+- Gate C candidate workflow **`.github/workflows/gate-c-candidate.yml`**
+  (`Gate C Candidate Build`) merged to `main` with required CI evidence
+- source-to-artifact provenance from a single workflow run/attempt, including
+  run/attempt-bound final DMG and enclosed binary digests
+- a confirmed non-public candidate storage path and access boundary recorded
+  from that run's draft release evidence
 - required CI and all freeze-time source, workflow, artifact, DMG, and
-  codesign verification
+  codesign verification for the chosen RC2 source commit
+
+While Phase 3 is unmerged, do **not** mark the immutable workflow /
+provenance / candidate storage blockers as cleared.
+
+Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
+(`.github/workflows/gate-c-candidate.yml`). Do not use
+`.github/workflows/rc-release.yml` for Gate C candidates.
+
+Draft candidate storage boundary (GitHub official REST / About releases):
+
+- published release information is available to everyone
+- draft release listings and draft assets require repository push access
+- `GET /repos/{owner}/{repo}/releases/tags/{tag}` returns a **published**
+  release by tag; anonymous lookup of a draft candidate tag must fail closed
+- draft/prerelease releases cannot be set as latest
+
+Recorded access boundary for the Phase 3 workflow design:
+
+```text
+repository visibility = public
+candidate release = draft
+candidate download = authenticated repository write collaborators only
+anonymous access = denied
+updater consumption = none
+public release listing = absent
+```
+
+Phase 3 merge operator sequence:
+
+```text
+Phase 3 merge
+→ main CI success confirmation
+→ open PR / required fix none on main
+→ RC2 source commit/tree fixed by operator preflight
+→ Gate C Candidate Build dispatched once
+→ draft candidate retrieved
+→ local SHA256 re-verification
+→ provenance / access boundary confirmation
+→ docs-only RC2 freeze ledger PR
+→ ledger merge
+→ Human Gate C on frozen RC2
+```
+
+A successful workflow run alone does **not** freeze RC2. A docs-only ledger PR
+must record the run evidence before RC2 may be treated as `FROZEN`.
 
 RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
-remain `UNSET`. Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5
+remain `UNSET`. Do not record this Phase 3 implementation PR head as RC2
+source. Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5
 remains `INCOMPLETE`.
-
-Phase 2 currently has an unmerged implementation candidate for
-`rename-committed-evidence:v1`. It derives Project pre/post SHA256 from the
-persisted Apply rewrite record, binds that record to the prepared snapshot,
-committed journal, verified backup, and current stable clone fingerprint, and
-requires a fresh passed rescan with live audio, sidecar, and Project hash
-verification. The public evidence excludes root IDs, fingerprints, UUIDs,
-absolute paths, and host identity. `expected-from-evidence` consumes that
-evidence with the public `rename-plan:v1` identity and produces deterministic
-expected changes without predicting Project bytes.
-
-This candidate does **not** clear the Project-hash RC2 blocker while it is
-uncommitted/unmerged or before required CI is recorded. It does not change any
-RC identity or authorize candidate creation.
-
-Human Gate C, including disposable-clone pre-run manifest capture, runs after
-RC2 freeze and artifact-identity confirmation. An unrun Human Gate C
-execution item does not, by itself, keep FAT-HASH `ASSESSMENT_REQUIRED` or RC2
-`NOT_CREATED`. Missing that evidence at execution time is STOP for Human Gate
-C.
 
 ## Gate C safety boundary
 

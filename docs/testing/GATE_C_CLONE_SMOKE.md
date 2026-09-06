@@ -42,6 +42,9 @@ mean all macOS dotfiles are ignored.
   rename. Whole-image checksums are not a substitute.
 - Human Gate C uses the frozen RC candidate recorded in
   `GATE_C_RC_LEDGER.md`. Install or launch from that verified DMG only.
+- Use the frozen candidate produced by **`Gate C Candidate Build`**
+  (`.github/workflows/gate-c-candidate.yml`). Do **not** use
+  `.github/workflows/rc-release.yml` for Gate C candidates.
 - Do not rebuild the application from source for this smoke, even from the
   frozen commit.
 - Confirm the launched executable SHA256 matches the recorded inner app binary
@@ -64,6 +67,19 @@ Production now exposes rename Apply through:
 M5-C5 Phase 4D automated UI/harness coverage is complete on branch
 `m5c5-phase4d-operator-ux`. **Human Gate C clone-load smoke on real Octatrack MkII
 hardware remains outstanding** before this checklist can be signed off end-to-end.
+
+After Phase 3 merge and RC2 freeze (docs-only ledger), operator order is:
+
+```text
+Phase 3 merge
+→ main CI success confirmation
+→ RC2 source commit/tree fixed
+→ Gate C Candidate Build dispatched once
+→ draft candidate retrieved and SHA256 re-verified locally
+→ provenance / access boundary confirmed
+→ docs-only RC2 freeze ledger PR merged
+→ Human Gate C on frozen RC2 using this checklist
+```
 
 ## Byte-manifest commands
 
