@@ -414,8 +414,10 @@ mutually consistent. The retired candidate ID `gate-c-rc2-c324f048e3b9` and run
 
 Phase 3 workflow merge (#96 / #97) does **not** clear the provenance /
 candidate storage blockers. Run `34016038137` failed before those artifacts
-existed. Do not mark them cleared until a later candidate run (RC3 or after)
-completes and a docs-only freeze ledger records that run.
+existed. Run `34061897324` created an empty draft release and then failed
+before evidence freeze. Do not mark those blockers cleared until a later
+candidate run (RC4 or after) completes and a docs-only freeze ledger records
+that run.
 
 Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
 (`.github/workflows/gate-c-candidate.yml`). Do not use
@@ -449,9 +451,16 @@ Phase 3 merge
   (pre-manifest; gate-c-rc2-c324f048e3b9 retired; rerun forbidden)
 → macOS Bash portability fix merge
 → main CI success confirmation
-→ open PR / required fix none on main
-→ RC3 source commit/tree fixed by operator preflight on the new main tip
-→ Gate C Candidate Build dispatched once as gate-c-rc3-<12hex of new source SHA>
+→ RC3 source commit/tree fixed by operator preflight on main
+  390f90578422a33822a6b469e493eaa6984e5b75 /
+  7a5af2c46ede6df9ea6aa36f60f6d9decc988cc8
+→ Gate C Candidate Build dispatched once as gate-c-rc3-390f90578422
+→ RC3 dispatch attempt 34061897324 FAILURE
+  (evidence generation; gate-c-rc3-390f90578422 retired; rerun forbidden)
+→ evidence runtime hotfix merge
+→ main CI success confirmation
+→ RC4 source commit/tree fixed by operator preflight on the new main tip
+→ Gate C Candidate Build dispatched once as gate-c-rc4-<12hex of new source SHA>
 → draft candidate retrieved
 → local SHA256 re-verification
 → provenance / access boundary confirmation
@@ -462,14 +471,106 @@ Phase 3 merge
 
 A successful workflow run alone does **not** freeze an RC. A docs-only ledger
 PR must record the run evidence before that RC may be treated as `FROZEN`.
-Do not reuse RC2 run `34016038137` or any in-progress DMG from it as RC3
-evidence. RC3 dispatch is also one-shot.
+Do not reuse RC2 run `34016038137`, RC3 run `34061897324`, or any in-progress
+DMG from those attempts as later candidate evidence. RC4 dispatch is also
+one-shot. Do not pre-fix an RC4 source SHA or tree in this document.
 
 RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
-remain `UNSET`. Do not record a portability-fix PR head as an RC freeze.
-Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains
-`INCOMPLETE`.
+remain `UNSET`. RC3 official identity fields remain `UNSET`. Human Gate C
+remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains `INCOMPLETE`.
+
+## RC3
+
+| Field | Value |
+|---|---|
+| status | `NOT_CREATED` |
+| source commit | `UNSET` |
+| source tree | `UNSET` |
+| artifact | `UNSET` |
+| artifact SHA256 | `UNSET` |
+| app binary SHA256 | `UNSET` |
+| workflow name | `UNSET` |
+| workflow run ID | `UNSET` |
+| workflow run attempt | `UNSET` |
+| workflow run URL | `UNSET` |
+| workflow checkout SHA | `UNSET` |
+| build environment | `UNSET` |
+| codesign verification | `UNSET` |
+| DMG verification | `UNSET` |
+| in-run checksum manifest identity | `UNSET` |
+| in-run checksum manifest storage | `UNSET` |
+| in-run checksum manifest retrieval | `UNSET` |
+| candidate storage | `UNSET` |
+| candidate access boundary | `UNSET` |
+| public distribution | `NOT AUTHORIZED` |
+
+Do not infer these values from the current `main` tip. They stay `UNSET` until
+an explicit RC3 freeze records them together. A failed pre-freeze dispatch is
+not a freeze: do not copy run `34061897324` into this identity table.
+
+### RC3 pre-freeze attempt (run 34061897324)
+
+A Gate C Candidate Build was dispatched once for candidate ID
+`gate-c-rc3-390f90578422` from source commit
+`390f90578422a33822a6b469e493eaa6984e5b75` / tree
+`7a5af2c46ede6df9ea6aa36f60f6d9decc988cc8`. Application and DMG build,
+checksum-manifest generation, and draft release creation completed. The run
+then failed in `Write candidate evidence` because `runner_image` was not
+passed into the evidence payload (`STOP INCOMPLETE_EVIDENCE: runner_image is
+required`). Asset upload and access-boundary confirmation did not run. No
+artifact was frozen. Provenance is incomplete. This is not an RC3 freeze and
+must not be reclassified as `FROZEN_FAILED`.
+
+| Field | Value |
+|---|---|
+| candidate_id | `gate-c-rc3-390f90578422` |
+| source commit | `390f90578422a33822a6b469e493eaa6984e5b75` |
+| source tree | `7a5af2c46ede6df9ea6aa36f60f6d9decc988cc8` |
+| workflow name | `Gate C Candidate Build` |
+| workflow run ID | `34061897324` |
+| workflow run attempt | `1` |
+| workflow run URL | [`34061897324`](https://github.com/kaz4g/masterocta/actions/runs/34061897324) |
+| result | `FAILURE` |
+| failed step | Write candidate evidence |
+| failure phase | post-draft / pre-upload |
+| cause | `runner_image` missing from evidence payload (`INCOMPLETE_EVIDENCE`) |
+| draft release ID | `383727077` |
+| draft | `true` |
+| prerelease | `true` |
+| draft assets | `0` |
+| anonymous release-by-tag | `404` |
+| artifact frozen | `NO` |
+| provenance complete | `NO` |
+| candidate ID reusable | `NO` |
+| intermediate hashes | not freeze evidence |
+
+The orphan draft release `383727077` is a historical audit record. Do not
+delete, publish, edit, or upload assets to it. Do not add cleanup automation
+for it. Intermediate DMG and binary hashes from the failed run are not
+freeze identity and must not be reused.
+
+Raw codesign and spctl output from that run included runner absolute paths
+under `/var/folders/...`. Those strings are not freeze evidence.
+
+One-shot dispatch contract for this attempt:
+
+```text
+gate-c-rc3-390f90578422 = RETIRED
+run 34061897324 = rerun forbidden
+RC3 candidate name = not reusable
+next candidate number = RC4
+```
+
+Do not rerun this workflow run or its failed jobs. Do not redispatch the same
+candidate ID. Do not recover or reuse any in-run DMG from this attempt as later
+candidate evidence. RC3 official identity fields remain `UNSET`. RC3 status
+remains `NOT_CREATED`. Human Gate C remains `NOT_RUN`. Gate C remains
+`NOT_PASS`. M5 remains `INCOMPLETE`.
+
+The next candidate is RC4. Its source commit and tree must be chosen by a
+fresh operator preflight on `main` after this evidence runtime hotfix merges.
+Do not pre-fix an RC4 identity here.
 
 ## Gate C safety boundary
 

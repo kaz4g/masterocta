@@ -189,6 +189,10 @@ jobs:
           echo "rust=$(rustc --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
           echo "cargo=$(cargo --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
           echo "xcode=$(xcodebuild -version | head -n 1 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          runner_image="$(node scripts/gate-c-candidate-contract.mjs format-runner-image \
+            --image-os "${ImageOS:-}" \
+            --image-version "${ImageVersion:-}")"
+          echo "runner_image=$runner_image" >> "$GITHUB_OUTPUT"
 
       - name: Install frontend dependencies
         run: pnpm --filter masterocta install --frozen-lockfile
@@ -246,14 +250,11 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$app_path" 2> /tmp/codesign-verify.txt || true
           codesign -dv --verbose=4 "$app_path" 2> /tmp/codesign-display.txt || true
           spctl --assess --type execute --verbose=4 "$app_path" 2> /tmp/spctl.txt || true
-          classification="$(node scripts/gate-c-candidate-contract.mjs classify-codesign --verify /tmp/codesign-verify.txt --display /tmp/codesign-display.txt)"
-          if [[ "$classification" == "SIGNATURE_INTEGRITY_FAILURE" || "$classification" == "UNKNOWN" ]]; then
-            echo "STOP: codesign classification $classification"
-            exit 1
-          fi
-          echo "codesign_classification=$classification" >> "$GITHUB_OUTPUT"
-          echo "codesign_command_result=$(tr '\n' ' ' < /tmp/codesign-verify.txt | sed 's/  */ /g' | sed 's/^ //;s/ $//')" >> "$GITHUB_OUTPUT"
-          echo "spctl_result=$(tr '\n' ' ' < /tmp/spctl.txt | sed 's/  */ /g' | sed 's/^ //;s/ $//')" >> "$GITHUB_OUTPUT"
+          node scripts/gate-c-candidate-contract.mjs sanitize-verification \
+            --verify /tmp/codesign-verify.txt \
+            --display /tmp/codesign-display.txt \
+            --spctl /tmp/spctl.txt \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Finalize candidate filename and re-hash
         id: finalize
@@ -317,6 +318,84 @@ jobs:
           BINARY_SHA256: ${{ steps.verify.outputs.binary_sha256 }}
           WORK_DIR: ${{ steps.finalize.outputs.work_dir }}
 
+      - name: Preflight candidate evidence inputs
+        run: |
+          set -euo pipefail
+          payload_path="${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-prerelease-evidence-payload.json"
+          node <<'NODE'
+          import fs from "node:fs";
+          import { checksumManifestFilename } from "./scripts/gate-c-candidate-contract.mjs";
+
+          const payload = {
+            schema: "masterocta-gate-c-candidate-evidence:v1",
+            candidate_id: process.env.CANDIDATE_ID,
+            source_commit: process.env.SOURCE_COMMIT,
+            source_tree: process.env.SOURCE_TREE,
+            checkout_sha: process.env.SOURCE_COMMIT,
+            workflow_name: "Gate C Candidate Build",
+            workflow_ref: process.env.WORKFLOW_REF,
+            workflow_sha: process.env.WORKFLOW_SHA,
+            run_id: Number(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            run_url: process.env.RUN_URL,
+            repository: process.env.REPOSITORY,
+            ref: process.env.GITHUB_REF,
+            artifact_filename: process.env.ARTIFACT_NAME,
+            target_architecture: "aarch64-apple-darwin",
+            dmg_sha256: process.env.DMG_SHA256,
+            enclosed_binary_relative_path: process.env.BINARY_RELATIVE,
+            enclosed_binary_sha256: process.env.BINARY_SHA256,
+            dmg_verification_result: "PASS",
+            codesign_classification: process.env.CODESIGN_CLASSIFICATION,
+            codesign_command_result: process.env.CODESIGN_COMMAND_RESULT,
+            spctl_result: process.env.SPCTL_RESULT,
+            build_environment: "github-actions-macos-arm64",
+            node_version: process.env.NODE_VERSION,
+            pnpm_version: process.env.PNPM_VERSION,
+            rust_version: process.env.RUST_VERSION,
+            cargo_version: process.env.CARGO_VERSION,
+            xcode_version: process.env.XCODE_VERSION,
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            runner_image: process.env.RUNNER_IMAGE,
+            checksum_manifest_filename: checksumManifestFilename(process.env.CANDIDATE_ID),
+            checksum_manifest_sha256: process.env.MANIFEST_SHA256,
+            candidate_storage_type: "github_draft_release",
+            draft_release_tag: process.env.CANDIDATE_ID,
+            access_boundary_classification: "authenticated_collaborators_only",
+            generated_at: "auxiliary_non_identity",
+          };
+          fs.writeFileSync(process.env.PAYLOAD_PATH, JSON.stringify(payload));
+          NODE
+          node scripts/gate-c-candidate-contract.mjs validate-prerelease-evidence \
+            --file "$payload_path"
+        env:
+          PAYLOAD_PATH: ${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-prerelease-evidence-payload.json
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.expected_source_sha }}
+          SOURCE_TREE: ${{ inputs.expected_source_tree }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          ARTIFACT_NAME: ${{ steps.finalize.outputs.artifact_name }}
+          DMG_SHA256: ${{ steps.finalize.outputs.final_dmg_sha256 }}
+          BINARY_RELATIVE: ${{ steps.verify.outputs.binary_relative }}
+          BINARY_SHA256: ${{ steps.verify.outputs.binary_sha256 }}
+          CODESIGN_CLASSIFICATION: ${{ steps.verify.outputs.codesign_classification }}
+          CODESIGN_COMMAND_RESULT: ${{ steps.verify.outputs.codesign_command_result }}
+          SPCTL_RESULT: ${{ steps.verify.outputs.spctl_result }}
+          NODE_VERSION: ${{ steps.toolchain.outputs.node }}
+          PNPM_VERSION: ${{ steps.toolchain.outputs.pnpm }}
+          RUST_VERSION: ${{ steps.toolchain.outputs.rust }}
+          CARGO_VERSION: ${{ steps.toolchain.outputs.cargo }}
+          XCODE_VERSION: ${{ steps.toolchain.outputs.xcode }}
+          RUNNER_IMAGE: ${{ steps.toolchain.outputs.runner_image }}
+          MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest_sha256 }}
+
       - name: Create draft candidate release
         id: release
         env:
@@ -330,7 +409,7 @@ jobs:
             --notes "Non-public Gate C candidate store. Draft only. Not for distribution." \
             --draft \
             --prerelease
-          release_id="$(gh release view "${{ inputs.candidate_id }}" --json id --jq '.id')"
+          release_id="$(gh release view "${{ inputs.candidate_id }}" --json databaseId --jq '.databaseId')"
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
 
       - name: Write candidate evidence
@@ -415,6 +494,7 @@ jobs:
           RUST_VERSION: ${{ steps.toolchain.outputs.rust }}
           CARGO_VERSION: ${{ steps.toolchain.outputs.cargo }}
           XCODE_VERSION: ${{ steps.toolchain.outputs.xcode }}
+          RUNNER_IMAGE: ${{ steps.toolchain.outputs.runner_image }}
           MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest_sha256 }}
           RELEASE_ID: ${{ steps.release.outputs.release_id }}
 

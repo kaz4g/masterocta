@@ -31,6 +31,24 @@ export const STOP_CODESIGN = new Set([
   "UNKNOWN",
 ]);
 
+export const CODESIGN_COMMAND_RESULTS = [
+  "valid_on_disk_and_designated_requirement_satisfied",
+  "unsigned_expected_and_recorded",
+];
+
+export const SPCTL_RESULTS = [
+  "accepted",
+  "rejected_expected",
+];
+
+export const RUNNER_IMAGE_PATTERN = /^[a-z]+-[0-9]+@\d{8}(?:\.\d+)+$/;
+export const IMAGE_OS_PATTERN = /^[a-z]+[0-9]+$/;
+export const IMAGE_VERSION_PATTERN = /^\d{8}(?:\.\d+)+$/;
+export const CANONICAL_RUN_URL_PATTERN =
+  /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/actions\/runs\/\d+$/;
+export const PRE_RELEASE_OMITTED_FIELDS = ["draft_release_id"];
+export const EVIDENCE_URL_FIELDS = new Set(["run_url"]);
+
 export const EVIDENCE_FIELD_ORDER = [
   "schema",
   "candidate_id",
@@ -346,6 +364,171 @@ export function classifySpctl(spctlOutput, codesignClassification) {
   return { result: "unknown", acceptable: false };
 }
 
+export function containsAbsoluteFilesystemPath(value) {
+  const text = String(value ?? "");
+  const withoutUrls = text.replace(/https:\/\/[^\s"'\\]+/g, "");
+  if (
+    /(?:^|[\s"':=])(?:\/private)?\/(?:var\/folders|Users|home|tmp|opt|Library|Applications)\b/
+      .test(withoutUrls)
+  ) {
+    return true;
+  }
+  if (/(?:^|[\s"':=])\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._ -]+)+/.test(withoutUrls)) {
+    return true;
+  }
+  if (/\b[A-Za-z]:[\\/]/.test(withoutUrls)) {
+    return true;
+  }
+  if (/\\\\[A-Za-z0-9._$-]/.test(withoutUrls)) {
+    return true;
+  }
+  return false;
+}
+
+function rejectPlaceholderIdentity(value, code, label) {
+  const text = String(value ?? "").trim();
+  if (text === "") {
+    throw new CandidateStop(code, `${label} is required`);
+  }
+  if (/^(unknown|placeholder|tbd|n\/a|unset|latest)$/i.test(text)) {
+    throw new CandidateStop(code, `${label} placeholder rejected`);
+  }
+  if (/\blatest\b/i.test(text) || /\bunknown\b/i.test(text)) {
+    throw new CandidateStop(code, `${label} placeholder rejected`);
+  }
+  if (containsAbsoluteFilesystemPath(text)) {
+    throw new CandidateStop("PATH_LEAK", `${label} must not contain filesystem paths`);
+  }
+  return text;
+}
+
+export function formatRunnerImage(imageOs, imageVersion) {
+  if (imageOs == null || String(imageOs).trim() === "") {
+    throw new CandidateStop("MISSING_IMAGE_OS", "ImageOS is required");
+  }
+  if (imageVersion == null || String(imageVersion).trim() === "") {
+    throw new CandidateStop("MISSING_IMAGE_VERSION", "ImageVersion is required");
+  }
+  const os = rejectPlaceholderIdentity(imageOs, "INVALID_IMAGE_OS", "ImageOS");
+  const version = rejectPlaceholderIdentity(
+    imageVersion,
+    "INVALID_IMAGE_VERSION",
+    "ImageVersion",
+  );
+  if (!IMAGE_OS_PATTERN.test(os)) {
+    throw new CandidateStop(
+      "INVALID_IMAGE_OS",
+      "ImageOS must be <name><digits> such as macos15",
+    );
+  }
+  if (!IMAGE_VERSION_PATTERN.test(version)) {
+    throw new CandidateStop(
+      "INVALID_IMAGE_VERSION",
+      "ImageVersion must be YYYYMMDD plus dotted revision",
+    );
+  }
+  const osMatch = os.match(/^([a-z]+)(\d+)$/);
+  const formatted = `${osMatch[1]}-${osMatch[2]}@${version}`;
+  return validateRunnerImage(formatted);
+}
+
+export function validateRunnerImage(value) {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new CandidateStop("INCOMPLETE_EVIDENCE", "runner_image is required");
+  }
+  const text = rejectPlaceholderIdentity(value, "INVALID_RUNNER_IMAGE", "runner_image");
+  if (!RUNNER_IMAGE_PATTERN.test(text)) {
+    throw new CandidateStop(
+      "INVALID_RUNNER_IMAGE",
+      "runner_image must be <os>-<version>@<image-version>",
+    );
+  }
+  return text;
+}
+
+export function sanitizeCodesignCommandResult(verifyOutput, classification) {
+  if (STOP_CODESIGN.has(classification) || !CODESIGN_CLASSIFICATIONS.includes(classification)) {
+    throw new CandidateStop("CODESIGN_STOP", "codesign classification is STOP");
+  }
+  const verify = String(verifyOutput ?? "");
+  const validOnDisk = /valid on disk/i.test(verify);
+  const designated = /satisfies its designated requirement/i.test(verify);
+  const unsigned = /code object is not signed at all/i.test(verify);
+
+  if (classification === "UNSIGNED_EXPECTED_AND_RECORDED") {
+    if (!unsigned) {
+      throw new CandidateStop(
+        "CODESIGN_OUTPUT_MISMATCH",
+        "unsigned classification requires unsigned codesign output",
+      );
+    }
+    return "unsigned_expected_and_recorded";
+  }
+  if (
+    (classification === "AD_HOC_VERIFIED" || classification === "DEVELOPER_ID_VERIFIED")
+    && validOnDisk
+    && designated
+  ) {
+    return "valid_on_disk_and_designated_requirement_satisfied";
+  }
+  throw new CandidateStop(
+    "CODESIGN_OUTPUT_MISMATCH",
+    "codesign output is ambiguous or unexpected",
+  );
+}
+
+export function sanitizeSpctlResult(spctlOutput, classification) {
+  const classified = classifySpctl(spctlOutput, classification);
+  if (!classified.acceptable || !SPCTL_RESULTS.includes(classified.result)) {
+    throw new CandidateStop(
+      "SPCTL_STOP",
+      `spctl result ${classified.result} is not acceptable`,
+    );
+  }
+  return classified.result;
+}
+
+export function sanitizeVerificationOutputs({
+  verifyOutput,
+  displayOutput,
+  spctlOutput,
+}) {
+  const classification = classifyCodesign(verifyOutput, displayOutput);
+  if (STOP_CODESIGN.has(classification)) {
+    throw new CandidateStop("CODESIGN_STOP", `codesign classification ${classification}`);
+  }
+  const codesignCommandResult = sanitizeCodesignCommandResult(verifyOutput, classification);
+  const spctlResult = sanitizeSpctlResult(spctlOutput, classification);
+  const sanitized = {
+    codesign_classification: classification,
+    codesign_command_result: codesignCommandResult,
+    spctl_result: spctlResult,
+  };
+  for (const value of Object.values(sanitized)) {
+    if (containsAbsoluteFilesystemPath(value)) {
+      throw new CandidateStop("PATH_LEAK", "sanitized verification output leaked a path");
+    }
+  }
+  return sanitized;
+}
+
+export function validateDraftReleaseId(value) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new CandidateStop(
+      "INVALID_RELEASE_ID",
+      "draft_release_id must be a positive integer",
+    );
+  }
+  return value;
+}
+
+export function evidenceFieldOrderForPhase(phase = "final") {
+  if (phase === "pre-release") {
+    return EVIDENCE_FIELD_ORDER.filter((key) => !PRE_RELEASE_OMITTED_FIELDS.includes(key));
+  }
+  return [...EVIDENCE_FIELD_ORDER];
+}
+
 function requireObject(value, code, message) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new CandidateStop(code, message);
@@ -397,7 +580,12 @@ export function buildEvidence(payload) {
   return evidence;
 }
 
-export function validateEvidence(evidenceInput) {
+export function validatePreReleaseEvidence(evidenceInput) {
+  return validateEvidence(evidenceInput, { phase: "pre-release" });
+}
+
+export function validateEvidence(evidenceInput, options = {}) {
+  const phase = options.phase ?? "final";
   const evidence = requireObject(
     evidenceInput,
     "MALFORMED_EVIDENCE",
@@ -406,14 +594,20 @@ export function validateEvidence(evidenceInput) {
   if (evidence.schema !== EVIDENCE_SCHEMA) {
     throw new CandidateStop("SCHEMA_MISMATCH", "evidence schema mismatch");
   }
-  for (const key of EVIDENCE_FIELD_ORDER) {
-    if (!(key in evidence)) {
+  if (phase === "pre-release" && "draft_release_id" in evidence) {
+    throw new CandidateStop(
+      "PREMATURE_RELEASE_ID",
+      "draft_release_id must not be present before release creation",
+    );
+  }
+  const requiredKeys = evidenceFieldOrderForPhase(phase);
+  for (const key of requiredKeys) {
+    if (!(key in evidence) || evidence[key] === undefined || evidence[key] === "") {
       throw new CandidateStop("INCOMPLETE_EVIDENCE", `${key} is missing`);
     }
   }
   const keys = Object.keys(evidence).sort(compareUtf8);
-  const ordered = [...EVIDENCE_FIELD_ORDER];
-  ordered.sort(compareUtf8);
+  const ordered = [...requiredKeys].sort(compareUtf8);
   if (keys.length !== ordered.length || keys.some((key, index) => key !== ordered[index])) {
     throw new CandidateStop("MALFORMED_EVIDENCE", "evidence keys are not in the expected set");
   }
@@ -451,6 +645,54 @@ export function validateEvidence(evidenceInput) {
   if (!CODESIGN_CLASSIFICATIONS.includes(evidence.codesign_classification)) {
     throw new CandidateStop("CODESIGN_STOP", "unknown codesign classification");
   }
+  if (!CODESIGN_COMMAND_RESULTS.includes(evidence.codesign_command_result)) {
+    throw new CandidateStop(
+      "CODESIGN_OUTPUT_MISMATCH",
+      "codesign_command_result must be a sanitized token",
+    );
+  }
+  if (!SPCTL_RESULTS.includes(evidence.spctl_result)) {
+    throw new CandidateStop("SPCTL_STOP", "spctl_result must be a sanitized token");
+  }
+  if (
+    evidence.codesign_classification === "DEVELOPER_ID_VERIFIED"
+    && evidence.spctl_result !== "accepted"
+  ) {
+    throw new CandidateStop("SPCTL_STOP", "Developer ID evidence requires accepted spctl");
+  }
+  if (
+    (evidence.codesign_classification === "AD_HOC_VERIFIED"
+      || evidence.codesign_classification === "UNSIGNED_EXPECTED_AND_RECORDED")
+    && evidence.spctl_result !== "rejected_expected"
+  ) {
+    throw new CandidateStop("SPCTL_STOP", "ad-hoc or unsigned evidence requires rejected_expected");
+  }
+  if (
+    evidence.codesign_classification === "UNSIGNED_EXPECTED_AND_RECORDED"
+    && evidence.codesign_command_result !== "unsigned_expected_and_recorded"
+  ) {
+    throw new CandidateStop(
+      "CODESIGN_OUTPUT_MISMATCH",
+      "unsigned classification requires unsigned_expected_and_recorded",
+    );
+  }
+  if (
+    (evidence.codesign_classification === "AD_HOC_VERIFIED"
+      || evidence.codesign_classification === "DEVELOPER_ID_VERIFIED")
+    && evidence.codesign_command_result !== "valid_on_disk_and_designated_requirement_satisfied"
+  ) {
+    throw new CandidateStop(
+      "CODESIGN_OUTPUT_MISMATCH",
+      "signed classification requires valid_on_disk_and_designated_requirement_satisfied",
+    );
+  }
+  validateRunnerImage(evidence.runner_image);
+  if (typeof evidence.runner_os !== "string" || evidence.runner_os.trim() === "") {
+    throw new CandidateStop("INCOMPLETE_EVIDENCE", "runner_os is required");
+  }
+  if (typeof evidence.runner_arch !== "string" || evidence.runner_arch.trim() === "") {
+    throw new CandidateStop("INCOMPLETE_EVIDENCE", "runner_arch is required");
+  }
   if (evidence.candidate_storage_type !== "github_draft_release") {
     throw new CandidateStop("STORAGE_MISMATCH", "candidate storage type mismatch");
   }
@@ -463,7 +705,13 @@ export function validateEvidence(evidenceInput) {
   if (Number(evidence.run_attempt) !== 1) {
     throw new CandidateStop("INVALID_ATTEMPT", "run_attempt must be 1");
   }
+  if (phase === "final") {
+    validateDraftReleaseId(evidence.draft_release_id);
+  }
   assertEvidenceDoesNotLeakSecrets(evidence);
+  if (!CANONICAL_RUN_URL_PATTERN.test(evidence.run_url)) {
+    throw new CandidateStop("INVALID_URL", "run_url must be a canonical GitHub run URL");
+  }
   return evidence;
 }
 
@@ -472,14 +720,17 @@ export function assertEvidenceDoesNotLeakSecrets(evidence) {
   if (/gh[pousr]_[A-Za-z0-9_]+/.test(serialized)) {
     throw new CandidateStop("SECRET_LEAK", "evidence must not contain tokens");
   }
-  if (/\/Users\/[^/"\\]+/.test(serialized)) {
-    throw new CandidateStop("PATH_LEAK", "evidence must not contain user home paths");
-  }
-  if (/\/home\/[^/"\\]+/.test(serialized)) {
-    throw new CandidateStop("PATH_LEAK", "evidence must not contain user home paths");
-  }
   if (/GITHUB_TOKEN|secrets\./i.test(serialized)) {
     throw new CandidateStop("SECRET_LEAK", "evidence must not contain secret references");
+  }
+  for (const [key, value] of Object.entries(evidence)) {
+    if (typeof value !== "string") continue;
+    if (EVIDENCE_URL_FIELDS.has(key) && CANONICAL_RUN_URL_PATTERN.test(value)) {
+      continue;
+    }
+    if (containsAbsoluteFilesystemPath(value) || /\/Users\/[^/"\\]+/.test(value) || /\/home\/[^/"\\]+/.test(value)) {
+      throw new CandidateStop("PATH_LEAK", `${key} must not contain absolute filesystem paths`);
+    }
   }
 }
 
@@ -549,6 +800,7 @@ export function validateWorkflowYaml(content, options = {}) {
     [/sed -i[^\n]*tauri\.conf\.json/i, "tauri.conf.json sed mutation"],
     [/\bmapfile\b/, "Bash 4 mapfile builtin"],
     [/\breadarray\b/, "Bash 4 readarray builtin"],
+    [/gh run rerun/i, "failed run rerun"],
   ];
   for (const [pattern, label] of forbiddenPatterns) {
     if (pattern.test(content)) {
@@ -579,6 +831,14 @@ export function validateWorkflowYaml(content, options = {}) {
     [/aarch64-apple-darwin/m, "aarch64 target"],
     [/NO_STRIP:\s*1|NO_STRIP=1/m, "NO_STRIP build flag"],
     [/select-unique/m, "portable unique-path discovery"],
+    [/ImageOS/m, "ImageOS runtime identity"],
+    [/ImageVersion/m, "ImageVersion runtime identity"],
+    [/format-runner-image/m, "runner image formatter"],
+    [/sanitize-verification/m, "sanitized verification outputs"],
+    [/Preflight candidate evidence inputs/m, "pre-release evidence validation"],
+    [/validate-prerelease-evidence/m, "pre-release evidence CLI"],
+    [/databaseId/m, "numeric draft release ID"],
+    [/steps\.toolchain\.outputs\.runner_image/m, "runner_image output wiring"],
   ];
   for (const [pattern, label] of requiredPatterns) {
     if (!pattern.test(content)) {
@@ -615,17 +875,24 @@ function usage() {
   node scripts/gate-c-candidate-contract.mjs validate-workflow [--file PATH]
   node scripts/gate-c-candidate-contract.mjs validate-inputs --json INPUTS.json
   node scripts/gate-c-candidate-contract.mjs classify-codesign --verify FILE --display FILE
+  node scripts/gate-c-candidate-contract.mjs format-runner-image --image-os OS --image-version VERSION
+  node scripts/gate-c-candidate-contract.mjs sanitize-verification --verify FILE --display FILE --spctl FILE [--github-output FILE]
   node scripts/gate-c-candidate-contract.mjs write-evidence --payload FILE --output FILE
   node scripts/gate-c-candidate-contract.mjs validate-evidence --file FILE
+  node scripts/gate-c-candidate-contract.mjs validate-prerelease-evidence --file FILE
   node scripts/gate-c-candidate-contract.mjs select-unique --root DIR --suffix .dmg|.app [--max-depth N] [--path-contains TEXT]
 `;
 }
 
-function takeOption(args, name) {
+function takeOption(args, name, { allowEmpty = false } = {}) {
   const index = args.indexOf(name);
   if (index === -1) return null;
   const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
+  if (value === undefined || (value.startsWith("--") && value !== "")) {
+    if (allowEmpty) return "";
+    throw new CandidateStop("USAGE", `missing value for ${name}`);
+  }
+  if (!allowEmpty && value === "") {
     throw new CandidateStop("USAGE", `missing value for ${name}`);
   }
   return value;
@@ -670,6 +937,37 @@ function runCli(argv) {
     return STOP_CODESIGN.has(classification) ? 2 : 0;
   }
 
+  if (command === "format-runner-image") {
+    const imageOs = takeOption(args, "--image-os", { allowEmpty: true });
+    const imageVersion = takeOption(args, "--image-version", { allowEmpty: true });
+    if (imageOs === null || imageVersion === null) throw new CandidateStop("USAGE", usage());
+    process.stdout.write(`${formatRunnerImage(imageOs, imageVersion)}\n`);
+    return 0;
+  }
+
+  if (command === "sanitize-verification") {
+    const verifyPath = takeOption(args, "--verify");
+    const displayPath = takeOption(args, "--display");
+    const spctlPath = takeOption(args, "--spctl");
+    const githubOutputPath = takeOption(args, "--github-output");
+    if (!verifyPath || !displayPath || !spctlPath) throw new CandidateStop("USAGE", usage());
+    const sanitized = sanitizeVerificationOutputs({
+      verifyOutput: readFileSync(verifyPath, "utf8"),
+      displayOutput: readFileSync(displayPath, "utf8"),
+      spctlOutput: readFileSync(spctlPath, "utf8"),
+    });
+    const lines = [
+      `codesign_classification=${sanitized.codesign_classification}`,
+      `codesign_command_result=${sanitized.codesign_command_result}`,
+      `spctl_result=${sanitized.spctl_result}`,
+    ];
+    process.stdout.write(`${lines.join("\n")}\n`);
+    if (githubOutputPath) {
+      writeFileSync(githubOutputPath, `${lines.join("\n")}\n`, { flag: "a" });
+    }
+    return 0;
+  }
+
   if (command === "write-evidence") {
     const payloadPath = takeOption(args, "--payload");
     const outputPath = takeOption(args, "--output");
@@ -686,6 +984,14 @@ function runCli(argv) {
     if (!filePath) throw new CandidateStop("USAGE", usage());
     validateEvidence(JSON.parse(readFileSync(filePath, "utf8")));
     process.stdout.write("evidence contract PASS\n");
+    return 0;
+  }
+
+  if (command === "validate-prerelease-evidence") {
+    const filePath = takeOption(args, "--file");
+    if (!filePath) throw new CandidateStop("USAGE", usage());
+    validatePreReleaseEvidence(JSON.parse(readFileSync(filePath, "utf8")));
+    process.stdout.write("pre-release evidence contract PASS\n");
     return 0;
   }
 
