@@ -69,26 +69,33 @@ M5-C5 Phase 4D automated UI/harness coverage is complete on branch
 hardware remains outstanding** before this checklist can be signed off end-to-end.
 
 After Phase 3 merge, the first RC2 candidate dispatch failed before freeze.
-Treat run `34016038137` as a historical record only. See
-`GATE_C_RC_LEDGER.md`. Operator order is now:
+Treat run `34016038137` as a historical record only. RC3 then failed after
+draft creation and before evidence freeze. Treat run `34061897324` as a
+historical record only. See `GATE_C_RC_LEDGER.md`. Operator order is now:
 
 ```text
 RC2 attempt 34016038137 FAILURE recorded
   (gate-c-rc2-c324f048e3b9 retired; rerun forbidden)
 → macOS Bash portability fix merge
 → main CI success confirmation
-→ RC3 source commit/tree fixed by a new preflight on the new main tip
-→ Gate C Candidate Build dispatched once as gate-c-rc3-<12hex>
+→ RC3 dispatched once as gate-c-rc3-390f90578422
+→ RC3 attempt 34061897324 FAILURE recorded
+  (gate-c-rc3-390f90578422 retired; rerun forbidden;
+   orphan draft 383727077 assets=0; do not delete or publish)
+→ evidence runtime hotfix merge
+→ main CI success confirmation
+→ RC4 source commit/tree fixed by a new preflight on the new main tip
+→ Gate C Candidate Build dispatched once as gate-c-rc4-<12hex>
 → draft candidate retrieved and SHA256 re-verified locally
 → provenance / access boundary confirmed
 → docs-only freeze ledger PR merged
 → Human Gate C on that frozen candidate using this checklist
 ```
 
-Do not reuse the RC2 run, its candidate ID, or any in-progress DMG as RC3
-evidence. RC3 dispatch is also one-shot. A successful workflow run alone does
-not freeze the candidate. Human Gate C starts only after the freeze ledger
-merge.
+Do not reuse the RC2 or RC3 run, their candidate IDs, or any in-progress DMG as
+later candidate evidence. RC4 dispatch is also one-shot. Do not pre-fix an RC4
+source SHA. A successful workflow run alone does not freeze the candidate.
+Human Gate C starts only after the freeze ledger merge.
 
 ## Byte-manifest commands
 

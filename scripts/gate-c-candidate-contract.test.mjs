@@ -18,11 +18,18 @@ import {
   classifyCodesign,
   classifySpctl,
   collectMatchingPaths,
+  containsAbsoluteFilesystemPath,
   discoverDmgPaths,
+  formatRunnerImage,
+  sanitizeCodesignCommandResult,
+  sanitizeSpctlResult,
+  sanitizeVerificationOutputs,
   selectUniquePath,
   serializeDeterministicJson,
   validateCandidateId,
   validateEvidence,
+  validatePreReleaseEvidence,
+  validateRunnerImage,
   validateUploadCompleteness,
   validateWorkflowInputs,
   validateWorkflowYaml,
@@ -74,8 +81,8 @@ function sampleEvidence(overrides = {}) {
     enclosed_binary_sha256: `sha256:${"b".repeat(64)}`,
     dmg_verification_result: "PASS",
     codesign_classification: "AD_HOC_VERIFIED",
-    codesign_command_result: "valid on disk",
-    spctl_result: "rejected",
+    codesign_command_result: "valid_on_disk_and_designated_requirement_satisfied",
+    spctl_result: "rejected_expected",
     build_environment: "github-actions-macos-arm64",
     node_version: "v22.0.0",
     pnpm_version: "11.24.0",
@@ -84,7 +91,7 @@ function sampleEvidence(overrides = {}) {
     xcode_version: "16.0",
     runner_os: "macOS",
     runner_arch: "ARM64",
-    runner_image: "macos-latest",
+    runner_image: "macos-15@20240922.1",
     checksum_manifest_filename: `${candidateId}-checksum-manifest.json`,
     checksum_manifest_sha256: `sha256:${"c".repeat(64)}`,
     candidate_storage_type: "github_draft_release",
@@ -434,9 +441,10 @@ describe("evidence contract", () => {
     );
     assert.throws(
       () =>
-        assertEvidenceDoesNotLeakSecrets(
-          sampleEvidence({ codesign_command_result: "ghp_abcdefghijklmnopqrstuvwxyz1234567890" }),
-        ),
+        assertEvidenceDoesNotLeakSecrets({
+          ...sampleEvidence(),
+          node_version: "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+        }),
       (error) => error instanceof CandidateStop && error.code === "SECRET_LEAK",
     );
   });
@@ -455,5 +463,273 @@ describe("evidence contract", () => {
 
   it("covers all codesign classification labels", () => {
     assert.deepEqual(CODESIGN_CLASSIFICATIONS.length, 5);
+  });
+});
+
+describe("runner image identity", () => {
+  it("passes a non-empty runtime runner_image into evidence", () => {
+    const evidence = sampleEvidence();
+    assert.equal(evidence.runner_image, "macos-15@20240922.1");
+    assert.match(evidence.runner_image, /^[a-z]+-[0-9]+@\d{8}(?:\.\d+)+$/);
+  });
+
+  it("stops when ImageOS is missing", () => {
+    assert.throws(
+      () => formatRunnerImage("", "20240922.1"),
+      (error) => error instanceof CandidateStop && error.code === "MISSING_IMAGE_OS",
+    );
+  });
+
+  it("stops when ImageVersion is missing", () => {
+    assert.throws(
+      () => formatRunnerImage("macos15", ""),
+      (error) => error instanceof CandidateStop && error.code === "MISSING_IMAGE_VERSION",
+    );
+  });
+
+  it("rejects placeholder and unknown runner image values", () => {
+    assert.throws(
+      () => formatRunnerImage("unknown", "20240922.1"),
+      (error) => error instanceof CandidateStop && error.code === "INVALID_IMAGE_OS",
+    );
+    assert.throws(
+      () => validateRunnerImage("unknown"),
+      (error) => error instanceof CandidateStop && error.code === "INVALID_RUNNER_IMAGE",
+    );
+    assert.throws(
+      () => validateRunnerImage("macos-latest"),
+      (error) => error instanceof CandidateStop && error.code === "INVALID_RUNNER_IMAGE",
+    );
+    assert.throws(
+      () => validateEvidence({ ...sampleEvidence(), runner_image: "macos-latest" }),
+      (error) => error instanceof CandidateStop && error.code === "INVALID_RUNNER_IMAGE",
+    );
+  });
+
+  it("builds a deterministic runtime image identity", () => {
+    assert.equal(formatRunnerImage("macos15", "20240922.1"), "macos-15@20240922.1");
+    assert.equal(formatRunnerImage("macos26", "20260824.0482.1"), "macos-26@20260824.0482.1");
+    assert.equal(
+      formatRunnerImage("macos15", "20240922.1"),
+      formatRunnerImage("macos15", "20240922.1"),
+    );
+  });
+});
+
+describe("verification output sanitization", () => {
+  const adhocVerify = [
+    "/var/folders/d8/hvxvltxn0fl4rmnd52sncbth0000gn/T/tmp.uNPBO0Z6MO/Masta-Octa.app: valid on disk",
+    "/var/folders/d8/hvxvltxn0fl4rmnd52sncbth0000gn/T/tmp.uNPBO0Z6MO/Masta-Octa.app: satisfies its Designated Requirement",
+  ].join("\n");
+  const privateVerify = [
+    "/private/var/folders/zz/abc/T/tmp.AAA/Masta-Octa.app: valid on disk",
+    "/private/var/folders/zz/abc/T/tmp.AAA/Masta-Octa.app: satisfies its Designated Requirement",
+  ].join("\n");
+  const spacedVerify = [
+    "/var/folders/d8/hvxvltxn0fl4rmnd52sncbth0000gn/T/tmp.uNPBO0Z6MO/Masta Octa.app: valid on disk",
+    "/var/folders/d8/hvxvltxn0fl4rmnd52sncbth0000gn/T/tmp.uNPBO0Z6MO/Masta Octa.app: satisfies its Designated Requirement",
+  ].join("\n");
+  const adhocDisplay = "Signature=adhoc";
+  const adhocSpctl = "/var/folders/d8/hvxvltxn0fl4rmnd52sncbth0000gn/T/tmp.uNPBO0Z6MO/Masta-Octa.app: rejected";
+
+  it("does not export /var/folders app paths", () => {
+    const sanitized = sanitizeVerificationOutputs({
+      verifyOutput: adhocVerify,
+      displayOutput: adhocDisplay,
+      spctlOutput: adhocSpctl,
+    });
+    assert.equal(
+      sanitized.codesign_command_result,
+      "valid_on_disk_and_designated_requirement_satisfied",
+    );
+    assert.doesNotMatch(JSON.stringify(sanitized), /\/var\/folders/);
+  });
+
+  it("does not export /private/var/folders paths", () => {
+    const sanitized = sanitizeVerificationOutputs({
+      verifyOutput: privateVerify,
+      displayOutput: adhocDisplay,
+      spctlOutput: "/private/var/folders/zz/abc/T/tmp.AAA/Masta-Octa.app: rejected",
+    });
+    assert.doesNotMatch(JSON.stringify(sanitized), /\/private\/var\/folders/);
+    assert.equal(sanitized.spctl_result, "rejected_expected");
+  });
+
+  it("sanitizes app paths that contain spaces", () => {
+    const sanitized = sanitizeVerificationOutputs({
+      verifyOutput: spacedVerify,
+      displayOutput: adhocDisplay,
+      spctlOutput: "/var/folders/d8/x/T/tmp.x/Masta Octa.app: rejected",
+    });
+    assert.equal(
+      sanitized.codesign_command_result,
+      "valid_on_disk_and_designated_requirement_satisfied",
+    );
+    assert.doesNotMatch(JSON.stringify(sanitized), /Masta Octa\.app/);
+  });
+
+  it("rejects /Users paths in evidence", () => {
+    assert.equal(containsAbsoluteFilesystemPath("/Users/runner/work/app"), true);
+    assert.throws(
+      () =>
+        assertEvidenceDoesNotLeakSecrets({
+          ...sampleEvidence(),
+          xcode_version: "/Users/runner/work/Xcode.app",
+        }),
+      (error) => error instanceof CandidateStop && error.code === "PATH_LEAK",
+    );
+  });
+
+  it("rejects /home paths in evidence", () => {
+    assert.equal(containsAbsoluteFilesystemPath("/home/runner/work/app"), true);
+    assert.throws(
+      () =>
+        assertEvidenceDoesNotLeakSecrets({
+          ...sampleEvidence(),
+          rust_version: "/home/runner/.rustup",
+        }),
+      (error) => error instanceof CandidateStop && error.code === "PATH_LEAK",
+    );
+  });
+
+  it("rejects Windows absolute paths in evidence", () => {
+    assert.equal(containsAbsoluteFilesystemPath("C:\\Users\\runner\\work\\app"), true);
+    assert.throws(
+      () =>
+        assertEvidenceDoesNotLeakSecrets({
+          ...sampleEvidence(),
+          cargo_version: "C:\\Users\\runner\\work\\app",
+        }),
+      (error) => error instanceof CandidateStop && error.code === "PATH_LEAK",
+    );
+  });
+
+  it("converts valid codesign output into an allowed token", () => {
+    assert.equal(
+      sanitizeCodesignCommandResult(adhocVerify, "AD_HOC_VERIFIED"),
+      "valid_on_disk_and_designated_requirement_satisfied",
+    );
+  });
+
+  it("classifies expected ad-hoc spctl rejection", () => {
+    assert.equal(
+      sanitizeSpctlResult(adhocSpctl, "AD_HOC_VERIFIED"),
+      "rejected_expected",
+    );
+    const classified = classifySpctl(adhocSpctl, "AD_HOC_VERIFIED");
+    assert.equal(classified.acceptable, true);
+  });
+
+  it("stops on unknown verification output", () => {
+    assert.throws(
+      () => sanitizeVerificationOutputs({
+        verifyOutput: "something unexplained",
+        displayOutput: "also unexplained",
+        spctlOutput: "mystery",
+      }),
+      (error) => error instanceof CandidateStop && (
+        error.code === "CODESIGN_STOP" || error.code === "CODESIGN_OUTPUT_MISMATCH"
+      ),
+    );
+  });
+
+  it("keeps sanitized evidence free of absolute paths", () => {
+    const sanitized = sanitizeVerificationOutputs({
+      verifyOutput: adhocVerify,
+      displayOutput: adhocDisplay,
+      spctlOutput: adhocSpctl,
+    });
+    const evidence = sampleEvidence({
+      codesign_classification: sanitized.codesign_classification,
+      codesign_command_result: sanitized.codesign_command_result,
+      spctl_result: sanitized.spctl_result,
+    });
+    assert.doesNotMatch(JSON.stringify(evidence), /\/var\/folders/);
+    assert.doesNotMatch(JSON.stringify(evidence), /\/private\/var/);
+    assert.doesNotMatch(JSON.stringify(evidence), /\/Users\//);
+    assert.doesNotThrow(() => validateEvidence(evidence));
+  });
+});
+
+describe("workflow evidence ordering", () => {
+  it("validates evidence inputs before creating the draft release", () => {
+    const preflight = workflowContent.indexOf("Preflight candidate evidence inputs");
+    const release = workflowContent.indexOf("Create draft candidate release");
+    assert.ok(preflight !== -1 && release !== -1);
+    assert.ok(preflight < release);
+    assert.match(workflowContent, /validate-prerelease-evidence/);
+  });
+
+  it("writes final evidence only after the numeric release ID exists", () => {
+    const release = workflowContent.indexOf("Create draft candidate release");
+    const evidence = workflowContent.indexOf("Write candidate evidence");
+    assert.ok(release !== -1 && evidence !== -1);
+    assert.ok(release < evidence);
+    assert.match(workflowContent, /databaseId/);
+    assert.match(workflowContent, /steps\.release\.outputs\.release_id/);
+  });
+
+  it("does not pass raw codesign or spctl output into evidence env", () => {
+    assert.doesNotMatch(
+      workflowContent,
+      /CODESIGN_COMMAND_RESULT:.*tr '\\n' ' '/,
+    );
+    assert.doesNotMatch(workflowContent, /spctl_result=\$\(tr '\\n' ' '/);
+    assert.doesNotMatch(
+      workflowContent,
+      /echo "codesign_command_result=\$\(tr/,
+    );
+  });
+
+  it("passes only sanitized verification outputs", () => {
+    assert.match(workflowContent, /sanitize-verification/);
+    assert.ok(
+      workflowContent.includes(
+        "CODESIGN_COMMAND_RESULT: ${{ steps.verify.outputs.codesign_command_result }}",
+      ),
+    );
+    assert.ok(
+      workflowContent.includes(
+        "SPCTL_RESULT: ${{ steps.verify.outputs.spctl_result }}",
+      ),
+    );
+  });
+
+  it("wires runner_image from toolchain output", () => {
+    assert.match(workflowContent, /format-runner-image/);
+    assert.match(workflowContent, /ImageOS/);
+    assert.match(workflowContent, /ImageVersion/);
+    assert.ok(
+      workflowContent.includes(
+        "RUNNER_IMAGE: ${{ steps.toolchain.outputs.runner_image }}",
+      ),
+    );
+  });
+
+  it("does not reintroduce mapfile or readarray", () => {
+    assert.doesNotMatch(workflowContent, /\bmapfile\b/);
+    assert.doesNotMatch(workflowContent, /\breadarray\b/);
+  });
+
+  it("does not delete releases, clobber uploads, publish, or rerun", () => {
+    assert.doesNotMatch(workflowContent, /gh release delete/i);
+    assert.doesNotMatch(workflowContent, /--clobber/);
+    assert.doesNotMatch(workflowContent, /publish-release/);
+    assert.doesNotMatch(workflowContent, /draft:\s*false/);
+    assert.doesNotMatch(workflowContent, /gh run rerun/i);
+  });
+});
+
+describe("pre-release evidence validation", () => {
+  it("accepts complete inputs without a release ID", () => {
+    const { draft_release_id: _omitted, ...preRelease } = sampleEvidence();
+    assert.doesNotThrow(() => validatePreReleaseEvidence(preRelease));
+  });
+
+  it("rejects a placeholder release ID before draft creation", () => {
+    assert.throws(
+      () => validatePreReleaseEvidence({ ...sampleEvidence(), draft_release_id: 0 }),
+      (error) => error instanceof CandidateStop && error.code === "PREMATURE_RELEASE_ID",
+    );
   });
 });
