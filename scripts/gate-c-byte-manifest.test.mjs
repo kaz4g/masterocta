@@ -1094,6 +1094,13 @@ describe("expected-from-evidence", () => {
     assert.equal(expected.changes.length, 5);
   });
 
+  it("accepts Project post-write byte size changes against the plan preimage", () => {
+    const { plan, evidence } = committedEvidenceInputs();
+    plan.stateDocumentImpacts[0].byteSize = 100;
+    evidence.projectRewrites[0].byteSize = 120;
+    assert.doesNotThrow(() => expectedFromCommittedEvidence(evidence, plan));
+  });
+
   it("writes deterministic expected JSON through the CLI", () => {
     const outputDir = mkdtempSync(path.join(tmpdir(), "gate-c-evidence-"));
     try {
@@ -1122,6 +1129,35 @@ describe("expected-from-evidence", () => {
         assert.equal(result.status, 0, result.stderr + result.stdout);
       }
       assert.equal(readFileSync(firstPath, "utf8"), readFileSync(secondPath, "utf8"));
+    } finally {
+      cleanup(outputDir);
+    }
+  });
+
+  it("rejects expected output paths that alias evidence or plan inputs", () => {
+    const outputDir = mkdtempSync(path.join(tmpdir(), "gate-c-evidence-alias-"));
+    try {
+      const { plan, evidence } = committedEvidenceInputs();
+      const evidencePath = path.join(outputDir, "evidence.json");
+      writeFileSync(evidencePath, JSON.stringify(evidence));
+      writeFileSync(path.join(outputDir, "plan.json"), JSON.stringify(plan));
+      const result = spawnSync(
+        process.execPath,
+        [
+          scriptPath,
+          "expected-from-evidence",
+          "--plan",
+          path.join(outputDir, "plan.json"),
+          "--evidence",
+          evidencePath,
+          "--output",
+          evidencePath,
+        ],
+        { encoding: "utf8" },
+      );
+      assert.equal(result.status, 1, result.stderr + result.stdout);
+      assert.match(result.stderr, /OUTPUT_ALIASES_INPUT/);
+      assert.equal(readFileSync(evidencePath, "utf8"), JSON.stringify(evidence));
     } finally {
       cleanup(outputDir);
     }

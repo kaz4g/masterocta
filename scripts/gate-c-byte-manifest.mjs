@@ -1315,11 +1315,6 @@ export function expectedFromCommittedEvidence(evidenceInput, planInput) {
       `Project ${JSON.stringify(rewrite.relativePath)} pre-write SHA256`,
     );
     const byteSize = requireByteSize(rewrite.byteSize, "Project rewrite");
-    requireMatchingByteSize(
-      byteSize,
-      preimagePlan.byteSize,
-      `Project ${JSON.stringify(rewrite.relativePath)}`,
-    );
     appendExpectedChange(changes, seenPaths, {
       op: "content_changed",
       relative_path: rewrite.relativePath,
@@ -1481,6 +1476,7 @@ function runCli(argv) {
     const plan = JSON.parse(readFileSync(planPath, "utf8"));
     const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
     const expected = expectedFromCommittedEvidence(evidence, plan);
+    assertReportDoesNotClobberInputs(output, [planPath, evidencePath]);
     writeManifestAtomic(output, expected);
     process.stdout.write(`wrote expected changes to ${output}\n`);
     return 0;

@@ -250,6 +250,117 @@ describe("RenameOperatorPanel", () => {
     expect(screen.queryByRole("button", { name: /Roll back incomplete rename/i })).not.toBeInTheDocument();
   });
 
+  it("keeps committed export available after recovery refresh drops committed operations", async () => {
+    const api = fakeRenameApi();
+    api.recoveryStatus = vi.fn().mockResolvedValue({
+      schema: "rename-recovery-status:v1",
+      recoveryRequired: false,
+      operations: [],
+    });
+    api.getCommittedEvidence = vi.fn().mockResolvedValue({
+      schema: "rename-committed-evidence:v1",
+      operationId,
+      planId,
+      mutationState: "committed",
+      verificationState: "passed",
+      rescanCompleted: true,
+      audio: {
+        sourceRelativePath: "LIVE_SET/AUDIO/KICK.wav",
+        sourceSha256: `sha256:${"a".repeat(64)}`,
+        destinationRelativePath: "LIVE_SET/AUDIO/KICK_DEEP.wav",
+        destinationSha256: `sha256:${"a".repeat(64)}`,
+        byteSize: 100,
+      },
+      sidecars: [],
+      projectRewrites: [],
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    const { rerender } = render(
+      <RenameOperatorPanel
+        session={session()}
+        changeRecovery={changeRecoveryClear}
+        renameRecovery={renameRecoveryPrepared}
+        cloneVerification={cloneVerified}
+        api={api}
+        changeClient={fakeChangeApi()}
+        refreshSession={vi.fn().mockResolvedValue(session())}
+        onApplied={vi.fn()}
+        onRecovered={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("checkbox", {
+      name: /approve continuing this exact operation/i,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue prepared rename" }));
+    fireEvent.click(await screen.findByRole("checkbox", {
+      name: /approve applying this exact rename/i,
+    }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply approved rename" }));
+
+    await waitFor(() => expect(api.apply).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <RenameOperatorPanel
+        session={session()}
+        changeRecovery={changeRecoveryClear}
+        renameRecovery={{
+          schema: "rename-recovery-status:v1",
+          recoveryRequired: false,
+          operations: [],
+        }}
+        cloneVerification={cloneVerified}
+        api={api}
+        changeClient={fakeChangeApi()}
+        refreshSession={vi.fn().mockResolvedValue(session())}
+        onApplied={vi.fn()}
+        onRecovered={vi.fn()}
+      />,
+    );
+
+    const exportButton = await screen.findByRole("button", {
+      name: "Copy committed evidence JSON",
+    });
+    expect(exportButton).not.toBeDisabled();
+    fireEvent.click(exportButton);
+    await waitFor(() => expect(api.getCommittedEvidence).toHaveBeenCalledWith("root-opaque", operationId));
+  });
+
+  it("copies the prepared plan JSON for Gate C checklist files", async () => {
+    const api = fakeRenameApi();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <RenameOperatorPanel
+        session={session()}
+        changeRecovery={changeRecoveryClear}
+        renameRecovery={renameRecoveryPrepared}
+        cloneVerification={cloneVerified}
+        api={api}
+        changeClient={fakeChangeApi()}
+        refreshSession={vi.fn().mockResolvedValue(session())}
+        onApplied={vi.fn()}
+        onRecovered={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Copy prepared plan JSON" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain('"schema": "rename-plan:v1"');
+    expect(copied).toContain('"sourceContentHash"');
+    expect(await screen.findByText(/Prepared plan JSON copied/i)).toBeInTheDocument();
+  });
+
   it("does not persist continuation authority outside component memory", async () => {
     const api = fakeRenameApi();
     render(

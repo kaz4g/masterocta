@@ -82,17 +82,15 @@ node scripts/gate-c-byte-manifest.mjs capture \
 Capture must print a non-zero `entries` count and exit 0. Any `STOP` code,
 partial file, or output written inside the clone root is Gate C STOP.
 
-After Plan, retain the public `rename-plan:v1` JSON as `PREPARED_PLAN.json`
-outside the clone root and repository. That plan now includes source, sidecar,
-and Project pre-write SHA256 bindings used by `expected-from-evidence`. The
-durable `masterocta-prepared-rename-plan:v1` snapshot is also accepted. After Prepare, restart, Continue, and
-Apply, confirm `COMMITTED / VERIFIED`, rescan completed, and zero Missing /
-Invalid / Unresolved counts. In `Rename operator`, select **Copy committed
-evidence JSON**, paste it unchanged into `COMMITTED_EVIDENCE.json` outside the
-clone root and repository, and restrict that private file to the operator:
+After Prepare, restart, Continue, and Apply, confirm `COMMITTED / VERIFIED`,
+rescan completed, and zero Missing / Invalid / Unresolved counts. In
+`Rename operator`, select **Copy prepared plan JSON** and **Copy committed
+evidence JSON**, paste each export unchanged into `PREPARED_PLAN.json` and
+`COMMITTED_EVIDENCE.json` outside the clone root and repository, and restrict
+those private files to the operator:
 
 ```bash
-chmod 600 COMMITTED_EVIDENCE.json
+chmod 600 PREPARED_PLAN.json COMMITTED_EVIDENCE.json
 
 node scripts/gate-c-byte-manifest.mjs expected-from-evidence \
   --plan PREPARED_PLAN.json \
