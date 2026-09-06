@@ -209,17 +209,11 @@ jobs:
         id: dmg
         run: |
           set -euo pipefail
-          mapfile -t dmg_paths < <(find src-tauri/target -path '*aarch64-apple-darwin*' -name '*.dmg' | sort)
-          if [[ "${#dmg_paths[@]}" -eq 0 ]]; then
-            echo "STOP: no DMG artifact found"
-            exit 1
-          fi
-          if [[ "${#dmg_paths[@]}" -gt 1 ]]; then
-            echo "STOP: multiple DMG artifacts found"
-            printf '%s\n' "${dmg_paths[@]}"
-            exit 1
-          fi
-          echo "source_dmg=${dmg_paths[0]}" >> "$GITHUB_OUTPUT"
+          dmg_path="$(node scripts/gate-c-candidate-contract.mjs select-unique \
+            --root src-tauri/target \
+            --suffix .dmg \
+            --path-contains aarch64-apple-darwin)"
+          echo "source_dmg=$dmg_path" >> "$GITHUB_OUTPUT"
 
       - name: Verify DMG and enclosed binary
         id: verify
@@ -234,12 +228,10 @@ jobs:
             rm -rf "$mount_dir"
           }
           trap cleanup EXIT
-          mapfile -t app_paths < <(find "$mount_dir" -maxdepth 1 -name '*.app' | sort)
-          if [[ "${#app_paths[@]}" -ne 1 ]]; then
-            echo "STOP: expected exactly one .app in DMG"
-            exit 1
-          fi
-          app_path="${app_paths[0]}"
+          app_path="$(node scripts/gate-c-candidate-contract.mjs select-unique \
+            --root "$mount_dir" \
+            --suffix .app \
+            --max-depth 1)"
           binary_path="$app_path/Contents/MacOS/masterocta"
           if [[ ! -f "$binary_path" ]]; then
             echo "STOP: enclosed masterocta binary missing"

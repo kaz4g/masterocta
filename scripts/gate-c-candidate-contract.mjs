@@ -4,7 +4,7 @@
  * No YAML parser dependency; workflow text is inspected directly.
  */
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -191,6 +191,102 @@ export function discoverDmgPaths(paths) {
     throw new CandidateStop("DMG_AMBIGUOUS", "multiple DMG artifacts found");
   }
   return dmgs[0];
+}
+
+function uniquenessCodes(suffix) {
+  if (suffix === ".dmg") {
+    return { zero: "DMG_NOT_FOUND", multiple: "DMG_AMBIGUOUS" };
+  }
+  if (suffix === ".app") {
+    return { zero: "APP_NOT_FOUND", multiple: "APP_AMBIGUOUS" };
+  }
+  return { zero: "NOT_FOUND", multiple: "AMBIGUOUS" };
+}
+
+function assertInsideRoot(root, candidatePath) {
+  const relative = path.relative(root, candidatePath);
+  if (relative === "" || relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative)) {
+    throw new CandidateStop("PATH_ESCAPE", "discovered path escaped search root");
+  }
+  return relative;
+}
+
+export function collectMatchingPaths(options) {
+  if (!options || typeof options.root !== "string" || options.root.trim() === "") {
+    throw new CandidateStop("DISCOVERY_ROOT_INVALID", "search root is required");
+  }
+  const suffix = options.suffix;
+  if (typeof suffix !== "string" || suffix === "" || suffix.includes("/") || suffix.includes("\\")) {
+    throw new CandidateStop("DISCOVERY_SUFFIX_INVALID", "suffix must be a file-name ending");
+  }
+  let maxDepth = Number.POSITIVE_INFINITY;
+  if (options.maxDepth !== undefined && options.maxDepth !== null) {
+    maxDepth = Number(options.maxDepth);
+    if (!Number.isInteger(maxDepth) || maxDepth < 1) {
+      throw new CandidateStop("DISCOVERY_DEPTH_INVALID", "maxDepth must be a positive integer");
+    }
+  }
+  const pathContains = options.pathContains ?? null;
+  if (pathContains !== null && (typeof pathContains !== "string" || pathContains === "")) {
+    throw new CandidateStop("DISCOVERY_FILTER_INVALID", "pathContains must be a non-empty string");
+  }
+
+  const root = path.resolve(options.root);
+  let rootStat;
+  try {
+    rootStat = lstatSync(root);
+  } catch {
+    throw new CandidateStop("DISCOVERY_ROOT_INVALID", "search root does not exist");
+  }
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new CandidateStop("DISCOVERY_ROOT_INVALID", "search root must be a real directory");
+  }
+
+  const matches = [];
+
+  function matchesFilter(fullPath, relativePath) {
+    if (pathContains === null) return true;
+    const relativePosix = relativePath.split(path.sep).join("/");
+    return relativePosix.includes(pathContains) || fullPath.includes(pathContains);
+  }
+
+  function walk(currentDir, depth) {
+    let entries;
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      throw new CandidateStop("DISCOVERY_UNREADABLE", "unreadable path under search root");
+    }
+    entries.sort((left, right) => compareUtf8(left.name, right.name));
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = path.join(currentDir, entry.name);
+      const relativePath = assertInsideRoot(root, fullPath);
+      const childDepth = depth + 1;
+      if (entry.name.endsWith(suffix) && matchesFilter(fullPath, relativePath)) {
+        matches.push(fullPath);
+      }
+      if (entry.isDirectory() && childDepth < maxDepth) {
+        walk(fullPath, childDepth);
+      }
+    }
+  }
+
+  walk(root, 0);
+  matches.sort(compareUtf8);
+  return matches;
+}
+
+export function selectUniquePath(options) {
+  const matches = collectMatchingPaths(options);
+  const codes = uniquenessCodes(options.suffix);
+  if (matches.length === 0) {
+    throw new CandidateStop(codes.zero, `no ${options.suffix} found`);
+  }
+  if (matches.length > 1) {
+    throw new CandidateStop(codes.multiple, `multiple ${options.suffix} found`);
+  }
+  return matches[0];
 }
 
 export function assertHashUnchanged(before, after, label) {
@@ -451,6 +547,8 @@ export function validateWorkflowYaml(content, options = {}) {
     [/actions\/cache/i, "actions cache"],
     [/sed -i[^\n]*Cargo\.toml/i, "Cargo.toml sed mutation"],
     [/sed -i[^\n]*tauri\.conf\.json/i, "tauri.conf.json sed mutation"],
+    [/\bmapfile\b/, "Bash 4 mapfile builtin"],
+    [/\breadarray\b/, "Bash 4 readarray builtin"],
   ];
   for (const [pattern, label] of forbiddenPatterns) {
     if (pattern.test(content)) {
@@ -480,6 +578,7 @@ export function validateWorkflowYaml(content, options = {}) {
     [/anonymous|without authentication|curl[^\n]*releases\/tags/m, "anonymous access denial check"],
     [/aarch64-apple-darwin/m, "aarch64 target"],
     [/NO_STRIP:\s*1|NO_STRIP=1/m, "NO_STRIP build flag"],
+    [/select-unique/m, "portable unique-path discovery"],
   ];
   for (const [pattern, label] of requiredPatterns) {
     if (!pattern.test(content)) {
@@ -518,6 +617,7 @@ function usage() {
   node scripts/gate-c-candidate-contract.mjs classify-codesign --verify FILE --display FILE
   node scripts/gate-c-candidate-contract.mjs write-evidence --payload FILE --output FILE
   node scripts/gate-c-candidate-contract.mjs validate-evidence --file FILE
+  node scripts/gate-c-candidate-contract.mjs select-unique --root DIR --suffix .dmg|.app [--max-depth N] [--path-contains TEXT]
 `;
 }
 
@@ -586,6 +686,22 @@ function runCli(argv) {
     if (!filePath) throw new CandidateStop("USAGE", usage());
     validateEvidence(JSON.parse(readFileSync(filePath, "utf8")));
     process.stdout.write("evidence contract PASS\n");
+    return 0;
+  }
+
+  if (command === "select-unique") {
+    const root = takeOption(args, "--root");
+    const suffix = takeOption(args, "--suffix");
+    const maxDepthRaw = takeOption(args, "--max-depth");
+    const pathContains = takeOption(args, "--path-contains");
+    if (!root || !suffix) throw new CandidateStop("USAGE", usage());
+    const selected = selectUniquePath({
+      root,
+      suffix,
+      maxDepth: maxDepthRaw === null ? undefined : Number(maxDepthRaw),
+      pathContains: pathContains ?? undefined,
+    });
+    process.stdout.write(`${selected}\n`);
     return 0;
   }
 
