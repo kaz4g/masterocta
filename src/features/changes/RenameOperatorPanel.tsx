@@ -70,6 +70,50 @@ function operatorOperations(recovery: RenameRecoveryStatus | null): RenameStatus
   ));
 }
 
+function mergeOperatorOperations(
+  recovery: RenameRecoveryStatus | null,
+  pinned: Record<string, RenameStatus>,
+): RenameStatus[] {
+  const merged: RenameStatus[] = [];
+  const seen = new Set<string>();
+  for (const operation of operatorOperations(recovery)) {
+    const terminal = pinned[operation.operationId];
+    if (
+      terminal !== undefined
+      && (terminal.state === "committed" || terminal.state === "rolled_back")
+    ) {
+      merged.push(terminal);
+    } else {
+      merged.push(operation);
+    }
+    seen.add(operation.operationId);
+  }
+  for (const operation of Object.values(pinned)) {
+    if (!seen.has(operation.operationId)) {
+      merged.push(operation);
+      seen.add(operation.operationId);
+    }
+  }
+  return merged;
+}
+
+function committedStatusFromApply(
+  operationId: string,
+  planId: string,
+  snapshotId: string,
+): RenameStatus {
+  return {
+    schema: "rename-status:v1",
+    operationId,
+    planId,
+    state: "committed",
+    backupSnapshotId: snapshotId,
+    failureCode: null,
+    planExpired: true,
+    recoveryEligible: false,
+  };
+}
+
 function uniqueProjectCount(plan: RenamePlan | null): number {
   if (plan === null) return 0;
   const paths = new Set<string>();
@@ -162,9 +206,14 @@ export function RenameOperatorPanel({
   const [recoveryApproved, setRecoveryApproved] = useState<Record<string, boolean>>({});
   const [continuationGrant, setContinuationGrant] = useState<ContinuationGrant | null>(null);
   const [outcomes, setOutcomes] = useState<Record<string, TransactionOutcome>>({});
+  const [pinnedOperations, setPinnedOperations] = useState<Record<string, RenameStatus>>({});
+  const [evidenceNotices, setEvidenceNotices] = useState<Record<string, string>>({});
   const expiryTimerRef = useRef<number | null>(null);
 
-  const operations = useMemo(() => operatorOperations(renameRecovery), [renameRecovery]);
+  const operations = useMemo(
+    () => mergeOperatorOperations(renameRecovery, pinnedOperations),
+    [renameRecovery, pinnedOperations],
+  );
   const additiveRecovery = changeRecovery?.recoveryRequired === true;
   const renameRecoveryBlocking = renameRecovery?.recoveryRequired === true;
   const safetyUnavailable = changeRecovery === null || renameRecovery === null;
@@ -185,6 +234,8 @@ export function RenameOperatorPanel({
     setApplyApproved({});
     setRecoveryApproved({});
     setOutcomes({});
+    setPinnedOperations({});
+    setEvidenceNotices({});
     setError(null);
   }, [session.rootId]);
 
@@ -358,6 +409,15 @@ export function RenameOperatorPanel({
         [operation.operationId]: { operationId: operation.operationId, kind: "apply", apply: applied },
       }));
       if (applied.mutationState === "committed") {
+        setPinnedOperations((current) => ({
+          ...current,
+          [operation.operationId]: committedStatusFromApply(
+            operation.operationId,
+            applied.planId,
+            applied.snapshotId,
+          ),
+        }));
+        setPlans((current) => ({ ...current, [operation.operationId]: plan }));
         try {
           await onApplied();
         } catch (refreshReason) {
@@ -392,6 +452,14 @@ export function RenameOperatorPanel({
                 },
               },
             }));
+            setPinnedOperations((current) => ({
+              ...current,
+              [operation.operationId]: committedStatusFromApply(
+                operation.operationId,
+                recoveredStatus.planId ?? "",
+                recoveredStatus.backupSnapshotId ?? "",
+              ),
+            }));
             try {
               await onApplied();
             } catch (refreshReason) {
@@ -424,9 +492,76 @@ export function RenameOperatorPanel({
           apply: current[operationId]?.apply,
         },
       }));
+      setPinnedOperations((current) => {
+        const existing = current[operationId];
+        return {
+          ...current,
+          [operationId]: existing ?? committedStatusFromApply(
+            operationId,
+            verified.planId,
+            "",
+          ),
+        };
+      });
       await onApplied();
     } catch (reason) {
       setError(messageFrom(reason));
+    } finally {
+      setPanelBusy(false);
+    }
+  }
+
+  async function copyPreparedPlan(operationId: string) {
+    setPanelBusy(true);
+    setError(null);
+    setEvidenceNotices((current) => {
+      const next = { ...current };
+      delete next[`${operationId}:plan`];
+      return next;
+    });
+    try {
+      let plan = plans[operationId];
+      if (plan === undefined) {
+        plan = await api.getPreparedPlan(session.rootId, operationId);
+        setPlans((current) => ({ ...current, [operationId]: plan }));
+      }
+      if (navigator.clipboard?.writeText === undefined) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+      await navigator.clipboard.writeText(`${JSON.stringify(plan, null, 2)}\n`);
+      setEvidenceNotices((current) => ({
+        ...current,
+        [`${operationId}:plan`]:
+          "Prepared plan JSON copied. Save it as private PREPARED_PLAN.json outside the clone root and repository.",
+      }));
+    } catch (reason) {
+      setError(`Prepared plan was not copied: ${messageFrom(reason)}`);
+    } finally {
+      setPanelBusy(false);
+    }
+  }
+
+  async function copyCommittedEvidence(operationId: string) {
+    setPanelBusy(true);
+    setError(null);
+    setEvidenceNotices((current) => {
+      const next = { ...current };
+      delete next[operationId];
+      return next;
+    });
+    try {
+      const evidence = await api.getCommittedEvidence(session.rootId, operationId);
+      if (navigator.clipboard?.writeText === undefined) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+      await navigator.clipboard.writeText(`${JSON.stringify(evidence, null, 2)}\n`);
+      setEvidenceNotices((current) => ({
+        ...current,
+        [operationId]:
+          "Committed evidence JSON copied. Save it as private evidence outside the clone root and repository.",
+      }));
+    } catch (reason) {
+      setError(`Committed evidence was not copied: ${messageFrom(reason)}`);
     } finally {
       setPanelBusy(false);
     }
@@ -576,6 +711,12 @@ export function RenameOperatorPanel({
         );
         const recoveryOutcome = outcome?.recovery;
         const rollbackVerification = outcome?.rollbackVerification;
+        const evidenceReady = committedVerification?.mutationState === "committed"
+          && committedVerification.verificationState === "passed"
+          && committedVerification.rescanCompleted
+          && committedVerification.missingReferenceCount === 0
+          && committedVerification.invalidReferenceCount === 0
+          && committedVerification.unresolvedReferenceCount === 0;
         const canContinue = operation.state === "prepared"
           && continuation?.state === "ready_to_continue"
           && continuation.preparedSnapshotAvailable
@@ -612,6 +753,21 @@ export function RenameOperatorPanel({
             </header>
 
             {plan !== null && <RenamePlanReview plan={plan} />}
+
+            {plan !== null && (
+              <Button
+                variant="secondary"
+                disabled={interactionBusy}
+                onClick={() => copyPreparedPlan(operation.operationId)}
+              >
+                Copy prepared plan JSON
+              </Button>
+            )}
+            {evidenceNotices[`${operation.operationId}:plan`] !== undefined && (
+              <p className="mo-rename-operator__status">
+                {evidenceNotices[`${operation.operationId}:plan`]}
+              </p>
+            )}
 
             {operation.state === "prepared" && (
               <>
@@ -674,19 +830,24 @@ export function RenameOperatorPanel({
               </>
             )}
 
-            {(applyOutcome?.mutationState === "committed"
+            {(operation.state === "committed"
+              || applyOutcome?.mutationState === "committed"
               || committedVerification?.mutationState === "committed") && (
               <div className="mo-rename-operator__result" role="status" aria-live="polite">
                 <StatusBadge tone={
-                  (committedVerification?.verificationState ?? applyOutcome?.verificationState) === "passed"
+                  evidenceReady
                     ? "safe"
-                    : "danger"
+                    : committedVerification === undefined
+                      ? "warning"
+                      : "danger"
                 }>
                   COMMITTED
                   {" / "}
-                  {(committedVerification?.verificationState ?? applyOutcome?.verificationState) === "passed"
+                  {evidenceReady
                     ? "VERIFIED"
-                    : "VERIFICATION FAILED"}
+                    : committedVerification === undefined
+                      ? "VERIFICATION REQUIRED"
+                      : "VERIFICATION FAILED"}
                 </StatusBadge>
                 <dl>
                   <div><dt>Missing</dt><dd>{committedVerification?.missingReferenceCount ?? applyOutcome?.missingReferenceCount ?? 0}</dd></div>
@@ -694,7 +855,7 @@ export function RenameOperatorPanel({
                   <div><dt>Unresolved</dt><dd>{committedVerification?.unresolvedReferenceCount ?? applyOutcome?.unresolvedReferenceCount ?? 0}</dd></div>
                   <div><dt>Rescan</dt><dd>{(committedVerification?.rescanCompleted ?? applyOutcome?.rescanCompleted) ? "completed" : "pending"}</dd></div>
                 </dl>
-                {(committedVerification?.verificationState ?? applyOutcome?.verificationState) === "failed" && (
+                {!evidenceReady && (
                   <Button
                     variant="secondary"
                     disabled={interactionBusy}
@@ -702,6 +863,24 @@ export function RenameOperatorPanel({
                   >
                     Re-run verification
                   </Button>
+                )}
+                <Button
+                  variant="secondary"
+                  disabled={interactionBusy || !evidenceReady}
+                  onClick={() => copyCommittedEvidence(operation.operationId)}
+                >
+                  Copy committed evidence JSON
+                </Button>
+                {!evidenceReady && (
+                  <p className="mo-rename-operator__blocking">
+                    Evidence export requires a fresh passed verification, completed rescan, and
+                    zero Missing / Invalid / Unresolved references.
+                  </p>
+                )}
+                {evidenceNotices[operation.operationId] !== undefined && (
+                  <p className="mo-rename-operator__status">
+                    {evidenceNotices[operation.operationId]}
+                  </p>
                 )}
               </div>
             )}

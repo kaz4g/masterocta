@@ -208,6 +208,7 @@ const expectedV2Commands = [
   "v2_rename_continuation_status",
   "v2_rename_continue",
   "v2_rename_create_backup",
+  "v2_rename_get_committed_evidence",
   "v2_rename_get_plan",
   "v2_rename_get_prepared_plan",
   "v2_rename_get_status",

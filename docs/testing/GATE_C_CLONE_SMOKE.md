@@ -58,6 +58,8 @@ Production now exposes rename Apply through:
 - clone-first setup (`Clone operator`) with verified disposable clone attestation
 - explicit two-stage Continue / Apply approvals in `Rename operator`
 - durable prepared plan review after restart (`v2_rename_get_prepared_plan`)
+- fail-closed committed evidence export (`v2_rename_get_committed_evidence`)
+  after a fresh verified rescan
 
 M5-C5 Phase 4D automated UI/harness coverage is complete on branch
 `m5c5-phase4d-operator-ux`. **Human Gate C clone-load smoke on real Octatrack MkII
@@ -80,33 +82,39 @@ node scripts/gate-c-byte-manifest.mjs capture \
 Capture must print a non-zero `entries` count and exit 0. Any `STOP` code,
 partial file, or output written inside the clone root is Gate C STOP.
 
-After Prepare, export the durable prepared plan JSON that the operator already
-has locally. Audio and sidecar expected changes can be derived without guessing
-hashes:
+After Prepare, restart, Continue, and Apply, confirm `COMMITTED / VERIFIED`,
+rescan completed, and zero Missing / Invalid / Unresolved counts. In
+`Rename operator`, select **Copy prepared plan JSON** and **Copy committed
+evidence JSON**, paste each export unchanged into `PREPARED_PLAN.json` and
+`COMMITTED_EVIDENCE.json` outside the clone root and repository, and restrict
+those private files to the operator:
 
 ```bash
-node scripts/gate-c-byte-manifest.mjs expected-from-prepared \
+chmod 600 PREPARED_PLAN.json COMMITTED_EVIDENCE.json
+
+node scripts/gate-c-byte-manifest.mjs expected-from-evidence \
   --plan PREPARED_PLAN.json \
+  --evidence COMMITTED_EVIDENCE.json \
   --output EXPECTED.json
 ```
 
-That command does **not** invent rewritten Project post-write SHA256 values.
-The public `rename-plan:v1` DTO and prepared-plan snapshot keep pre-write
-project hashes only; apply-time `staged_content_hash` is not exported as a
-Human Gate file. If rewritten projects exist, the command exits 1 after writing
-audio/sidecar expected changes and records those project paths in
-`incomplete_project_post_hashes`. Compare against that incomplete file is STOP,
-even when audio/sidecar diffs match and Project bytes are unchanged.
-`unrelated_entries_unchanged: true` is forbidden until every rewritten Project
-post-write SHA256 is filled.
+The backend returns `rename-committed-evidence:v1` only after it binds the
+persisted prepared snapshot, committed journal, verified backup, and current
+stable clone fingerprint, then performs a fresh rescan and live SHA256 checks.
+The export contains operation/plan identity, root-relative paths, and actual
+audio, sidecar, and Project pre/post SHA256 values. It contains no root ID,
+media fingerprint, UUID, absolute path, username, or host directory.
 
-Fill each rewritten project as `content_changed` with the post-write SHA256
-from apply-time rewrite evidence, then remove it from
-`incomplete_project_post_hashes`. If that evidence is unavailable, do not
-guess. Run compare anyway so every diff is listed, then match each diff to the
-displayed plan by path. Dest audio and dest sidecar SHA256 must equal the
-source hashes already in the prepared plan. Project byte identity is also
-checked in-app by committed verification; unexplained extra diffs remain STOP.
+`expected-from-evidence` verifies the plan/operation identity, path sets, and
+plan pre-image SHA256 bindings for audio, sidecar, and Project pre-write bytes,
+rejects missing, malformed, duplicate, extra, or escaping evidence, and writes
+deterministically ordered expected changes. It uses the committed Project
+post-write SHA256; it never predicts that hash from the rename string or old
+Project bytes. Failure to export, a disabled export button, clipboard failure,
+JSON alteration, identity mismatch, or `STOP` from this command is Human Gate C
+STOP. Do not complete hashes by hand. `expected-from-prepared` remains available
+for diagnostic use but cannot produce a complete expected set for Project
+rewrites.
 
 Post-run capture and compare:
 
@@ -129,7 +137,8 @@ exclusion-policy mismatch, missing expected change, or hash mismatch is STOP.
 Record evidence with file digests only:
 
 ```bash
-shasum -a 256 PRE.json POST.json EXPECTED.json REPORT.json
+shasum -a 256 \
+  PRE.json COMMITTED_EVIDENCE.json POST.json EXPECTED.json REPORT.json
 ```
 
 ## Real-hardware clone-load smoke
@@ -151,19 +160,24 @@ shasum -a 256 PRE.json POST.json EXPECTED.json REPORT.json
 7. Plan a sample rename to an unused destination stem in the same Set Audio Pool.
 8. Review backup count, impacted Project documents, sidecars, and destination
    collision state before approval.
-9. Approve and apply the exact displayed plan once on the **clone** only, using
-   the launched frozen candidate.
-10. Capture the post-run per-file manifest with the same `capture` command.
-11. Build or complete `EXPECTED.json` as described above, then run `compare`.
+9. Prepare the exact displayed plan, restart the application, reopen the same
+   disposable clone, review the durable prepared plan, and use the separate
+   Continue and Apply approvals once on the **clone** only.
+10. Confirm `COMMITTED / VERIFIED`, completed rescan, and zero Missing / Invalid
+    / Unresolved counts. Copy the committed evidence JSON through the operator
+    action and save it unchanged as private mode-0600 evidence outside the clone
+    root and repository.
+11. Capture the post-run per-file manifest with the same `capture` command.
+12. Generate `EXPECTED.json` with `expected-from-evidence`, then run `compare`.
     Expected rename changes must occur with the expected post hashes. Every
     other entry must match on path, type, size, and SHA256.
-12. If compare is not `PASS`, Gate C is STOP. Do not continue to hardware load.
-13. Rescan the clone in MasterOCTa and confirm missing/invalid/unresolved
+13. If compare is not `PASS`, Gate C is STOP. Do not continue to hardware load.
+14. Rescan the clone in MasterOCTa and confirm missing/invalid/unresolved
     reference counts are zero and affected slots resolve to the destination.
-14. Safely eject the clone, load it on Octatrack MkII hardware, and confirm the
+15. Safely eject the clone, load it on Octatrack MkII hardware, and confirm the
     renamed sample and Project references behave as expected in a minimal
     playback/smoke pattern chosen by the operator.
-15. Retain the disposable clone or discard it according to the external test
+16. Retain the disposable clone or discard it according to the external test
     plan; do not use MasterOCTa to mutate the original removable media.
 
 ## Evidence record
@@ -176,6 +190,8 @@ paths, volume identifiers, personal filenames, or media fingerprints:
 - original media disconnected: yes/no
 - pre/post byte-manifest SHA256, entry counts, compare verdict, and
   `unrelated_entries_unchanged`
+- committed evidence schema plus sanitized operation/plan identity and evidence
+  file SHA256; do not commit the private evidence JSON
 - rename apply + rescan result on clone
 - hardware load result
 - deviations, failures, and whether the disposable clone was retained

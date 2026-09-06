@@ -35,6 +35,7 @@ describe("Rename API", () => {
     await api.continueOperation("root-opaque", operationId, operationId);
     await api.apply("root-opaque", operationId, operationId, continuationAuthorityId);
     await api.verifyCommitted("root-opaque", operationId);
+    await api.getCommittedEvidence("root-opaque", operationId);
     await api.recover("root-opaque", operationId, operationId);
     await api.verifyRolledBack("root-opaque", operationId);
 
@@ -69,6 +70,7 @@ describe("Rename API", () => {
         continuationAuthorityId,
       }],
       ["v2_rename_verify_committed", { rootId: "root-opaque", operationId }],
+      ["v2_rename_get_committed_evidence", { rootId: "root-opaque", operationId }],
       ["v2_rename_recover", {
         rootId: "root-opaque",
         operationId,

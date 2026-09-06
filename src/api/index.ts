@@ -35,6 +35,7 @@ export type {
   RenameAuthority,
   RenameBackupStatus,
   RenameBlockReason,
+  RenameCommittedEvidence,
   RenameCommittedVerification,
   RenameContinuationAuthority,
   RenameContinuationState,

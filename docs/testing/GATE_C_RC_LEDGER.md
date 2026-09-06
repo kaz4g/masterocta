@@ -344,7 +344,8 @@ If any condition is unmet, keep RC2 `NOT_CREATED`.
 FAT-HASH-1 is no longer an RC2 blocker. RC2 remains `NOT_CREATED` until at
 least all of the following are complete and mutually consistent:
 
-- machine-readable Project post-write SHA256 evidence export
+- machine-readable Project post-write SHA256 evidence export merged to `main`
+  with required CI evidence
 - an immutable RC candidate workflow
 - source-to-artifact provenance, including run/attempt-bound final digests
 - a confirmed non-public candidate storage path and access boundary
@@ -355,6 +356,20 @@ RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5
 remains `INCOMPLETE`.
+
+Phase 2 currently has an unmerged implementation candidate for
+`rename-committed-evidence:v1`. It derives Project pre/post SHA256 from the
+persisted Apply rewrite record, binds that record to the prepared snapshot,
+committed journal, verified backup, and current stable clone fingerprint, and
+requires a fresh passed rescan with live audio, sidecar, and Project hash
+verification. The public evidence excludes root IDs, fingerprints, UUIDs,
+absolute paths, and host identity. `expected-from-evidence` consumes that
+evidence with the public `rename-plan:v1` identity and produces deterministic
+expected changes without predicting Project bytes.
+
+This candidate does **not** clear the Project-hash RC2 blocker while it is
+uncommitted/unmerged or before required CI is recorded. It does not change any
+RC identity or authorize candidate creation.
 
 Human Gate C, including disposable-clone pre-run manifest capture, runs after
 RC2 freeze and artifact-identity confirmation. An unrun Human Gate C
@@ -402,6 +417,9 @@ Gate C is PASS only when every item below is demonstrated:
 - Rename Plan → Prepare → restart → Continue → Apply completes on the
   verified disposable clone, using the launched frozen candidate.
 - The operation ends `COMMITTED` / `VERIFIED`.
+- `rename-committed-evidence:v1` is exported through the operator surface, its
+  private file identity is recorded without publishing its contents, and
+  `expected-from-evidence` accepts it without manual hash completion.
 - Missing / Invalid / Unresolved reference counts are 0.
 - Unrelated bytes are unchanged versus the pre-run per-file byte manifest.
   Compare with `scripts/gate-c-byte-manifest.mjs` must report `PASS` and

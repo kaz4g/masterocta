@@ -505,6 +505,28 @@ impl PreparedRenameRuntime {
         snapshot.plan.to_plan()
     }
 
+    pub fn validate_committed_for_evidence(
+        &self,
+        operation_id: &OperationId,
+        root_fingerprint: &str,
+    ) -> Result<(RenameImpactPlan, RenameOperationJournal), PreparedRenameRuntimeError> {
+        let snapshot = self.load_prepared_snapshot(operation_id)?;
+        if snapshot.historical_device_fingerprint != root_fingerprint {
+            return Err(PreparedRenameRuntimeError::FingerprintMismatch);
+        }
+        let journal = self
+            .executor
+            .rename_journal(operation_id)
+            .map_err(PreparedRenameRuntimeError::Executor)?
+            .ok_or(PreparedRenameRuntimeError::JournalNotFound)?;
+        if journal.status != RenameJournalStatus::Committed {
+            return Err(PreparedRenameRuntimeError::JournalMismatch);
+        }
+        self.validate_journal_evidence_binding(&snapshot, &journal)?;
+        self.verify_backup_for_snapshot(&snapshot)?;
+        Ok((snapshot.plan.to_plan()?, journal))
+    }
+
     fn validate_loaded_snapshot(
         &self,
         snapshot: &PreparedRenamePlanSnapshot,

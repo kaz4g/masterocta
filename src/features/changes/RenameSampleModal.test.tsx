@@ -16,6 +16,8 @@ const operationId = `operation:v1:${"a".repeat(64)}`;
 const authorityId = `authority:v1:${"b".repeat(64)}`;
 const snapshotId = `snapshot:v1:${"c".repeat(64)}`;
 
+const planHash = `sha256:${"a".repeat(64)}`;
+
 const plan: RenamePlan = {
   schema: "rename-plan:v1",
   planId,
@@ -23,10 +25,14 @@ const plan: RenamePlan = {
   operation: "rename_sample",
   sourceFileInstanceId: `fileinst:v1:${"d".repeat(64)}`,
   sourceRelativePath: "LIVE_SET/AUDIO/KICK.wav",
+  sourceByteSize: 2048,
+  sourceContentHash: planHash,
   destinationRelativePath: "LIVE_SET/AUDIO/KICK_DEEP.wav",
   stateDocumentImpacts: [{
     relativePath: "LIVE_SET/PROJECT_A/project.work",
     role: "working",
+    byteSize: 4096,
+    contentHash: planHash,
     referenceUpdates: [{
       projectDocumentRelativePath: "LIVE_SET/PROJECT_A/project.work",
       slotKind: "static",

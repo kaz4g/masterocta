@@ -9,6 +9,7 @@ export function renameOperatorApiStubs(): Pick<
   | "continueOperation"
   | "apply"
   | "verifyCommitted"
+  | "getCommittedEvidence"
   | "recover"
   | "verifyRolledBack"
 > {
@@ -18,6 +19,7 @@ export function renameOperatorApiStubs(): Pick<
     continueOperation: vi.fn(),
     apply: vi.fn(),
     verifyCommitted: vi.fn(),
+    getCommittedEvidence: vi.fn(),
     recover: vi.fn(),
     verifyRolledBack: vi.fn(),
   };
