@@ -429,6 +429,9 @@ jobs:
       - name: Upload candidate assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
+          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
+          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
         run: |
           set -euo pipefail
           gh release upload "${{ inputs.candidate_id }}" \
@@ -442,10 +445,6 @@ jobs:
             const uploaded = fs.readFileSync(0, 'utf8').trim().split(/\n/).filter(Boolean);
             validateUploadCompleteness(uploaded, JSON.parse(process.argv[1]));
           " "$(node -pe 'JSON.stringify([process.env.ARTIFACT, process.env.MANIFEST, process.env.EVIDENCE])')"
-        env:
-          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
-          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
-          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
 
       - name: Confirm draft release access boundary
         env:
