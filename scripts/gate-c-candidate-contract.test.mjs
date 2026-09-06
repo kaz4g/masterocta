@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -16,7 +17,9 @@ import {
   buildEvidence,
   classifyCodesign,
   classifySpctl,
+  collectMatchingPaths,
   discoverDmgPaths,
+  selectUniquePath,
   serializeDeterministicJson,
   validateCandidateId,
   validateEvidence,
@@ -188,6 +191,11 @@ describe("workflow yaml contract", () => {
       assert.doesNotMatch(workflowContent, pattern, String(pattern));
     }
   });
+
+  it("does not use mapfile or readarray", () => {
+    assert.doesNotMatch(workflowContent, /\bmapfile\b/);
+    assert.doesNotMatch(workflowContent, /\breadarray\b/);
+  });
 });
 
 describe("DMG discovery", () => {
@@ -201,6 +209,144 @@ describe("DMG discovery", () => {
       (error) => error instanceof CandidateStop && error.code === "DMG_AMBIGUOUS",
     );
     assert.equal(discoverDmgPaths(["bundle/aarch64.dmg"]), "bundle/aarch64.dmg");
+  });
+});
+
+describe("portable unique discovery", () => {
+  function withTempRoot(fn) {
+    const root = mkdtempSync(path.join(tmpdir(), "gate-c-discover-"));
+    try {
+      return fn(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  function writeFile(filePath, contents = "fixture") {
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, contents);
+  }
+
+  it("rejects zero DMG matches", () => {
+    withTempRoot((root) => {
+      mkdirSync(path.join(root, "aarch64-apple-darwin"), { recursive: true });
+      assert.throws(
+        () => selectUniquePath({
+          root,
+          suffix: ".dmg",
+          pathContains: "aarch64-apple-darwin",
+        }),
+        (error) => error instanceof CandidateStop && error.code === "DMG_NOT_FOUND",
+      );
+    });
+  });
+
+  it("selects exactly one DMG", () => {
+    withTempRoot((root) => {
+      const expected = path.join(root, "aarch64-apple-darwin", "release", "Masta-Octa.dmg");
+      writeFile(expected);
+      writeFile(path.join(root, "x86_64-apple-darwin", "other.dmg"));
+      assert.equal(
+        selectUniquePath({
+          root,
+          suffix: ".dmg",
+          pathContains: "aarch64-apple-darwin",
+        }),
+        expected,
+      );
+    });
+  });
+
+  it("rejects multiple DMG matches", () => {
+    withTempRoot((root) => {
+      writeFile(path.join(root, "aarch64-apple-darwin", "a.dmg"));
+      writeFile(path.join(root, "aarch64-apple-darwin", "b.dmg"));
+      assert.throws(
+        () => selectUniquePath({
+          root,
+          suffix: ".dmg",
+          pathContains: "aarch64-apple-darwin",
+        }),
+        (error) => error instanceof CandidateStop && error.code === "DMG_AMBIGUOUS",
+      );
+    });
+  });
+
+  it("rejects zero .app matches", () => {
+    withTempRoot((root) => {
+      writeFile(path.join(root, "README.txt"));
+      assert.throws(
+        () => selectUniquePath({ root, suffix: ".app", maxDepth: 1 }),
+        (error) => error instanceof CandidateStop && error.code === "APP_NOT_FOUND",
+      );
+    });
+  });
+
+  it("selects exactly one .app", () => {
+    withTempRoot((root) => {
+      const expected = path.join(root, "Masta-Octa.app");
+      mkdirSync(expected, { recursive: true });
+      mkdirSync(path.join(root, "nested", "Ignored.app"), { recursive: true });
+      assert.equal(
+        selectUniquePath({ root, suffix: ".app", maxDepth: 1 }),
+        expected,
+      );
+    });
+  });
+
+  it("rejects multiple .app matches", () => {
+    withTempRoot((root) => {
+      mkdirSync(path.join(root, "Alpha.app"), { recursive: true });
+      mkdirSync(path.join(root, "Beta.app"), { recursive: true });
+      assert.throws(
+        () => selectUniquePath({ root, suffix: ".app", maxDepth: 1 }),
+        (error) => error instanceof CandidateStop && error.code === "APP_AMBIGUOUS",
+      );
+    });
+  });
+
+  it("preserves paths that contain spaces", () => {
+    withTempRoot((root) => {
+      const dmg = path.join(root, "aarch64-apple-darwin", "Masta Octa.dmg");
+      const app = path.join(root, "Masta Octa.app");
+      writeFile(dmg);
+      mkdirSync(app, { recursive: true });
+      assert.equal(
+        selectUniquePath({
+          root,
+          suffix: ".dmg",
+          pathContains: "aarch64-apple-darwin",
+        }),
+        dmg,
+      );
+      assert.equal(
+        selectUniquePath({ root, suffix: ".app", maxDepth: 1 }),
+        app,
+      );
+    });
+  });
+
+  it("returns matching paths in deterministic order", () => {
+    withTempRoot((root) => {
+      writeFile(path.join(root, "aarch64-apple-darwin", "z.dmg"));
+      writeFile(path.join(root, "aarch64-apple-darwin", "a.dmg"));
+      writeFile(path.join(root, "aarch64-apple-darwin", "m.dmg"));
+      const first = collectMatchingPaths({
+        root,
+        suffix: ".dmg",
+        pathContains: "aarch64-apple-darwin",
+      });
+      const second = collectMatchingPaths({
+        root,
+        suffix: ".dmg",
+        pathContains: "aarch64-apple-darwin",
+      });
+      assert.deepEqual(
+        first.map((entry) => path.basename(entry)),
+        ["a.dmg", "m.dmg", "z.dmg"],
+      );
+      assert.deepEqual(first, second);
+    });
   });
 });
 

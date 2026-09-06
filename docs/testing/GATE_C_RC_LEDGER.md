@@ -163,10 +163,54 @@ RC1 freeze rules:
 | public distribution | `NOT AUTHORIZED` |
 
 Do not infer these values from the current `main` tip. They stay `UNSET` until
-an explicit RC2 freeze records them together.
+an explicit RC2 freeze records them together. A failed pre-freeze dispatch is
+not a freeze: do not copy run `34016038137` into this identity table.
 
 This document does not record that provenance has been obtained. The current
 `.github/workflows/rc-release.yml` does not satisfy the freeze rules below.
+
+### RC2 pre-freeze attempt (run 34016038137)
+
+A Gate C Candidate Build was dispatched once for candidate ID
+`gate-c-rc2-c324f048e3b9`. Application and DMG build completed. The run then
+failed in `Discover final DMG` before checksum-manifest generation, draft
+release creation, candidate evidence generation, asset upload, and
+access-boundary confirmation. No artifact was frozen. Provenance is
+incomplete. This is not an RC2 freeze and must not be reclassified as
+`FROZEN_FAILED`.
+
+| Field | Value |
+|---|---|
+| candidate_id | `gate-c-rc2-c324f048e3b9` |
+| source commit | `c324f048e3b952745e4b259a9876b4a37cc98d4a` |
+| source tree | `89b5ac04174a3787dfd35e4b252eee5caa348eda` |
+| workflow name | `Gate C Candidate Build` |
+| workflow run ID | `34016038137` |
+| workflow run attempt | `1` |
+| job ID | `101439851786` |
+| workflow run URL | [`34016038137`](https://github.com/kaz4g/masterocta/actions/runs/34016038137) |
+| result | `FAILURE` |
+| failed step | Discover final DMG |
+| failure phase | pre-manifest / pre-release / pre-upload |
+| cause | macOS `/bin/bash` 3.2 does not provide `mapfile` (`exit 127`) |
+| artifact frozen | `NO` |
+| provenance complete | `NO` |
+| candidate ID reusable | `NO` |
+
+One-shot dispatch contract for this attempt:
+
+```text
+gate-c-rc2-c324f048e3b9 = RETIRED
+run 34016038137 = rerun forbidden
+RC2 candidate name = not reusable
+next candidate number = RC3
+```
+
+Do not rerun this workflow run or its failed jobs. Do not redispatch the same
+candidate ID. Do not recover or reuse any in-run DMG from this attempt as later
+candidate evidence. RC2 official identity fields remain `UNSET`. RC2 status
+remains `NOT_CREATED`. Human Gate C remains `NOT_RUN`. Gate C remains
+`NOT_PASS`. M5 remains `INCOMPLETE`.
 
 ### Gate C candidate versus public distribution
 
@@ -355,19 +399,23 @@ Phase 2 merge evidence:
 | Phase 2 CI | [`34011073593`](https://github.com/kaz4g/masterocta/actions/runs/34011073593), `completed` / `success` |
 
 RC2 remains `NOT_CREATED` until at least all of the following are complete and
-mutually consistent:
+mutually consistent. The retired candidate ID `gate-c-rc2-c324f048e3b9` and run
+`34016038137` cannot satisfy these conditions.
 
 - Gate C candidate workflow **`.github/workflows/gate-c-candidate.yml`**
-  (`Gate C Candidate Build`) merged to `main` with required CI evidence
+  (`Gate C Candidate Build`) merged to `main` with required CI evidence, including
+  macOS Bash 3.2 portable artifact discovery (no `mapfile` / `readarray`)
 - source-to-artifact provenance from a single workflow run/attempt, including
   run/attempt-bound final DMG and enclosed binary digests
 - a confirmed non-public candidate storage path and access boundary recorded
   from that run's draft release evidence
 - required CI and all freeze-time source, workflow, artifact, DMG, and
-  codesign verification for the chosen RC2 source commit
+  codesign verification for the chosen later RC source commit
 
-While Phase 3 is unmerged, do **not** mark the immutable workflow /
-provenance / candidate storage blockers as cleared.
+Phase 3 workflow merge (#96 / #97) does **not** clear the provenance /
+candidate storage blockers. Run `34016038137` failed before those artifacts
+existed. Do not mark them cleared until a later candidate run (RC3 or after)
+completes and a docs-only freeze ledger records that run.
 
 Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
 (`.github/workflows/gate-c-candidate.yml`). Do not use
@@ -396,26 +444,32 @@ Phase 3 merge operator sequence:
 
 ```text
 Phase 3 merge
+→ env-fix merge (#97)
+→ RC2 dispatch attempt 34016038137 FAILURE
+  (pre-manifest; gate-c-rc2-c324f048e3b9 retired; rerun forbidden)
+→ macOS Bash portability fix merge
 → main CI success confirmation
 → open PR / required fix none on main
-→ RC2 source commit/tree fixed by operator preflight
-→ Gate C Candidate Build dispatched once
+→ RC3 source commit/tree fixed by operator preflight on the new main tip
+→ Gate C Candidate Build dispatched once as gate-c-rc3-<12hex of new source SHA>
 → draft candidate retrieved
 → local SHA256 re-verification
 → provenance / access boundary confirmation
-→ docs-only RC2 freeze ledger PR
+→ docs-only freeze ledger PR
 → ledger merge
-→ Human Gate C on frozen RC2
+→ Human Gate C on the frozen candidate
 ```
 
-A successful workflow run alone does **not** freeze RC2. A docs-only ledger PR
-must record the run evidence before RC2 may be treated as `FROZEN`.
+A successful workflow run alone does **not** freeze an RC. A docs-only ledger
+PR must record the run evidence before that RC may be treated as `FROZEN`.
+Do not reuse RC2 run `34016038137` or any in-progress DMG from it as RC3
+evidence. RC3 dispatch is also one-shot.
 
 RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
-remain `UNSET`. Do not record this Phase 3 implementation PR head as RC2
-source. Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5
-remains `INCOMPLETE`.
+remain `UNSET`. Do not record a portability-fix PR head as an RC freeze.
+Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains
+`INCOMPLETE`.
 
 ## Gate C safety boundary
 
