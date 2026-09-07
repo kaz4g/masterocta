@@ -6,28 +6,35 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  ACCESS_BOUNDARY_PASS,
   CODESIGN_CLASSIFICATIONS,
   CONFIRMATION_PHRASE,
   EVIDENCE_SCHEMA,
   CandidateStop,
   artifactFilenameFor,
+  assertAnonymousProbeIsolation,
   assertEvidenceDoesNotLeakSecrets,
   assertHashUnchanged,
   buildChecksumManifest,
   buildEvidence,
+  classifyAnonymousDenialProbe,
+  classifyAnonymousHttp,
   classifyCodesign,
   classifySpctl,
   collectMatchingPaths,
   containsAbsoluteFilesystemPath,
   discoverDmgPaths,
+  evaluateAccessBoundary,
   formatRunnerImage,
   sanitizeCodesignCommandResult,
   sanitizeSpctlResult,
   sanitizeVerificationOutputs,
   selectUniquePath,
   serializeDeterministicJson,
+  validateAuthenticatedDraftRelease,
   validateCandidateId,
   validateEvidence,
+  validateExactAssetSet,
   validatePreReleaseEvidence,
   validateRunnerImage,
   validateUploadCompleteness,
@@ -175,7 +182,15 @@ describe("workflow yaml contract", () => {
       /prerelease:\s*true|--prerelease/,
       /make_latest:\s*false/,
       /gate-c-candidate-contract\.mjs/,
-      /releases\/tags/,
+      /Confirm authenticated draft state/,
+      /Validate exact uploaded asset set/,
+      /Probe anonymous API/,
+      /Probe anonymous Web tag/,
+      /Probe all anonymous asset URLs/,
+      /Finalize access-boundary verdict/,
+      /env -u GH_TOKEN -u GITHUB_TOKEN/,
+      /releases\/tags\//,
+      /releases\/tag\//,
     ]) {
       assert.match(workflowContent, pattern, String(pattern));
     }
@@ -718,6 +733,36 @@ describe("workflow evidence ordering", () => {
     assert.doesNotMatch(workflowContent, /draft:\s*false/);
     assert.doesNotMatch(workflowContent, /gh run rerun/i);
   });
+
+  it("confirms authenticated draft state before writing final evidence", () => {
+    const authDraft = workflowContent.indexOf("Confirm authenticated draft state");
+    const evidence = workflowContent.indexOf("Write candidate evidence");
+    assert.ok(authDraft !== -1 && evidence !== -1);
+    assert.ok(authDraft < evidence);
+  });
+
+  it("runs anonymous probes after asset upload and before summary", () => {
+    const upload = workflowContent.indexOf("Upload candidate assets");
+    const validateAssets = workflowContent.indexOf("Validate exact uploaded asset set");
+    const apiProbe = workflowContent.indexOf("Probe anonymous API");
+    const webProbe = workflowContent.indexOf("Probe anonymous Web tag");
+    const assetProbe = workflowContent.indexOf("Probe all anonymous asset URLs");
+    const verdict = workflowContent.indexOf("Finalize access-boundary verdict");
+    const summary = workflowContent.indexOf("Publish workflow summary");
+    assert.ok(upload < validateAssets);
+    assert.ok(validateAssets < apiProbe);
+    assert.ok(apiProbe < webProbe);
+    assert.ok(webProbe < assetProbe);
+    assert.ok(assetProbe < verdict);
+    assert.ok(verdict < summary);
+  });
+
+  it("does not follow redirects in anonymous probes", () => {
+    for (const block of workflowContent.split(/^      - name: /m)) {
+      if (!/Probe anonymous/i.test(block)) continue;
+      assert.doesNotMatch(block, /(?:^|\s)(?:-L|--location)(?:\s|$)/m);
+    }
+  });
 });
 
 describe("pre-release evidence validation", () => {
@@ -730,6 +775,362 @@ describe("pre-release evidence validation", () => {
     assert.throws(
       () => validatePreReleaseEvidence({ ...sampleEvidence(), draft_release_id: 0 }),
       (error) => error instanceof CandidateStop && error.code === "PREMATURE_RELEASE_ID",
+    );
+  });
+});
+
+const expectedAssets = [
+  "Masta-Octa_0.1.0_gate-c-rc2_cc6523fc34cc_aarch64.dmg",
+  `${candidateId}-checksum-manifest.json`,
+  `${candidateId}-evidence.json`,
+];
+
+function authenticatedRelease(overrides = {}) {
+  return {
+    databaseId: 383761286,
+    tagName: candidateId,
+    targetCommitish: sourceSha,
+    isDraft: true,
+    isPrerelease: true,
+    publishedAt: null,
+    assets: expectedAssets.map((name) => ({ name, browser_download_url: `https://example.test/${name}` })),
+    ...overrides,
+  };
+}
+
+function boundaryInput(overrides = {}) {
+  const base = {
+    authenticatedRelease: authenticatedRelease(),
+    anonymousApi: { httpStatus: "404", curlExitCode: 0, headers: "", body: "" },
+    anonymousWebTag: { httpStatus: "404", curlExitCode: 0, headers: "", body: "" },
+    anonymousAssets: expectedAssets.map(() => ({
+      httpStatus: "404",
+      curlExitCode: 0,
+      headers: "",
+      body: "",
+    })),
+    expected: {
+      releaseId: 383761286,
+      candidateId,
+      sourceSha,
+      assetNames: expectedAssets,
+    },
+  };
+  return {
+    ...base,
+    ...overrides,
+    expected: {
+      ...base.expected,
+      ...(overrides.expected ?? {}),
+    },
+  };
+}
+
+describe("anonymous HTTP classification", () => {
+  it("classifies API 404 as NOT_FOUND", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "404", curlExitCode: 0 }, { channel: "api" }),
+      "NOT_FOUND",
+    );
+  });
+
+  it("classifies rate-limited API 403 as RATE_LIMITED", () => {
+    assert.equal(
+      classifyAnonymousHttp({
+        httpStatus: "403",
+        curlExitCode: 0,
+        headers: "x-ratelimit-remaining: 0",
+        body: "rate limit exceeded",
+      }, { channel: "api" }),
+      "RATE_LIMITED",
+    );
+  });
+
+  it("classifies generic API 403 as FORBIDDEN", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "403", curlExitCode: 0, headers: "", body: "forbidden" }, { channel: "api" }),
+      "FORBIDDEN",
+    );
+  });
+
+  it("classifies API 200 as PUBLIC_ACCESS_STOP", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "200", curlExitCode: 0 }, { channel: "api" }),
+      "PUBLIC_ACCESS_STOP",
+    );
+  });
+
+  it("classifies API 3xx as PUBLIC_OR_REDIRECT_STOP", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "302", curlExitCode: 0 }, { channel: "api" }),
+      "PUBLIC_OR_REDIRECT_STOP",
+    );
+  });
+
+  it("classifies API 401 and 5xx as INDETERMINATE_STOP", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "401", curlExitCode: 0 }, { channel: "api" }),
+      "INDETERMINATE_STOP",
+    );
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "503", curlExitCode: 0 }, { channel: "api" }),
+      "INDETERMINATE_STOP",
+    );
+  });
+
+  it("classifies curl status 000 as INDETERMINATE_STOP", () => {
+    assert.equal(
+      classifyAnonymousHttp({ httpStatus: "000", curlExitCode: 28 }, { channel: "api" }),
+      "INDETERMINATE_STOP",
+    );
+  });
+
+  it("classifies denial probe 403 as INDETERMINATE_STOP", () => {
+    assert.equal(
+      classifyAnonymousDenialProbe({ httpStatus: "403", curlExitCode: 0 }),
+      "INDETERMINATE_STOP",
+    );
+  });
+
+  it("classifies asset 200 and 206 as PUBLIC_ACCESS_STOP", () => {
+    assert.equal(classifyAnonymousDenialProbe({ httpStatus: "200", curlExitCode: 0 }), "PUBLIC_ACCESS_STOP");
+    assert.equal(classifyAnonymousDenialProbe({ httpStatus: "206", curlExitCode: 0 }), "PUBLIC_ACCESS_STOP");
+  });
+
+  it("classifies web or asset 3xx as PUBLIC_OR_REDIRECT_STOP", () => {
+    assert.equal(classifyAnonymousDenialProbe({ httpStatus: "301", curlExitCode: 0 }), "PUBLIC_OR_REDIRECT_STOP");
+  });
+});
+
+describe("exact asset set validation", () => {
+  it("accepts an exact uploaded asset set", () => {
+    assert.doesNotThrow(() => validateExactAssetSet([...expectedAssets], expectedAssets));
+  });
+
+  it("rejects missing, unexpected, and duplicate assets", () => {
+    assert.throws(
+      () => validateExactAssetSet([expectedAssets[0]], expectedAssets),
+      (error) => error instanceof CandidateStop && error.code === "INCOMPLETE_UPLOAD",
+    );
+    assert.throws(
+      () => validateExactAssetSet([...expectedAssets, "extra.json"], expectedAssets),
+      (error) => error instanceof CandidateStop && error.code === "UNEXPECTED_ASSET",
+    );
+    assert.throws(
+      () => validateExactAssetSet([
+        expectedAssets[0],
+        expectedAssets[0],
+        expectedAssets[1],
+        expectedAssets[2],
+      ], expectedAssets),
+      (error) => error instanceof CandidateStop && error.code === "DUPLICATE_ASSET",
+    );
+  });
+});
+
+describe("authenticated draft release validation", () => {
+  it("accepts a draft prerelease unpublished release", () => {
+    assert.doesNotThrow(() => validateAuthenticatedDraftRelease(
+      authenticatedRelease(),
+      {
+        releaseId: 383761286,
+        candidateId,
+        sourceSha,
+        assetNames: expectedAssets,
+      },
+    ));
+  });
+
+  it("rejects release ID, tag, and target mismatches", () => {
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ databaseId: 1 }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "RELEASE_ID_MISMATCH",
+    );
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ tagName: "other" }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "TAG_MISMATCH",
+    );
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ targetCommitish: "f".repeat(40) }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "TARGET_MISMATCH",
+    );
+  });
+
+  it("rejects published or non-draft releases", () => {
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ isDraft: false }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "DRAFT_MISMATCH",
+    );
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ isPrerelease: false }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "PRERELEASE_MISMATCH",
+    );
+    assert.throws(
+      () => validateAuthenticatedDraftRelease(authenticatedRelease({ publishedAt: "2026-01-01T00:00:00Z" }), boundaryInput().expected),
+      (error) => error instanceof CandidateStop && error.code === "PUBLISHED_MISMATCH",
+    );
+  });
+});
+
+describe("access-boundary verdict", () => {
+  it("passes authenticated draft with API 404 and anonymous web/asset denial", () => {
+    const result = evaluateAccessBoundary(boundaryInput());
+    assert.equal(result.verdict, ACCESS_BOUNDARY_PASS);
+    assert.equal(result.diagnostic.anonymous_api, "NOT_FOUND");
+    assert.equal(result.diagnostic.anonymous_web_tag, "NOT_FOUND");
+    assert.equal(result.diagnostic.anonymous_assets, "ALL_NOT_FOUND");
+  });
+
+  it("passes authenticated draft with rate-limited API 403 and web/asset denial", () => {
+    const result = evaluateAccessBoundary(boundaryInput({
+      anonymousApi: {
+        httpStatus: "403",
+        curlExitCode: 0,
+        headers: "x-ratelimit-remaining: 0",
+        body: "rate limit exceeded",
+      },
+    }));
+    assert.equal(result.verdict, ACCESS_BOUNDARY_PASS);
+    assert.equal(result.diagnostic.anonymous_api, "RATE_LIMITED");
+  });
+
+  it("passes authenticated draft with generic API 403 and web/asset denial", () => {
+    const result = evaluateAccessBoundary(boundaryInput({
+      anonymousApi: {
+        httpStatus: "403",
+        curlExitCode: 0,
+        headers: "",
+        body: "forbidden",
+      },
+    }));
+    assert.equal(result.verdict, ACCESS_BOUNDARY_PASS);
+    assert.equal(result.diagnostic.anonymous_api, "FORBIDDEN");
+  });
+
+  it("stops on public API, web, or asset access", () => {
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousApi: { httpStatus: "200", curlExitCode: 0 },
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_ACCESS_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousWebTag: { httpStatus: "200", curlExitCode: 0 },
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_ACCESS_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousWebTag: { httpStatus: "302", curlExitCode: 0 },
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_OR_REDIRECT_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousAssets: [
+          { httpStatus: "404", curlExitCode: 0 },
+          { httpStatus: "200", curlExitCode: 0 },
+          { httpStatus: "404", curlExitCode: 0 },
+        ],
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_ACCESS_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousAssets: [
+          { httpStatus: "404", curlExitCode: 0 },
+          { httpStatus: "206", curlExitCode: 0 },
+          { httpStatus: "404", curlExitCode: 0 },
+        ],
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_ACCESS_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousAssets: [
+          { httpStatus: "404", curlExitCode: 0 },
+          { httpStatus: "302", curlExitCode: 0 },
+          { httpStatus: "404", curlExitCode: 0 },
+        ],
+      })),
+      (error) => error instanceof CandidateStop && error.code === "PUBLIC_OR_REDIRECT_STOP",
+    );
+  });
+
+  it("stops on indeterminate web, asset, or network probes", () => {
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousWebTag: { httpStatus: "401", curlExitCode: 0 },
+      })),
+      (error) => error instanceof CandidateStop && error.code === "INDETERMINATE_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousAssets: [
+          { httpStatus: "404", curlExitCode: 0 },
+          { httpStatus: "503", curlExitCode: 0 },
+          { httpStatus: "404", curlExitCode: 0 },
+        ],
+      })),
+      (error) => error instanceof CandidateStop && error.code === "INDETERMINATE_STOP",
+    );
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({
+        anonymousAssets: [
+          { httpStatus: "404", curlExitCode: 0 },
+          { httpStatus: "000", curlExitCode: 28 },
+          { httpStatus: "404", curlExitCode: 0 },
+        ],
+      })),
+      (error) => error instanceof CandidateStop && error.code === "INDETERMINATE_STOP",
+    );
+  });
+
+  it("stops when asset probe results are missing", () => {
+    assert.throws(
+      () => evaluateAccessBoundary(boundaryInput({ anonymousAssets: [] })),
+      (error) => error instanceof CandidateStop && error.code === "ASSET_SET_MISMATCH",
+    );
+  });
+});
+
+describe("anonymous probe credential isolation", () => {
+  it("rejects GH tokens and Authorization in anonymous probes", () => {
+    assert.throws(
+      () => assertAnonymousProbeIsolation({ env: { GH_TOKEN: "secret" }, argv: ["curl"], summary: "" }),
+      (error) => error instanceof CandidateStop && error.code === "CREDENTIAL_LEAK",
+    );
+    assert.throws(
+      () => assertAnonymousProbeIsolation({ env: { GITHUB_TOKEN: "secret" }, argv: ["curl"], summary: "" }),
+      (error) => error instanceof CandidateStop && error.code === "CREDENTIAL_LEAK",
+    );
+    assert.throws(
+      () => assertAnonymousProbeIsolation({ env: {}, argv: ["curl", "-H", "Authorization: token"], summary: "" }),
+      (error) => error instanceof CandidateStop && error.code === "CREDENTIAL_LEAK",
+    );
+  });
+
+  it("rejects redirect following and summary leaks", () => {
+    assert.throws(
+      () => assertAnonymousProbeIsolation({ env: {}, argv: ["curl", "-L", "https://example.test"], summary: "" }),
+      (error) => error instanceof CandidateStop && error.code === "REDIRECT_LEAK",
+    );
+    assert.throws(
+      () => assertAnonymousProbeIsolation({
+        env: {},
+        argv: ["curl"],
+        summary: "browser_download_url=https://private.example/asset.dmg",
+      }),
+      (error) => error instanceof CandidateStop && error.code === "URL_LEAK",
+    );
+    assert.throws(
+      () => assertAnonymousProbeIsolation({
+        env: {},
+        argv: ["curl"],
+        summary: "token ghp_secret and /Users/kaz4g/path",
+      }),
+      (error) => error instanceof CandidateStop && error.code === "SECRET_LEAK",
     );
   });
 });

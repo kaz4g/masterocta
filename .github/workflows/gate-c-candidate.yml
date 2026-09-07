@@ -412,6 +412,30 @@ jobs:
           release_id="$(gh release view "${{ inputs.candidate_id }}" --json databaseId --jq '.databaseId')"
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
 
+      - name: Confirm authenticated draft state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ inputs.candidate_id }}" \
+            --json databaseId,tagName,targetCommitish,isDraft,isPrerelease,publishedAt \
+            > /tmp/gate-c-authenticated-release.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { validateAuthenticatedDraftRelease } from './scripts/gate-c-candidate-contract.mjs';
+
+            const release = JSON.parse(fs.readFileSync('/tmp/gate-c-authenticated-release.json', 'utf8'));
+            validateAuthenticatedDraftRelease(release, {
+              releaseId: Number(process.env.RELEASE_ID),
+              candidateId: process.env.CANDIDATE_ID,
+              sourceSha: process.env.SOURCE_SHA,
+            });
+          "
+        env:
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_SHA: ${{ inputs.expected_source_sha }}
+
       - name: Write candidate evidence
         id: evidence
         run: |
@@ -501,38 +525,202 @@ jobs:
       - name: Upload candidate assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
-          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
-          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
         run: |
           set -euo pipefail
           gh release upload "${{ inputs.candidate_id }}" \
             "${{ steps.finalize.outputs.artifact_path }}" \
             "${{ steps.manifest.outputs.manifest_path }}" \
             "${{ steps.evidence.outputs.evidence_path }}"
-          uploaded="$(gh release view "${{ inputs.candidate_id }}" --json assets --jq '.assets[].name' | sort)"
-          printf '%s\n' "$uploaded" | node --input-type=module -e "
-            import fs from 'node:fs';
-            import { validateUploadCompleteness } from './scripts/gate-c-candidate-contract.mjs';
-            const uploaded = fs.readFileSync(0, 'utf8').trim().split(/\n/).filter(Boolean);
-            validateUploadCompleteness(uploaded, JSON.parse(process.argv[1]));
-          " "$(node -pe 'JSON.stringify([process.env.ARTIFACT, process.env.MANIFEST, process.env.EVIDENCE])')"
 
-      - name: Confirm draft release access boundary
+      - name: Validate exact uploaded asset set
+        id: assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
+          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
+          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
         run: |
           set -euo pipefail
-          draft="$(gh release view "${{ inputs.candidate_id }}" --json isDraft --jq '.isDraft')"
-          if [[ "$draft" != "true" ]]; then
-            echo "STOP: candidate release is not draft"
-            exit 1
-          fi
-          status="$(curl -sS -o /dev/null -w '%{http_code}' "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${{ inputs.candidate_id }}")"
-          if [[ "$status" != "404" ]]; then
-            echo "STOP: anonymous release tag lookup must be denied (expected 404, got $status)"
-            exit 1
-          fi
+          gh release view "${{ inputs.candidate_id }}" \
+            --json assets \
+            > /tmp/gate-c-uploaded-assets.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { validateExactAssetSet } from './scripts/gate-c-candidate-contract.mjs';
+
+            const expected = [process.env.ARTIFACT, process.env.MANIFEST, process.env.EVIDENCE];
+            const payload = JSON.parse(fs.readFileSync('/tmp/gate-c-uploaded-assets.json', 'utf8'));
+            const uploaded = (payload.assets ?? []).map((asset) => asset.name).sort();
+            validateExactAssetSet(uploaded, expected);
+            const urls = (payload.assets ?? [])
+              .slice()
+              .sort((left, right) => left.name.localeCompare(right.name))
+              .map((asset) => asset.browser_download_url);
+            fs.writeFileSync('/tmp/gate-c-asset-urls.json', JSON.stringify(urls));
+          "
+          echo "asset_count=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-asset-urls.json\",\"utf8\")).length')" >> "$GITHUB_OUTPUT"
+
+      - name: Probe anonymous API
+        id: anonymous_api
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${{ inputs.candidate_id }}"
+          api_status="$(
+            env -u GH_TOKEN -u GITHUB_TOKEN curl \
+              -sS --max-redirs 0 \
+              -D /tmp/gate-c-probes/api.headers \
+              -o /tmp/gate-c-probes/api.body \
+              -w '%{http_code}' \
+              "$api_url" \
+              || true
+          )"
+          api_exit="$?"
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import {
+              classifyAnonymousHttp,
+            } from './scripts/gate-c-candidate-contract.mjs';
+
+            const observation = {
+              httpStatus: process.argv[1],
+              curlExitCode: Number(process.argv[2]),
+              headers: fs.readFileSync('/tmp/gate-c-probes/api.headers', 'utf8'),
+              body: fs.readFileSync('/tmp/gate-c-probes/api.body', 'utf8'),
+            };
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-api.json', JSON.stringify(observation));
+            const classification = classifyAnonymousHttp(observation, { channel: 'api' });
+            fs.writeFileSync('/tmp/gate-c-anonymous-api-classification.txt', classification);
+          " "$api_status" "$api_exit"
+          echo "classification=$(cat /tmp/gate-c-anonymous-api-classification.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Probe anonymous Web tag
+        id: anonymous_web
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          web_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ inputs.candidate_id }}"
+          web_status="$(
+            env -u GH_TOKEN -u GITHUB_TOKEN curl \
+              -sS --max-redirs 0 \
+              -D /tmp/gate-c-probes/web.headers \
+              -o /tmp/gate-c-probes/web.body \
+              -w '%{http_code}' \
+              "$web_url" \
+              || true
+          )"
+          web_exit="$?"
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { classifyAnonymousDenialProbe } from './scripts/gate-c-candidate-contract.mjs';
+
+            const observation = {
+              httpStatus: process.argv[1],
+              curlExitCode: Number(process.argv[2]),
+              headers: fs.readFileSync('/tmp/gate-c-probes/web.headers', 'utf8'),
+              body: fs.readFileSync('/tmp/gate-c-probes/web.body', 'utf8'),
+            };
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-web.json', JSON.stringify(observation));
+            const verdict = classifyAnonymousDenialProbe(observation);
+            fs.writeFileSync('/tmp/gate-c-anonymous-web-verdict.txt', verdict);
+          " "$web_status" "$web_exit"
+          echo "verdict=$(cat /tmp/gate-c-anonymous-web-verdict.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Probe all anonymous asset URLs
+        id: anonymous_assets
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          asset_index=0
+          while IFS= read -r asset_url; do
+            asset_index=$((asset_index + 1))
+            asset_status="$(
+              env -u GH_TOKEN -u GITHUB_TOKEN curl \
+                -sS --max-redirs 0 \
+                -D "/tmp/gate-c-probes/asset-${asset_index}.headers" \
+                -o "/tmp/gate-c-probes/asset-${asset_index}.body" \
+                -w '%{http_code}' \
+                "$asset_url" \
+                || true
+            )"
+            asset_exit="$?"
+            node --input-type=module -e "
+              import fs from 'node:fs';
+
+              const observation = {
+                httpStatus: process.argv[1],
+                curlExitCode: Number(process.argv[2]),
+                headers: fs.readFileSync(process.argv[3], 'utf8'),
+                body: fs.readFileSync(process.argv[4], 'utf8'),
+              };
+              fs.writeFileSync(process.argv[5], JSON.stringify(observation));
+            " "$asset_status" "$asset_exit" \
+              "/tmp/gate-c-probes/asset-${asset_index}.headers" \
+              "/tmp/gate-c-probes/asset-${asset_index}.body" \
+              "/tmp/gate-c-probes/asset-${asset_index}.json"
+          done <<EOF
+          $(node -pe 'JSON.parse(require("fs").readFileSync("/tmp/gate-c-asset-urls.json","utf8")).join("\n")')
+          EOF
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { classifyAnonymousDenialProbe } from './scripts/gate-c-candidate-contract.mjs';
+
+            const urls = JSON.parse(fs.readFileSync('/tmp/gate-c-asset-urls.json', 'utf8'));
+            const observations = urls.map((_, index) =>
+              JSON.parse(fs.readFileSync(\`/tmp/gate-c-probes/asset-\${index + 1}.json\`, 'utf8')),
+            );
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-assets.json', JSON.stringify(observations));
+            const verdict = observations.every(
+              (observation) => classifyAnonymousDenialProbe(observation) === 'NOT_FOUND',
+            ) ? 'ALL_NOT_FOUND' : 'PARTIAL_OR_PUBLIC';
+            fs.writeFileSync('/tmp/gate-c-anonymous-asset-verdict.txt', verdict);
+          "
+          echo "verdict=$(cat /tmp/gate-c-anonymous-asset-verdict.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Finalize access-boundary verdict
+        id: access_boundary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
+          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
+          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ inputs.candidate_id }}" \
+            --json databaseId,tagName,targetCommitish,isDraft,isPrerelease,publishedAt,assets \
+            > /tmp/gate-c-final-release.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+
+            const expectedAssets = [
+              process.env.ARTIFACT,
+              process.env.MANIFEST,
+              process.env.EVIDENCE,
+            ];
+            const payload = {
+              authenticatedRelease: JSON.parse(fs.readFileSync('/tmp/gate-c-final-release.json', 'utf8')),
+              anonymousApi: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-api.json', 'utf8')),
+              anonymousWebTag: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-web.json', 'utf8')),
+              anonymousAssets: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-assets.json', 'utf8')),
+              expected: {
+                releaseId: Number(process.env.RELEASE_ID),
+                candidateId: process.env.CANDIDATE_ID,
+                sourceSha: process.env.SOURCE_SHA,
+                assetNames: expectedAssets,
+              },
+            };
+            fs.writeFileSync('/tmp/gate-c-access-boundary-input.json', JSON.stringify(payload));
+          "
+          result="$(node scripts/gate-c-candidate-contract.mjs evaluate-access-boundary \
+            --input /tmp/gate-c-access-boundary-input.json)"
+          printf '%s\n' "$result" > /tmp/gate-c-access-boundary-verdict.json
+          echo "verdict=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).verdict')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_api=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_api')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_web_tag=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_web_tag')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_assets=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_assets')" >> "$GITHUB_OUTPUT"
 
       - name: Publish workflow summary
         run: |
@@ -541,9 +729,16 @@ jobs:
             echo "- candidate_id: \`${{ inputs.candidate_id }}\`"
             echo "- source_commit: \`${{ inputs.expected_source_sha }}\`"
             echo "- source_tree: \`${{ inputs.expected_source_tree }}\`"
+            echo "- release_id: \`${{ steps.release.outputs.release_id }}\`"
+            echo "- draft: \`true\`"
+            echo "- prerelease: \`true\`"
+            echo "- published: \`false\`"
+            echo "- anonymous_api: \`${{ steps.anonymous_api.outputs.classification }}\`"
+            echo "- anonymous_web_tag: \`${{ steps.anonymous_web.outputs.verdict }}\`"
+            echo "- anonymous_assets: \`${{ steps.anonymous_assets.outputs.verdict }}\`"
+            echo "- access_boundary_verdict: \`${{ steps.access_boundary.outputs.verdict }}\`"
             echo "- artifact: \`${{ steps.finalize.outputs.artifact_name }}\`"
             echo "- dmg_sha256: \`${{ steps.finalize.outputs.final_dmg_sha256 }}\`"
             echo "- binary_sha256: \`${{ steps.verify.outputs.binary_sha256 }}\`"
             echo "- codesign: \`${{ steps.verify.outputs.codesign_classification }}\`"
-            echo "- access_boundary: authenticated repository write collaborators only; anonymous denied"
           } >> "$GITHUB_STEP_SUMMARY"
