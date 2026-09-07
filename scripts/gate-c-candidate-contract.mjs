@@ -877,6 +877,37 @@ export function validateExactAssetSet(uploadedNames, expectedNames) {
   return true;
 }
 
+function isHttpsAssetUrl(value) {
+  return typeof value === "string"
+    && value.trim() !== ""
+    && value !== "null"
+    && /^https:\/\//.test(value.trim());
+}
+
+export function anonymousAssetUrlFromGhAsset(asset) {
+  const facts = requireObject(asset, "MISSING_ASSET_URL", "asset must be an object");
+  const candidates = [facts.url, facts.browser_download_url];
+  for (const candidate of candidates) {
+    if (isHttpsAssetUrl(candidate)) {
+      return candidate.trim();
+    }
+  }
+  throw new CandidateStop(
+    "MISSING_ASSET_URL",
+    "asset must provide gh url or REST browser_download_url",
+  );
+}
+
+export function extractAnonymousAssetUrls(assets, expectedNames) {
+  const list = Array.isArray(assets) ? assets : [];
+  const names = list.map((asset) => asset?.name).filter(Boolean);
+  validateExactAssetSet(names, expectedNames);
+  return list
+    .slice()
+    .sort((left, right) => String(left?.name ?? "").localeCompare(String(right?.name ?? "")))
+    .map((asset) => anonymousAssetUrlFromGhAsset(asset));
+}
+
 export function validateAuthenticatedDraftRelease(release, expected) {
   const facts = requireObject(release, "INVALID_RELEASE", "authenticated release must be an object");
   const identity = requireObject(expected, "INVALID_EXPECTED", "expected identity must be an object");
@@ -1153,7 +1184,8 @@ export function validateWorkflowYaml(content, options = {}) {
     [/env -u GH_TOKEN -u GITHUB_TOKEN/m, "anonymous credential isolation"],
     [/releases\/tag\//m, "anonymous Web tag route"],
     [/releases\/tags\//m, "anonymous API tag route"],
-    [/validateExactAssetSet|validate-exact-asset-set/m, "exact asset set validation"],
+    [/validateExactAssetSet|validate-exact-asset-set|extractAnonymousAssetUrls/m, "exact asset set validation"],
+    [/extractAnonymousAssetUrls/m, "gh/REST anonymous asset URL extraction"],
     [/validateAuthenticatedDraftRelease|validate-authenticated-draft/m, "authenticated draft validation"],
     [/aarch64-apple-darwin/m, "aarch64 target"],
     [/NO_STRIP:\s*1|NO_STRIP=1/m, "NO_STRIP build flag"],

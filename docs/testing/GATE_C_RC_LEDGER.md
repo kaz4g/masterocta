@@ -618,10 +618,10 @@ A Gate C Candidate Build was dispatched once for candidate ID
 checksum-manifest generation, draft release creation, candidate evidence
 generation, and asset upload completed. The run then failed in
 `Confirm draft release access boundary` because the workflow treated anonymous
-REST API status `403` as a hard failure while expecting `404`. Asset upload and
-access-boundary confirmation did not complete successfully. No artifact was
-frozen. Provenance is incomplete. This is not an RC4 freeze and must not be
-reclassified as `FROZEN_FAILED`.
+REST API status `403` as a hard failure while expecting `404`. Asset upload
+completed with three orphan assets. Only access-boundary confirmation failed.
+No artifact was frozen. Provenance is incomplete. This is not an RC4 freeze
+and must not be reclassified as `FROZEN_FAILED`.
 
 | Field | Value |
 |---|---|

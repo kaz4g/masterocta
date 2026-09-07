@@ -25,6 +25,7 @@ import {
   containsAbsoluteFilesystemPath,
   discoverDmgPaths,
   evaluateAccessBoundary,
+  extractAnonymousAssetUrls,
   formatRunnerImage,
   sanitizeCodesignCommandResult,
   sanitizeSpctlResult,
@@ -763,6 +764,35 @@ describe("workflow evidence ordering", () => {
       assert.doesNotMatch(block, /(?:^|\s)(?:-L|--location)(?:\s|$)/m);
     }
   });
+
+  it("keeps authenticated draft env in a single block with GH_TOKEN", () => {
+    const block = workflowContent.split(/^      - name: Confirm authenticated draft state/m)[1]
+      ?.split(/^      - name: /m)[0]
+      ?? "";
+    assert.equal((block.match(/^\s+env:/gm) ?? []).length, 1);
+    assert.match(block, /GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/);
+    assert.match(block, /RELEASE_ID: \$\{\{ steps\.release\.outputs\.release_id \}\}/);
+    assert.match(block, /CANDIDATE_ID: \$\{\{ inputs\.candidate_id \}\}/);
+    assert.match(block, /SOURCE_SHA: \$\{\{ inputs\.expected_source_sha \}\}/);
+  });
+
+  it("captures curl exit codes without masking them in anonymous probes", () => {
+    for (const block of workflowContent.split(/^      - name: /m)) {
+      if (!/Probe anonymous/i.test(block)) continue;
+      assert.match(block, /set \+e/);
+      assert.match(block, /_exit=\$\?/);
+      assert.match(block, /set -e/);
+      assert.doesNotMatch(block, /\|\| true/);
+    }
+  });
+
+  it("uses gh CLI asset url for anonymous probes", () => {
+    assert.match(workflowContent, /extractAnonymousAssetUrls/);
+    const block = workflowContent.split(/^      - name: Validate exact uploaded asset set/m)[1]
+      ?.split(/^      - name: /m)[0]
+      ?? "";
+    assert.doesNotMatch(block, /browser_download_url/);
+  });
 });
 
 describe("pre-release evidence validation", () => {
@@ -846,6 +876,18 @@ describe("anonymous HTTP classification", () => {
     );
   });
 
+  it("classifies abuse-limited API 403 as ABUSE_LIMITED", () => {
+    assert.equal(
+      classifyAnonymousHttp({
+        httpStatus: "403",
+        curlExitCode: 0,
+        headers: "",
+        body: "secondary rate limit",
+      }, { channel: "api" }),
+      "ABUSE_LIMITED",
+    );
+  });
+
   it("classifies generic API 403 as FORBIDDEN", () => {
     assert.equal(
       classifyAnonymousHttp({ httpStatus: "403", curlExitCode: 0, headers: "", body: "forbidden" }, { channel: "api" }),
@@ -924,6 +966,51 @@ describe("exact asset set validation", () => {
         expectedAssets[2],
       ], expectedAssets),
       (error) => error instanceof CandidateStop && error.code === "DUPLICATE_ASSET",
+    );
+  });
+
+  it("reads gh CLI url and REST browser_download_url", () => {
+    const ghUrls = expectedAssets
+      .slice()
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => `https://example.test/${name}`);
+    assert.deepEqual(
+      extractAnonymousAssetUrls(
+        expectedAssets.map((name) => ({ name, url: `https://example.test/${name}` })),
+        expectedAssets,
+      ),
+      ghUrls,
+    );
+    const restUrls = expectedAssets
+      .slice()
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => `https://example.test/rest/${name}`);
+    assert.deepEqual(
+      extractAnonymousAssetUrls(
+        expectedAssets.map((name) => ({
+          name,
+          browser_download_url: `https://example.test/rest/${name}`,
+        })),
+        expectedAssets,
+      ),
+      restUrls,
+    );
+  });
+
+  it("stops when gh asset URLs are missing", () => {
+    assert.throws(
+      () => extractAnonymousAssetUrls(
+        expectedAssets.map((name) => ({ name })),
+        expectedAssets,
+      ),
+      (error) => error instanceof CandidateStop && error.code === "MISSING_ASSET_URL",
+    );
+    assert.throws(
+      () => extractAnonymousAssetUrls(
+        expectedAssets.map((name) => ({ name, url: null })),
+        expectedAssets,
+      ),
+      (error) => error instanceof CandidateStop && error.code === "MISSING_ASSET_URL",
     );
   });
 });

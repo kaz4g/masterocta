@@ -415,6 +415,9 @@ jobs:
       - name: Confirm authenticated draft state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_SHA: ${{ inputs.expected_source_sha }}
         run: |
           set -euo pipefail
           gh release view "${{ inputs.candidate_id }}" \
@@ -431,10 +434,6 @@ jobs:
               sourceSha: process.env.SOURCE_SHA,
             });
           "
-        env:
-          RELEASE_ID: ${{ steps.release.outputs.release_id }}
-          CANDIDATE_ID: ${{ inputs.candidate_id }}
-          SOURCE_SHA: ${{ inputs.expected_source_sha }}
 
       - name: Write candidate evidence
         id: evidence
@@ -546,16 +545,11 @@ jobs:
             > /tmp/gate-c-uploaded-assets.json
           node --input-type=module -e "
             import fs from 'node:fs';
-            import { validateExactAssetSet } from './scripts/gate-c-candidate-contract.mjs';
+            import { extractAnonymousAssetUrls } from './scripts/gate-c-candidate-contract.mjs';
 
             const expected = [process.env.ARTIFACT, process.env.MANIFEST, process.env.EVIDENCE];
             const payload = JSON.parse(fs.readFileSync('/tmp/gate-c-uploaded-assets.json', 'utf8'));
-            const uploaded = (payload.assets ?? []).map((asset) => asset.name).sort();
-            validateExactAssetSet(uploaded, expected);
-            const urls = (payload.assets ?? [])
-              .slice()
-              .sort((left, right) => left.name.localeCompare(right.name))
-              .map((asset) => asset.browser_download_url);
+            const urls = extractAnonymousAssetUrls(payload.assets ?? [], expected);
             fs.writeFileSync('/tmp/gate-c-asset-urls.json', JSON.stringify(urls));
           "
           echo "asset_count=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-asset-urls.json\",\"utf8\")).length')" >> "$GITHUB_OUTPUT"
@@ -566,16 +560,15 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/gate-c-probes
           api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${{ inputs.candidate_id }}"
-          api_status="$(
-            env -u GH_TOKEN -u GITHUB_TOKEN curl \
-              -sS --max-redirs 0 \
-              -D /tmp/gate-c-probes/api.headers \
-              -o /tmp/gate-c-probes/api.body \
-              -w '%{http_code}' \
-              "$api_url" \
-              || true
-          )"
-          api_exit="$?"
+          set +e
+          api_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+            -sS --max-redirs 0 \
+            -D /tmp/gate-c-probes/api.headers \
+            -o /tmp/gate-c-probes/api.body \
+            -w '%{http_code}' \
+            "$api_url")"
+          api_exit=$?
+          set -e
           node --input-type=module -e "
             import fs from 'node:fs';
             import {
@@ -600,16 +593,15 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/gate-c-probes
           web_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ inputs.candidate_id }}"
-          web_status="$(
-            env -u GH_TOKEN -u GITHUB_TOKEN curl \
-              -sS --max-redirs 0 \
-              -D /tmp/gate-c-probes/web.headers \
-              -o /tmp/gate-c-probes/web.body \
-              -w '%{http_code}' \
-              "$web_url" \
-              || true
-          )"
-          web_exit="$?"
+          set +e
+          web_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+            -sS --max-redirs 0 \
+            -D /tmp/gate-c-probes/web.headers \
+            -o /tmp/gate-c-probes/web.body \
+            -w '%{http_code}' \
+            "$web_url")"
+          web_exit=$?
+          set -e
           node --input-type=module -e "
             import fs from 'node:fs';
             import { classifyAnonymousDenialProbe } from './scripts/gate-c-candidate-contract.mjs';
@@ -633,17 +625,17 @@ jobs:
           mkdir -p /tmp/gate-c-probes
           asset_index=0
           while IFS= read -r asset_url; do
+            [[ -z "$asset_url" ]] && continue
             asset_index=$((asset_index + 1))
-            asset_status="$(
-              env -u GH_TOKEN -u GITHUB_TOKEN curl \
-                -sS --max-redirs 0 \
-                -D "/tmp/gate-c-probes/asset-${asset_index}.headers" \
-                -o "/tmp/gate-c-probes/asset-${asset_index}.body" \
-                -w '%{http_code}' \
-                "$asset_url" \
-                || true
-            )"
-            asset_exit="$?"
+            set +e
+            asset_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+              -sS --max-redirs 0 \
+              -D "/tmp/gate-c-probes/asset-${asset_index}.headers" \
+              -o "/tmp/gate-c-probes/asset-${asset_index}.body" \
+              -w '%{http_code}' \
+              "$asset_url")"
+            asset_exit=$?
+            set -e
             node --input-type=module -e "
               import fs from 'node:fs';
 
