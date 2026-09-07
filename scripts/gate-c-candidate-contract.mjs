@@ -746,6 +746,353 @@ export function validateUploadCompleteness(uploadedNames, expectedNames) {
   return true;
 }
 
+export const ACCESS_BOUNDARY_PASS = "AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED";
+
+export const ANONYMOUS_API_CLASSIFICATIONS = [
+  "NOT_FOUND",
+  "RATE_LIMITED",
+  "ABUSE_LIMITED",
+  "FORBIDDEN",
+  "PUBLIC_ACCESS_STOP",
+  "PUBLIC_OR_REDIRECT_STOP",
+  "INDETERMINATE_STOP",
+];
+
+export const ANONYMOUS_DENIAL_VERDICTS = [
+  "NOT_FOUND",
+  "PUBLIC_ACCESS_STOP",
+  "PUBLIC_OR_REDIRECT_STOP",
+  "INDETERMINATE_STOP",
+];
+
+function normalizeHttpStatus(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d{3}$/.test(text)) {
+    return "000";
+  }
+  return text;
+}
+
+function normalizeHeaders(value) {
+  return String(value ?? "").toLowerCase();
+}
+
+function normalizeBody(value) {
+  return String(value ?? "").toLowerCase();
+}
+
+function isRateLimited403(headers, body) {
+  if (/x-ratelimit-remaining:\s*0\b/.test(headers)) {
+    return true;
+  }
+  if (/retry-after:/.test(headers)) {
+    return true;
+  }
+  return /rate limit exceeded/.test(body);
+}
+
+function isAbuseLimited403(headers, body) {
+  if (/abuse/.test(body) || /secondary rate limit/.test(body)) {
+    return true;
+  }
+  return /x-ratelimit-resource/.test(headers) && /abuse/.test(body);
+}
+
+export function classifyAnonymousHttp(observation, { channel = "api" } = {}) {
+  const status = normalizeHttpStatus(observation?.httpStatus);
+  const curlExitCode = Number(observation?.curlExitCode ?? 0);
+  const headers = normalizeHeaders(observation?.headers);
+  const body = normalizeBody(observation?.body);
+
+  if (curlExitCode !== 0 || status === "000") {
+    return "INDETERMINATE_STOP";
+  }
+  if (status === "404") {
+    return "NOT_FOUND";
+  }
+  if (status === "200" || status === "206") {
+    return "PUBLIC_ACCESS_STOP";
+  }
+  if (/^[23]/.test(status) && status !== "404") {
+    return "PUBLIC_OR_REDIRECT_STOP";
+  }
+  if (status === "401") {
+    return "INDETERMINATE_STOP";
+  }
+  if (/^5/.test(status)) {
+    return "INDETERMINATE_STOP";
+  }
+  if (status === "403") {
+    if (channel === "api") {
+      if (isRateLimited403(headers, body)) {
+        return "RATE_LIMITED";
+      }
+      if (isAbuseLimited403(headers, body)) {
+        return "ABUSE_LIMITED";
+      }
+      return "FORBIDDEN";
+    }
+    return "INDETERMINATE_STOP";
+  }
+  return "INDETERMINATE_STOP";
+}
+
+export function classifyAnonymousDenialProbe(observation) {
+  const classification = classifyAnonymousHttp(observation, { channel: "denial" });
+  if (classification === "NOT_FOUND") {
+    return "NOT_FOUND";
+  }
+  if (classification === "PUBLIC_ACCESS_STOP") {
+    return "PUBLIC_ACCESS_STOP";
+  }
+  if (classification === "PUBLIC_OR_REDIRECT_STOP") {
+    return "PUBLIC_OR_REDIRECT_STOP";
+  }
+  return "INDETERMINATE_STOP";
+}
+
+export function validateExactAssetSet(uploadedNames, expectedNames) {
+  validateUploadCompleteness(uploadedNames, expectedNames);
+  const expected = new Set(expectedNames);
+  const unexpected = uploadedNames.filter((name) => !expected.has(name));
+  if (unexpected.length > 0) {
+    throw new CandidateStop(
+      "UNEXPECTED_ASSET",
+      `unexpected uploaded assets: ${unexpected.join(", ")}`,
+    );
+  }
+  const seen = new Set();
+  for (const name of uploadedNames) {
+    if (seen.has(name)) {
+      throw new CandidateStop("DUPLICATE_ASSET", `duplicate uploaded asset: ${name}`);
+    }
+    seen.add(name);
+  }
+  if (uploadedNames.length !== expectedNames.length) {
+    throw new CandidateStop(
+      "ASSET_SET_MISMATCH",
+      "uploaded asset count does not match expected count",
+    );
+  }
+  return true;
+}
+
+function isHttpsAssetUrl(value) {
+  return typeof value === "string"
+    && value.trim() !== ""
+    && value !== "null"
+    && /^https:\/\//.test(value.trim());
+}
+
+export function anonymousAssetUrlFromGhAsset(asset) {
+  const facts = requireObject(asset, "MISSING_ASSET_URL", "asset must be an object");
+  const candidates = [facts.url, facts.browser_download_url];
+  for (const candidate of candidates) {
+    if (isHttpsAssetUrl(candidate)) {
+      return candidate.trim();
+    }
+  }
+  throw new CandidateStop(
+    "MISSING_ASSET_URL",
+    "asset must provide gh url or REST browser_download_url",
+  );
+}
+
+export function extractAnonymousAssetUrls(assets, expectedNames) {
+  const list = Array.isArray(assets) ? assets : [];
+  const names = list.map((asset) => asset?.name).filter(Boolean);
+  validateExactAssetSet(names, expectedNames);
+  return list
+    .slice()
+    .sort((left, right) => String(left?.name ?? "").localeCompare(String(right?.name ?? "")))
+    .map((asset) => anonymousAssetUrlFromGhAsset(asset));
+}
+
+export function validateAuthenticatedDraftRelease(release, expected) {
+  const facts = requireObject(release, "INVALID_RELEASE", "authenticated release must be an object");
+  const identity = requireObject(expected, "INVALID_EXPECTED", "expected identity must be an object");
+
+  validateDraftReleaseId(Number(facts.id ?? facts.databaseId));
+  const releaseId = Number(facts.id ?? facts.databaseId);
+  const expectedReleaseId = Number(identity.releaseId);
+  if (releaseId !== expectedReleaseId) {
+    throw new CandidateStop("RELEASE_ID_MISMATCH", "release ID mismatch");
+  }
+
+  const tagName = rejectPlaceholderIdentity(
+    facts.tag_name ?? facts.tagName,
+    "TAG_MISMATCH",
+    "tag_name",
+  );
+  if (tagName !== identity.candidateId) {
+    throw new CandidateStop("TAG_MISMATCH", "release tag mismatch");
+  }
+
+  const targetCommitish = rejectPlaceholderIdentity(
+    facts.target_commitish ?? facts.targetCommitish,
+    "TARGET_MISMATCH",
+    "target_commitish",
+  );
+  if (targetCommitish !== identity.sourceSha) {
+    throw new CandidateStop("TARGET_MISMATCH", "target commit mismatch");
+  }
+
+  if (facts.draft !== true && facts.isDraft !== true) {
+    throw new CandidateStop("DRAFT_MISMATCH", "release must remain draft");
+  }
+  if (facts.prerelease !== true && facts.isPrerelease !== true) {
+    throw new CandidateStop("PRERELEASE_MISMATCH", "release must remain prerelease");
+  }
+  const publishedAt = facts.published_at ?? facts.publishedAt ?? null;
+  if (publishedAt !== null && publishedAt !== undefined && String(publishedAt).trim() !== "") {
+    throw new CandidateStop("PUBLISHED_MISMATCH", "release must remain unpublished");
+  }
+
+  const assets = Array.isArray(facts.assets) ? facts.assets : [];
+  const assetNames = assets.map((asset) => asset?.name).filter(Boolean);
+  if (Array.isArray(identity.assetNames) && identity.assetNames.length > 0) {
+    validateExactAssetSet(assetNames, identity.assetNames);
+  }
+
+  return {
+    releaseId,
+    tagName,
+    targetCommitish,
+    draft: true,
+    prerelease: true,
+    publishedAt: null,
+    assetNames,
+    assets,
+  };
+}
+
+function assertAnonymousClassificationStop(classification, label) {
+  if (classification === "PUBLIC_ACCESS_STOP") {
+    throw new CandidateStop("PUBLIC_ACCESS_STOP", `${label} must not be publicly accessible`);
+  }
+  if (classification === "PUBLIC_OR_REDIRECT_STOP") {
+    throw new CandidateStop(
+      "PUBLIC_OR_REDIRECT_STOP",
+      `${label} must not redirect to public access`,
+    );
+  }
+  if (classification === "INDETERMINATE_STOP") {
+    throw new CandidateStop("INDETERMINATE_STOP", `${label} probe was indeterminate`);
+  }
+}
+
+export function evaluateAccessBoundary(input) {
+  const payload = requireObject(input, "INVALID_INPUT", "access boundary input must be an object");
+  const expected = requireObject(
+    payload.expected,
+    "INVALID_EXPECTED",
+    "expected candidate identity must be an object",
+  );
+
+  const authenticated = validateAuthenticatedDraftRelease(
+    payload.authenticatedRelease,
+    expected,
+  );
+
+  const apiClassification = classifyAnonymousHttp(payload.anonymousApi, { channel: "api" });
+  assertAnonymousClassificationStop(apiClassification, "anonymous API");
+
+  const webClassification = classifyAnonymousDenialProbe(payload.anonymousWebTag);
+  if (webClassification !== "NOT_FOUND") {
+    assertAnonymousClassificationStop(webClassification, "anonymous Web tag");
+  }
+
+  const assetObservations = Array.isArray(payload.anonymousAssets)
+    ? payload.anonymousAssets
+    : [];
+  if (!Array.isArray(expected.assetNames) || expected.assetNames.length === 0) {
+    throw new CandidateStop("ASSET_SET_MISMATCH", "expected asset names are required");
+  }
+  if (assetObservations.length !== expected.assetNames.length) {
+    throw new CandidateStop(
+      "ASSET_SET_MISMATCH",
+      "anonymous asset probe count does not match expected asset count",
+    );
+  }
+
+  for (const observation of assetObservations) {
+    const assetClassification = classifyAnonymousDenialProbe(observation);
+    if (assetClassification !== "NOT_FOUND") {
+      assertAnonymousClassificationStop(assetClassification, "anonymous asset URL");
+    }
+  }
+
+  const assetVerdict = assetObservations.every(
+    (observation) => classifyAnonymousDenialProbe(observation) === "NOT_FOUND",
+  )
+    ? "ALL_NOT_FOUND"
+    : "PARTIAL_OR_PUBLIC";
+
+  if (assetVerdict !== "ALL_NOT_FOUND") {
+    throw new CandidateStop("PUBLIC_ACCESS_STOP", "anonymous asset URLs must all be denied");
+  }
+
+  return {
+    verdict: ACCESS_BOUNDARY_PASS,
+    diagnostic: {
+      anonymous_api: apiClassification,
+      anonymous_web_tag: "NOT_FOUND",
+      anonymous_assets: assetVerdict,
+      draft_release_id: authenticated.releaseId,
+      draft: true,
+      prerelease: true,
+      published: false,
+    },
+  };
+}
+
+export function assertAnonymousProbeIsolation({ env = {}, argv = [], summary = "" } = {}) {
+  const envText = JSON.stringify(env);
+  const argvText = Array.isArray(argv) ? argv.join(" ") : String(argv ?? "");
+  const summaryText = String(summary ?? "");
+
+  if (/GH_TOKEN|GITHUB_TOKEN/.test(envText)) {
+    throw new CandidateStop("CREDENTIAL_LEAK", "anonymous probe must not receive GH tokens");
+  }
+  if (/\bAuthorization\b/i.test(argvText)) {
+    throw new CandidateStop("CREDENTIAL_LEAK", "anonymous probe must not set Authorization");
+  }
+  if (/(?:^|\s)(?:-L|--location)(?:\s|$)/.test(argvText)) {
+    throw new CandidateStop("REDIRECT_LEAK", "anonymous probe must not follow redirects");
+  }
+  if (/gh[pousr]_[A-Za-z0-9_]+/.test(summaryText)) {
+    throw new CandidateStop("SECRET_LEAK", "summary must not contain tokens");
+  }
+  if (/\/Users\/[^/"\\]+/.test(summaryText) || /\/home\/[^/"\\]+/.test(summaryText)) {
+    throw new CandidateStop("PATH_LEAK", "summary must not contain absolute paths");
+  }
+  if (/\bbrowser_download_url\b/i.test(summaryText)) {
+    throw new CandidateStop("URL_LEAK", "summary must not contain private download URLs");
+  }
+  return true;
+}
+
+export function assertWorkflowAnonymousProbeIsolation(workflowContent) {
+  const anonymousBlocks = workflowContent.split(/^      - name: /m).filter((block) =>
+    /Probe anonymous|anonymous API|anonymous Web tag|anonymous asset/i.test(block),
+  );
+  for (const block of anonymousBlocks) {
+    if (!/env -u GH_TOKEN -u GITHUB_TOKEN/.test(block)) {
+      throw new CandidateStop(
+        "CREDENTIAL_LEAK",
+        "anonymous probe steps must unset GH_TOKEN and GITHUB_TOKEN",
+      );
+    }
+    if (/(?:^|\s)(?:-L|--location)(?:\s|$)/m.test(block)) {
+      throw new CandidateStop("REDIRECT_LEAK", "anonymous probe steps must not follow redirects");
+    }
+    if (/\bAuthorization\b/.test(block)) {
+      throw new CandidateStop("CREDENTIAL_LEAK", "anonymous probe steps must not set Authorization");
+    }
+  }
+  return true;
+}
+
 function stripYamlInlineComment(line) {
   const hash = line.indexOf("#");
   return hash === -1 ? line : line.slice(0, hash);
@@ -827,7 +1174,19 @@ export function validateWorkflowYaml(content, options = {}) {
     [/prerelease:\s*true|--prerelease/m, "prerelease release"],
     [/make_latest:\s*false/m, "make_latest false"],
     [/gate-c-candidate-contract\.mjs/m, "contract script usage"],
-    [/anonymous|without authentication|curl[^\n]*releases\/tags/m, "anonymous access denial check"],
+    [/Confirm authenticated draft state/m, "authenticated draft confirmation"],
+    [/Validate exact uploaded asset set/m, "exact uploaded asset validation"],
+    [/Probe anonymous API/m, "anonymous API probe"],
+    [/Probe anonymous Web tag/m, "anonymous Web tag probe"],
+    [/Probe all anonymous asset URLs/m, "anonymous asset URL probes"],
+    [/Finalize access-boundary verdict/m, "access-boundary verdict"],
+    [/evaluateAccessBoundary|evaluate-access-boundary/m, "access-boundary evaluator"],
+    [/env -u GH_TOKEN -u GITHUB_TOKEN/m, "anonymous credential isolation"],
+    [/releases\/tag\//m, "anonymous Web tag route"],
+    [/releases\/tags\//m, "anonymous API tag route"],
+    [/validateExactAssetSet|validate-exact-asset-set|extractAnonymousAssetUrls/m, "exact asset set validation"],
+    [/extractAnonymousAssetUrls/m, "gh/REST anonymous asset URL extraction"],
+    [/validateAuthenticatedDraftRelease|validate-authenticated-draft/m, "authenticated draft validation"],
     [/aarch64-apple-darwin/m, "aarch64 target"],
     [/NO_STRIP:\s*1|NO_STRIP=1/m, "NO_STRIP build flag"],
     [/select-unique/m, "portable unique-path discovery"],
@@ -867,6 +1226,7 @@ export function validateWorkflowYaml(content, options = {}) {
   if (failures.length > 0) {
     throw new CandidateStop("WORKFLOW_CONTRACT", failures.join("; "));
   }
+  assertWorkflowAnonymousProbeIsolation(content);
   return true;
 }
 
@@ -880,6 +1240,9 @@ function usage() {
   node scripts/gate-c-candidate-contract.mjs write-evidence --payload FILE --output FILE
   node scripts/gate-c-candidate-contract.mjs validate-evidence --file FILE
   node scripts/gate-c-candidate-contract.mjs validate-prerelease-evidence --file FILE
+  node scripts/gate-c-candidate-contract.mjs validate-authenticated-draft --release FILE --expected FILE
+  node scripts/gate-c-candidate-contract.mjs validate-exact-asset-set --uploaded FILE --expected FILE
+  node scripts/gate-c-candidate-contract.mjs evaluate-access-boundary --input FILE
   node scripts/gate-c-candidate-contract.mjs select-unique --root DIR --suffix .dmg|.app [--max-depth N] [--path-contains TEXT]
 `;
 }
@@ -992,6 +1355,38 @@ function runCli(argv) {
     if (!filePath) throw new CandidateStop("USAGE", usage());
     validatePreReleaseEvidence(JSON.parse(readFileSync(filePath, "utf8")));
     process.stdout.write("pre-release evidence contract PASS\n");
+    return 0;
+  }
+
+  if (command === "validate-authenticated-draft") {
+    const releasePath = takeOption(args, "--release");
+    const expectedPath = takeOption(args, "--expected");
+    if (!releasePath || !expectedPath) throw new CandidateStop("USAGE", usage());
+    validateAuthenticatedDraftRelease(
+      JSON.parse(readFileSync(releasePath, "utf8")),
+      JSON.parse(readFileSync(expectedPath, "utf8")),
+    );
+    process.stdout.write("authenticated draft contract PASS\n");
+    return 0;
+  }
+
+  if (command === "validate-exact-asset-set") {
+    const uploadedPath = takeOption(args, "--uploaded");
+    const expectedPath = takeOption(args, "--expected");
+    if (!uploadedPath || !expectedPath) throw new CandidateStop("USAGE", usage());
+    validateExactAssetSet(
+      JSON.parse(readFileSync(uploadedPath, "utf8")),
+      JSON.parse(readFileSync(expectedPath, "utf8")),
+    );
+    process.stdout.write("exact asset set contract PASS\n");
+    return 0;
+  }
+
+  if (command === "evaluate-access-boundary") {
+    const inputPath = takeOption(args, "--input");
+    if (!inputPath) throw new CandidateStop("USAGE", usage());
+    const result = evaluateAccessBoundary(JSON.parse(readFileSync(inputPath, "utf8")));
+    process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
 

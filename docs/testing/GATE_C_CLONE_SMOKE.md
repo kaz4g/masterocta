@@ -86,15 +86,22 @@ RC2 attempt 34016038137 FAILURE recorded
 → main CI success confirmation
 → RC4 source commit/tree fixed by a new preflight on the new main tip
 → Gate C Candidate Build dispatched once as gate-c-rc4-<12hex>
+→ RC4 attempt 34068535069 FAILURE recorded
+  (gate-c-rc4-d324a1e6a05b retired; rerun forbidden;
+   orphan draft 383761286 assets=3; do not delete or publish)
+→ access-boundary proof fix merge
+→ main CI success confirmation
+→ RC5 source commit/tree fixed by a new preflight on the new main tip
+→ Gate C Candidate Build dispatched once as gate-c-rc5-<12hex>
 → draft candidate retrieved and SHA256 re-verified locally
 → provenance / access boundary confirmed
 → docs-only freeze ledger PR merged
 → Human Gate C on that frozen candidate using this checklist
 ```
 
-Do not reuse the RC2 or RC3 run, their candidate IDs, or any in-progress DMG as
-later candidate evidence. RC4 dispatch is also one-shot. Do not pre-fix an RC4
-source SHA. A successful workflow run alone does not freeze the candidate.
+Do not reuse the RC2, RC3, or RC4 run, their candidate IDs, or any in-progress
+DMG as later candidate evidence. RC5 dispatch is also one-shot. Do not pre-fix
+an RC5 source SHA. A successful workflow run alone does not freeze the candidate.
 Human Gate C starts only after the freeze ledger merge.
 
 ## Byte-manifest commands
