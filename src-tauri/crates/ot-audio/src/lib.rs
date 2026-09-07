@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod pcm;
+
 use ot_domain::ContentHash;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -368,6 +370,10 @@ impl DecoderState {
 
 fn open_decoder(file: File, path: &Path) -> Result<DecoderState, AudioError> {
     let stream = MediaSourceStream::new(Box::new(file), Default::default());
+    open_decoder_stream(stream, path)
+}
+
+fn open_decoder_stream(stream: MediaSourceStream, path: &Path) -> Result<DecoderState, AudioError> {
     let mut hint = Hint::new();
     if let Some(extension) = path.extension().and_then(|value| value.to_str()) {
         hint.with_extension(extension);
