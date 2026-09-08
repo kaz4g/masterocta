@@ -43,17 +43,18 @@ mean all macOS dotfiles are ignored.
 - Human Gate C uses the frozen RC6 candidate recorded in
   `GATE_C_RC_LEDGER.md`. Install or launch from that verified DMG only.
 - Human Gate C may start only after the RC6 docs-only freeze ledger merges to
-  `main`. RC5 is a historical frozen candidate only; current-main Human Gate C
-  on RC5 is **FORBIDDEN**.
-- Use the RC6 candidate bytes retrieved from private candidate storage after RC6
-  freeze. Do not record local absolute paths for that storage in repository
-  evidence.
+  `main`. Until that merge, RC6 is not formally frozen on `main`. RC5 is a
+  historical frozen candidate only; current-main Human Gate C on RC5 is
+  **FORBIDDEN**.
+- Use the RC6 candidate bytes retrieved from private candidate storage. Do not
+  record local absolute paths for that storage in repository evidence.
 - Do not rebuild the application from source for this smoke, even from the
   frozen commit. Rebuilding from the recorded commit is **STOP**.
 - Confirm the launched executable SHA256 matches the recorded inner app binary
-  SHA256 of the frozen RC6 candidate. Until RC6 freeze, that value is `UNSET`.
-- Do not use the RC5 DMG or RC5 inner binary SHA256 for current-main Human
-  Gate C.
+  SHA256:
+  `sha256:6d50961f080d9f9a1522ec5c6b90639dc608c950d0e636a78300227699d61088`.
+- Do not use the RC5 DMG, the RC5 inner binary SHA256, or a later-main build
+  for current-main Human Gate C.
 - Use the frozen candidate produced by **`Gate C Candidate Build`**
   (`.github/workflows/gate-c-candidate.yml`). Do **not** use
   `.github/workflows/rc-release.yml` for Gate C candidates.
@@ -107,20 +108,44 @@ RC2 attempt 34016038137 FAILURE recorded
 → draft candidate retrieved and SHA256 re-verified locally PASS
 → provenance / access boundary confirmed PASS
 → docs-only freeze ledger PR merged (#106 / 87a46b9)
-→ P2 correction PR
+→ P2 correction PR merged
 → review + CI
-→ merge
 → merge SHA main CI success
 → open PR を 0 件にする
-  (#103 / #104 は branch を残して一時 close。M5 完了後に reopen/rebase)
+  (#103 / #104 / #105 は branch を残して一時 close。M5 完了後に reopen/rebase)
 → RC6 source commit/tree fixed by operator preflight on the new main tip
-→ Gate C Candidate Build dispatched once as gate-c-rc6-<12hex>
+  3485118e9a19413eae9a3203338d0b361660a902 /
+  498da55fa04aead01ed13161379d84d8e734beac
+→ Gate C Candidate Build dispatched once as gate-c-rc6-3485118e9a19
+→ RC6 attempt 34182724485 SUCCESS recorded
 → draft candidate retrieved and SHA256 re-verified locally PASS
 → provenance / access boundary confirmed PASS
 → RC6 freeze ledger PR merged
 → Human Gate C on frozen RC6 using this checklist
 → M5 closure PR
 ```
+
+Frozen RC6 candidate coordinates for Human Gate C:
+
+| Field | Value |
+|---|---|
+| candidate_id | `gate-c-rc6-3485118e9a19` |
+| source commit | `3485118e9a19413eae9a3203338d0b361660a902` |
+| source tree | `498da55fa04aead01ed13161379d84d8e734beac` |
+| workflow run ID | `34182724485` |
+| draft release ID | `384424635` |
+| artifact filename | `Masta-Octa_0.1.0_gate-c-rc6_3485118e9a19_aarch64.dmg` |
+| DMG SHA256 | `sha256:b87197976619ba0dce8b2d167a36e2a1ef9a4ee79275a6174328f61b98c701fb` |
+| checksum manifest SHA256 | `sha256:b0b70770b0be51c9a050f462357daa7c89438e9f7d68270efe0e39c133072bed` |
+| candidate evidence SHA256 | `sha256:650d531ccf003191709f63d5c5f5b916b9a6435da86f4a9bd6300977a709537a` |
+| inner app binary SHA256 | `sha256:6d50961f080d9f9a1522ec5c6b90639dc608c950d0e636a78300227699d61088` |
+| access boundary verdict | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
+| public distribution | `NOT AUTHORIZED` |
+
+RC6 is the only candidate authorized for current-main Human Gate C after this
+freeze ledger merges to `main`. Do not rebuild the RC6 DMG from source. Do not
+substitute the historical RC5 DMG or a later-main build. Human Gate C starts
+only after the RC6 freeze ledger merge.
 
 Historical RC5 candidate coordinates (not for current-main Human Gate C):
 
@@ -140,17 +165,14 @@ Historical RC5 candidate coordinates (not for current-main Human Gate C):
 | public distribution | `NOT AUTHORIZED` |
 
 RC5 is a historical frozen candidate only. Current-main Human Gate C on RC5 is
-**FORBIDDEN**. Current `main` advanced through Auto Slice merge
-`827c7c5252f8ac8daf484b372202315845fdaf31` and RC5 ledger merge
-`87a46b9d249503232f7b5fb92ebe7b50333614b1`. Do not substitute the RC5 DMG, a
-later-main build, or any RC5 bytes for current-main Human Gate C. RC6 is
-required before Human Gate C may start.
+**FORBIDDEN**. Do not substitute the RC5 DMG, a later-main build, or any RC5
+bytes for current-main Human Gate C.
 
-Do not reuse the RC2, RC3, or RC4 run, their candidate IDs, or any in-progress
-DMG as later candidate evidence. RC5 dispatch is one-shot. Do not rerun run
-`34077117176`, redispatch `gate-c-rc5-7b5b740d1db1`, or create RC6 without a
-new operator sequence. A successful workflow run alone does not freeze the
-candidate. Human Gate C starts only after the RC6 freeze ledger merge.
+Do not reuse the RC2, RC3, RC4, or RC5 run, their candidate IDs, or any
+in-progress DMG as later candidate evidence. RC6 dispatch is one-shot. Do not
+rerun run `34182724485`, redispatch `gate-c-rc6-3485118e9a19`, or reopen
+pull requests #103, #104, or #105. A successful workflow run alone does not freeze
+the candidate. Human Gate C starts only after the RC6 freeze ledger merge.
 
 ## Byte-manifest commands
 
@@ -239,8 +261,9 @@ shasum -a 256 \
    `masterocta-gate-c-byte-manifest:v1`, and no `.partial` file remains.
 5. Verify the frozen RC6 DMG (`hdiutil verify` must succeed), record the
    codesign/`spctl` outcome, install or launch from that DMG, and confirm the
-   launched executable SHA256 matches the recorded inner app binary SHA256 of
-   that RC6 candidate. Using the RC5 DMG or RC5 inner binary SHA256 is **STOP**.
+   launched executable SHA256 matches
+   `sha256:6d50961f080d9f9a1522ec5c6b90639dc608c950d0e636a78300227699d61088`.
+   Using the RC5 DMG, RC5 inner binary SHA256, or a later-main build is **STOP**.
    Rebuilding from the recorded commit is STOP.
 6. Register the disposable clone read-only and confirm baseline catalog scan
    shows the intended source sample as `Resolved` with zero blocking
