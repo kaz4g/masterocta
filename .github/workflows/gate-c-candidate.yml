@@ -1,0 +1,736 @@
+name: Gate C Candidate Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_id:
+        description: "Immutable candidate ID (gate-c-rcN-<12hex>)"
+        required: true
+        type: string
+      expected_source_sha:
+        description: "Full 40-char main commit SHA to build"
+        required: true
+        type: string
+      expected_source_tree:
+        description: "Full 40-char tree SHA for expected_source_sha"
+        required: true
+        type: string
+      confirmation:
+        description: "Type FREEZE_NON_PUBLIC_GATE_C_CANDIDATE to authorize"
+        required: true
+        type: string
+
+concurrency:
+  group: gate-c-candidate-${{ inputs.candidate_id }}
+  cancel-in-progress: false
+
+# Candidate releases intentionally keep make_latest: false via draft/prerelease policy.
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  NO_STRIP: 1
+
+jobs:
+  gate-c-candidate:
+    name: Gate C Candidate Build
+    runs-on: macos-latest
+
+    steps:
+      - name: Validate dispatch ref and attempt
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref }}" != "refs/heads/main" ]]; then
+            echo "STOP: workflow must run on refs/heads/main"
+            exit 1
+          fi
+          if [[ "${{ github.run_attempt }}" != "1" ]]; then
+            echo "STOP: run_attempt must be 1"
+            exit 1
+          fi
+          if [[ "${{ inputs.confirmation }}" != "FREEZE_NON_PUBLIC_GATE_C_CANDIDATE" ]]; then
+            echo "STOP: confirmation phrase mismatch"
+            exit 1
+          fi
+
+      - name: Checkout frozen source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.expected_source_sha }}
+          fetch-depth: 1
+
+      - name: Validate candidate inputs and workflow contract
+        env:
+          INPUTS_JSON: ${{ toJson(inputs) }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          import fs from "node:fs";
+          import { validateWorkflowInputs, validateWorkflowYaml } from "./scripts/gate-c-candidate-contract.mjs";
+
+          const payload = {
+            ...JSON.parse(process.env.INPUTS_JSON),
+            github_ref: process.env.GITHUB_REF,
+            github_sha: process.env.GITHUB_SHA,
+            run_attempt: Number(process.env.GITHUB_RUN_ATTEMPT),
+          };
+          fs.writeFileSync("/tmp/gate-c-inputs.json", JSON.stringify(payload));
+          validateWorkflowInputs(payload);
+          validateWorkflowYaml(
+            fs.readFileSync(".github/workflows/gate-c-candidate.yml", "utf8"),
+          );
+          NODE
+
+      - name: Record checkout identity
+        id: source
+        run: |
+          set -euo pipefail
+          checkout_sha="$(git rev-parse HEAD)"
+          checkout_tree="$(git rev-parse 'HEAD^{tree}')"
+          if [[ "$checkout_sha" != "${{ inputs.expected_source_sha }}" ]]; then
+            echo "STOP: checkout SHA mismatch"
+            exit 1
+          fi
+          if [[ "$checkout_tree" != "${{ inputs.expected_source_tree }}" ]]; then
+            echo "STOP: checkout tree mismatch"
+            exit 1
+          fi
+          echo "checkout_sha=$checkout_sha" >> "$GITHUB_OUTPUT"
+          echo "checkout_tree=$checkout_tree" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm required CI success for source SHA
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${{ inputs.expected_source_sha }}&per_page=5")"
+          echo "$runs" | node -e '
+            const payload = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const match = (payload.workflow_runs ?? []).find((run) => run.name === "CI");
+            if (!match) {
+              console.error("STOP: no CI run found for source SHA");
+              process.exit(1);
+            }
+            if (match.status !== "completed") {
+              console.error("STOP: CI run not completed");
+              process.exit(1);
+            }
+            if (match.conclusion !== "success") {
+              console.error("STOP: CI run not successful");
+              process.exit(1);
+            }
+            console.log(`Required CI run ${match.id} ${match.status}/${match.conclusion}`);
+          '
+
+      - name: Reject open main pull requests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          open_count="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open --json number --jq 'length')"
+          if [[ "$open_count" != "0" ]]; then
+            echo "STOP: open pull requests remain on main"
+            exit 1
+          fi
+
+      - name: Reject existing candidate tag or release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.candidate_id }}"
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+            echo "STOP: candidate tag already exists"
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "STOP: candidate release already exists"
+            exit 1
+          fi
+
+      - name: Capture pre-build tree status
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "STOP: working tree dirty before build"
+            git status --short
+            exit 1
+          fi
+
+      - name: Install pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          runtime: node@22
+          install: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin
+
+      - name: Verify Apple Silicon runner
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "STOP: Gate C candidate build requires arm64 runner"
+            exit 1
+          fi
+
+      - name: Record toolchain versions
+        id: toolchain
+        run: |
+          set -euo pipefail
+          echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+          echo "pnpm=$(pnpm --version)" >> "$GITHUB_OUTPUT"
+          echo "rust=$(rustc --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "cargo=$(cargo --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "xcode=$(xcodebuild -version | head -n 1 | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          runner_image="$(node scripts/gate-c-candidate-contract.mjs format-runner-image \
+            --image-os "${ImageOS:-}" \
+            --image-version "${ImageVersion:-}")"
+          echo "runner_image=$runner_image" >> "$GITHUB_OUTPUT"
+
+      - name: Install frontend dependencies
+        run: pnpm --filter masterocta install --frozen-lockfile
+
+      - name: Build Gate C candidate bundle
+        run: pnpm exec tauri build --target aarch64-apple-darwin -- --locked
+
+      - name: Capture post-build tree status
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "STOP: working tree dirty after build"
+            git status --short
+            exit 1
+          fi
+
+      - name: Discover final DMG
+        id: dmg
+        run: |
+          set -euo pipefail
+          dmg_path="$(node scripts/gate-c-candidate-contract.mjs select-unique \
+            --root src-tauri/target \
+            --suffix .dmg \
+            --path-contains aarch64-apple-darwin)"
+          echo "source_dmg=$dmg_path" >> "$GITHUB_OUTPUT"
+
+      - name: Verify DMG and enclosed binary
+        id: verify
+        run: |
+          set -euo pipefail
+          source_dmg="${{ steps.dmg.outputs.source_dmg }}"
+          hdiutil verify "$source_dmg"
+          mount_dir="$(mktemp -d)"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" "$source_dmg"
+          cleanup() {
+            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+            rm -rf "$mount_dir"
+          }
+          trap cleanup EXIT
+          app_path="$(node scripts/gate-c-candidate-contract.mjs select-unique \
+            --root "$mount_dir" \
+            --suffix .app \
+            --max-depth 1)"
+          binary_path="$app_path/Contents/MacOS/masterocta"
+          if [[ ! -f "$binary_path" ]]; then
+            echo "STOP: enclosed masterocta binary missing"
+            exit 1
+          fi
+          dmg_sha256="sha256:$(shasum -a 256 "$source_dmg" | awk '{print $1}')"
+          binary_sha256="sha256:$(shasum -a 256 "$binary_path" | awk '{print $1}')"
+          binary_relative="${app_path#$mount_dir/}/Contents/MacOS/masterocta"
+          echo "dmg_sha256=$dmg_sha256" >> "$GITHUB_OUTPUT"
+          echo "binary_sha256=$binary_sha256" >> "$GITHUB_OUTPUT"
+          echo "binary_relative=$binary_relative" >> "$GITHUB_OUTPUT"
+          codesign --verify --deep --strict --verbose=2 "$app_path" 2> /tmp/codesign-verify.txt || true
+          codesign -dv --verbose=4 "$app_path" 2> /tmp/codesign-display.txt || true
+          spctl --assess --type execute --verbose=4 "$app_path" 2> /tmp/spctl.txt || true
+          node scripts/gate-c-candidate-contract.mjs sanitize-verification \
+            --verify /tmp/codesign-verify.txt \
+            --display /tmp/codesign-display.txt \
+            --spctl /tmp/spctl.txt \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Finalize candidate filename and re-hash
+        id: finalize
+        run: |
+          set -euo pipefail
+          version="$(node -pe 'JSON.parse(require("fs").readFileSync("src-tauri/tauri.conf.json","utf8")).version')"
+          artifact_name="$(node --input-type=module -e "
+            import { artifactFilenameFor } from './scripts/gate-c-candidate-contract.mjs';
+            process.stdout.write(artifactFilenameFor(
+              process.argv[1],
+              process.argv[2],
+              process.argv[3],
+            ));
+          " "${{ inputs.candidate_id }}" "${{ inputs.expected_source_sha }}" "$version")"
+          work_dir="$(mktemp -d)"
+          cp "${{ steps.dmg.outputs.source_dmg }}" "$work_dir/$artifact_name"
+          before_dmg="${{ steps.verify.outputs.dmg_sha256 }}"
+          after_dmg="sha256:$(shasum -a 256 "$work_dir/$artifact_name" | awk '{print $1}')"
+          node --input-type=module -e "
+            import { assertHashUnchanged } from './scripts/gate-c-candidate-contract.mjs';
+            assertHashUnchanged(process.argv[1], process.argv[2], 'final DMG');
+          " "$before_dmg" "$after_dmg"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_path=$work_dir/$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "final_dmg_sha256=$after_dmg" >> "$GITHUB_OUTPUT"
+          echo "work_dir=$work_dir" >> "$GITHUB_OUTPUT"
+
+      - name: Write checksum manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          node --input-type=module -e "
+            import { createHash } from 'node:crypto';
+            import fsSync from 'node:fs';
+            import {
+              buildChecksumManifest,
+              checksumManifestFilename,
+              serializeDeterministicJson,
+            } from './scripts/gate-c-candidate-contract.mjs';
+
+            const candidateId = process.env.CANDIDATE_ID;
+            const manifest = buildChecksumManifest({
+              candidateId,
+              artifactFilename: process.env.ARTIFACT_NAME,
+              dmgSha256: process.env.DMG_SHA256,
+              enclosedBinaryRelativePath: process.env.BINARY_RELATIVE,
+              enclosedBinarySha256: process.env.BINARY_SHA256,
+            });
+            const manifestPath = \`\${process.env.WORK_DIR}/\${checksumManifestFilename(candidateId)}\`;
+            fsSync.writeFileSync(manifestPath, serializeDeterministicJson(manifest));
+            const digest = createHash('sha256').update(fsSync.readFileSync(manifestPath)).digest('hex');
+            fsSync.writeFileSync('/tmp/checksum-manifest-sha256.txt', \`sha256:\${digest}\`);
+          "
+          echo "manifest_path=${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-checksum-manifest.json" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha256=$(cat /tmp/checksum-manifest-sha256.txt)" >> "$GITHUB_OUTPUT"
+        env:
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          ARTIFACT_NAME: ${{ steps.finalize.outputs.artifact_name }}
+          DMG_SHA256: ${{ steps.finalize.outputs.final_dmg_sha256 }}
+          BINARY_RELATIVE: ${{ steps.verify.outputs.binary_relative }}
+          BINARY_SHA256: ${{ steps.verify.outputs.binary_sha256 }}
+          WORK_DIR: ${{ steps.finalize.outputs.work_dir }}
+
+      - name: Preflight candidate evidence inputs
+        run: |
+          set -euo pipefail
+          payload_path="${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-prerelease-evidence-payload.json"
+          node <<'NODE'
+          import fs from "node:fs";
+          import { checksumManifestFilename } from "./scripts/gate-c-candidate-contract.mjs";
+
+          const payload = {
+            schema: "masterocta-gate-c-candidate-evidence:v1",
+            candidate_id: process.env.CANDIDATE_ID,
+            source_commit: process.env.SOURCE_COMMIT,
+            source_tree: process.env.SOURCE_TREE,
+            checkout_sha: process.env.SOURCE_COMMIT,
+            workflow_name: "Gate C Candidate Build",
+            workflow_ref: process.env.WORKFLOW_REF,
+            workflow_sha: process.env.WORKFLOW_SHA,
+            run_id: Number(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            run_url: process.env.RUN_URL,
+            repository: process.env.REPOSITORY,
+            ref: process.env.GITHUB_REF,
+            artifact_filename: process.env.ARTIFACT_NAME,
+            target_architecture: "aarch64-apple-darwin",
+            dmg_sha256: process.env.DMG_SHA256,
+            enclosed_binary_relative_path: process.env.BINARY_RELATIVE,
+            enclosed_binary_sha256: process.env.BINARY_SHA256,
+            dmg_verification_result: "PASS",
+            codesign_classification: process.env.CODESIGN_CLASSIFICATION,
+            codesign_command_result: process.env.CODESIGN_COMMAND_RESULT,
+            spctl_result: process.env.SPCTL_RESULT,
+            build_environment: "github-actions-macos-arm64",
+            node_version: process.env.NODE_VERSION,
+            pnpm_version: process.env.PNPM_VERSION,
+            rust_version: process.env.RUST_VERSION,
+            cargo_version: process.env.CARGO_VERSION,
+            xcode_version: process.env.XCODE_VERSION,
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            runner_image: process.env.RUNNER_IMAGE,
+            checksum_manifest_filename: checksumManifestFilename(process.env.CANDIDATE_ID),
+            checksum_manifest_sha256: process.env.MANIFEST_SHA256,
+            candidate_storage_type: "github_draft_release",
+            draft_release_tag: process.env.CANDIDATE_ID,
+            access_boundary_classification: "authenticated_collaborators_only",
+            generated_at: "auxiliary_non_identity",
+          };
+          fs.writeFileSync(process.env.PAYLOAD_PATH, JSON.stringify(payload));
+          NODE
+          node scripts/gate-c-candidate-contract.mjs validate-prerelease-evidence \
+            --file "$payload_path"
+        env:
+          PAYLOAD_PATH: ${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-prerelease-evidence-payload.json
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.expected_source_sha }}
+          SOURCE_TREE: ${{ inputs.expected_source_tree }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          ARTIFACT_NAME: ${{ steps.finalize.outputs.artifact_name }}
+          DMG_SHA256: ${{ steps.finalize.outputs.final_dmg_sha256 }}
+          BINARY_RELATIVE: ${{ steps.verify.outputs.binary_relative }}
+          BINARY_SHA256: ${{ steps.verify.outputs.binary_sha256 }}
+          CODESIGN_CLASSIFICATION: ${{ steps.verify.outputs.codesign_classification }}
+          CODESIGN_COMMAND_RESULT: ${{ steps.verify.outputs.codesign_command_result }}
+          SPCTL_RESULT: ${{ steps.verify.outputs.spctl_result }}
+          NODE_VERSION: ${{ steps.toolchain.outputs.node }}
+          PNPM_VERSION: ${{ steps.toolchain.outputs.pnpm }}
+          RUST_VERSION: ${{ steps.toolchain.outputs.rust }}
+          CARGO_VERSION: ${{ steps.toolchain.outputs.cargo }}
+          XCODE_VERSION: ${{ steps.toolchain.outputs.xcode }}
+          RUNNER_IMAGE: ${{ steps.toolchain.outputs.runner_image }}
+          MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest_sha256 }}
+
+      - name: Create draft candidate release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ inputs.candidate_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "${{ inputs.expected_source_sha }}" \
+            --title "Gate C Candidate ${{ inputs.candidate_id }}" \
+            --notes "Non-public Gate C candidate store. Draft only. Not for distribution." \
+            --draft \
+            --prerelease
+          release_id="$(gh release view "${{ inputs.candidate_id }}" --json databaseId --jq '.databaseId')"
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm authenticated draft state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ inputs.candidate_id }}" \
+            --json databaseId,tagName,targetCommitish,isDraft,isPrerelease,publishedAt \
+            > /tmp/gate-c-authenticated-release.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { validateAuthenticatedDraftRelease } from './scripts/gate-c-candidate-contract.mjs';
+
+            const release = JSON.parse(fs.readFileSync('/tmp/gate-c-authenticated-release.json', 'utf8'));
+            validateAuthenticatedDraftRelease(release, {
+              releaseId: Number(process.env.RELEASE_ID),
+              candidateId: process.env.CANDIDATE_ID,
+              sourceSha: process.env.SOURCE_SHA,
+            });
+          "
+
+      - name: Write candidate evidence
+        id: evidence
+        run: |
+          set -euo pipefail
+          payload_path="${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-evidence-payload.json"
+          node <<'NODE'
+          import fs from "node:fs";
+          import {
+            checksumManifestFilename,
+            evidenceFilename,
+          } from "./scripts/gate-c-candidate-contract.mjs";
+
+          const payload = {
+            schema: "masterocta-gate-c-candidate-evidence:v1",
+            candidate_id: process.env.CANDIDATE_ID,
+            source_commit: process.env.SOURCE_COMMIT,
+            source_tree: process.env.SOURCE_TREE,
+            checkout_sha: process.env.SOURCE_COMMIT,
+            workflow_name: "Gate C Candidate Build",
+            workflow_ref: process.env.WORKFLOW_REF,
+            workflow_sha: process.env.WORKFLOW_SHA,
+            run_id: Number(process.env.RUN_ID),
+            run_attempt: Number(process.env.RUN_ATTEMPT),
+            run_url: process.env.RUN_URL,
+            repository: process.env.REPOSITORY,
+            ref: process.env.GITHUB_REF,
+            artifact_filename: process.env.ARTIFACT_NAME,
+            target_architecture: "aarch64-apple-darwin",
+            dmg_sha256: process.env.DMG_SHA256,
+            enclosed_binary_relative_path: process.env.BINARY_RELATIVE,
+            enclosed_binary_sha256: process.env.BINARY_SHA256,
+            dmg_verification_result: "PASS",
+            codesign_classification: process.env.CODESIGN_CLASSIFICATION,
+            codesign_command_result: process.env.CODESIGN_COMMAND_RESULT,
+            spctl_result: process.env.SPCTL_RESULT,
+            build_environment: "github-actions-macos-arm64",
+            node_version: process.env.NODE_VERSION,
+            pnpm_version: process.env.PNPM_VERSION,
+            rust_version: process.env.RUST_VERSION,
+            cargo_version: process.env.CARGO_VERSION,
+            xcode_version: process.env.XCODE_VERSION,
+            runner_os: process.env.RUNNER_OS,
+            runner_arch: process.env.RUNNER_ARCH,
+            runner_image: process.env.RUNNER_IMAGE,
+            checksum_manifest_filename: checksumManifestFilename(process.env.CANDIDATE_ID),
+            checksum_manifest_sha256: process.env.MANIFEST_SHA256,
+            candidate_storage_type: "github_draft_release",
+            draft_release_tag: process.env.CANDIDATE_ID,
+            draft_release_id: Number(process.env.RELEASE_ID),
+            access_boundary_classification: "authenticated_collaborators_only",
+            generated_at: "auxiliary_non_identity",
+          };
+          fs.writeFileSync(process.env.PAYLOAD_PATH, JSON.stringify(payload));
+          NODE
+          node scripts/gate-c-candidate-contract.mjs write-evidence \
+            --payload "$payload_path" \
+            --output "${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-evidence.json"
+          echo "evidence_path=${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-evidence.json" >> "$GITHUB_OUTPUT"
+        env:
+          PAYLOAD_PATH: ${{ steps.finalize.outputs.work_dir }}/${{ inputs.candidate_id }}-evidence-payload.json
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_COMMIT: ${{ inputs.expected_source_sha }}
+          SOURCE_TREE: ${{ inputs.expected_source_tree }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          ARTIFACT_NAME: ${{ steps.finalize.outputs.artifact_name }}
+          DMG_SHA256: ${{ steps.finalize.outputs.final_dmg_sha256 }}
+          BINARY_RELATIVE: ${{ steps.verify.outputs.binary_relative }}
+          BINARY_SHA256: ${{ steps.verify.outputs.binary_sha256 }}
+          CODESIGN_CLASSIFICATION: ${{ steps.verify.outputs.codesign_classification }}
+          CODESIGN_COMMAND_RESULT: ${{ steps.verify.outputs.codesign_command_result }}
+          SPCTL_RESULT: ${{ steps.verify.outputs.spctl_result }}
+          NODE_VERSION: ${{ steps.toolchain.outputs.node }}
+          PNPM_VERSION: ${{ steps.toolchain.outputs.pnpm }}
+          RUST_VERSION: ${{ steps.toolchain.outputs.rust }}
+          CARGO_VERSION: ${{ steps.toolchain.outputs.cargo }}
+          XCODE_VERSION: ${{ steps.toolchain.outputs.xcode }}
+          RUNNER_IMAGE: ${{ steps.toolchain.outputs.runner_image }}
+          MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest_sha256 }}
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+
+      - name: Upload candidate assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ inputs.candidate_id }}" \
+            "${{ steps.finalize.outputs.artifact_path }}" \
+            "${{ steps.manifest.outputs.manifest_path }}" \
+            "${{ steps.evidence.outputs.evidence_path }}"
+
+      - name: Validate exact uploaded asset set
+        id: assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
+          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
+          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
+        run: |
+          set -euo pipefail
+          gh release view "${{ inputs.candidate_id }}" \
+            --json assets \
+            > /tmp/gate-c-uploaded-assets.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { extractAnonymousAssetUrls } from './scripts/gate-c-candidate-contract.mjs';
+
+            const expected = [process.env.ARTIFACT, process.env.MANIFEST, process.env.EVIDENCE];
+            const payload = JSON.parse(fs.readFileSync('/tmp/gate-c-uploaded-assets.json', 'utf8'));
+            const urls = extractAnonymousAssetUrls(payload.assets ?? [], expected);
+            fs.writeFileSync('/tmp/gate-c-asset-urls.json', JSON.stringify(urls));
+          "
+          echo "asset_count=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-asset-urls.json\",\"utf8\")).length')" >> "$GITHUB_OUTPUT"
+
+      - name: Probe anonymous API
+        id: anonymous_api
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${{ inputs.candidate_id }}"
+          set +e
+          api_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+            -sS --max-redirs 0 \
+            -D /tmp/gate-c-probes/api.headers \
+            -o /tmp/gate-c-probes/api.body \
+            -w '%{http_code}' \
+            "$api_url")"
+          api_exit=$?
+          set -e
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import {
+              classifyAnonymousHttp,
+            } from './scripts/gate-c-candidate-contract.mjs';
+
+            const observation = {
+              httpStatus: process.argv[1],
+              curlExitCode: Number(process.argv[2]),
+              headers: fs.readFileSync('/tmp/gate-c-probes/api.headers', 'utf8'),
+              body: fs.readFileSync('/tmp/gate-c-probes/api.body', 'utf8'),
+            };
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-api.json', JSON.stringify(observation));
+            const classification = classifyAnonymousHttp(observation, { channel: 'api' });
+            fs.writeFileSync('/tmp/gate-c-anonymous-api-classification.txt', classification);
+          " "$api_status" "$api_exit"
+          echo "classification=$(cat /tmp/gate-c-anonymous-api-classification.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Probe anonymous Web tag
+        id: anonymous_web
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          web_url="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ inputs.candidate_id }}"
+          set +e
+          web_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+            -sS --max-redirs 0 \
+            -D /tmp/gate-c-probes/web.headers \
+            -o /tmp/gate-c-probes/web.body \
+            -w '%{http_code}' \
+            "$web_url")"
+          web_exit=$?
+          set -e
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { classifyAnonymousDenialProbe } from './scripts/gate-c-candidate-contract.mjs';
+
+            const observation = {
+              httpStatus: process.argv[1],
+              curlExitCode: Number(process.argv[2]),
+              headers: fs.readFileSync('/tmp/gate-c-probes/web.headers', 'utf8'),
+              body: fs.readFileSync('/tmp/gate-c-probes/web.body', 'utf8'),
+            };
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-web.json', JSON.stringify(observation));
+            const verdict = classifyAnonymousDenialProbe(observation);
+            fs.writeFileSync('/tmp/gate-c-anonymous-web-verdict.txt', verdict);
+          " "$web_status" "$web_exit"
+          echo "verdict=$(cat /tmp/gate-c-anonymous-web-verdict.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Probe all anonymous asset URLs
+        id: anonymous_assets
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gate-c-probes
+          asset_index=0
+          while IFS= read -r asset_url; do
+            [[ -z "$asset_url" ]] && continue
+            asset_index=$((asset_index + 1))
+            set +e
+            asset_status="$(env -u GH_TOKEN -u GITHUB_TOKEN curl \
+              -sS --max-redirs 0 \
+              -D "/tmp/gate-c-probes/asset-${asset_index}.headers" \
+              -o "/tmp/gate-c-probes/asset-${asset_index}.body" \
+              -w '%{http_code}' \
+              "$asset_url")"
+            asset_exit=$?
+            set -e
+            node --input-type=module -e "
+              import fs from 'node:fs';
+
+              const observation = {
+                httpStatus: process.argv[1],
+                curlExitCode: Number(process.argv[2]),
+                headers: fs.readFileSync(process.argv[3], 'utf8'),
+                body: fs.readFileSync(process.argv[4], 'utf8'),
+              };
+              fs.writeFileSync(process.argv[5], JSON.stringify(observation));
+            " "$asset_status" "$asset_exit" \
+              "/tmp/gate-c-probes/asset-${asset_index}.headers" \
+              "/tmp/gate-c-probes/asset-${asset_index}.body" \
+              "/tmp/gate-c-probes/asset-${asset_index}.json"
+          done <<EOF
+          $(node -pe 'JSON.parse(require("fs").readFileSync("/tmp/gate-c-asset-urls.json","utf8")).join("\n")')
+          EOF
+          node --input-type=module -e "
+            import fs from 'node:fs';
+            import { classifyAnonymousDenialProbe } from './scripts/gate-c-candidate-contract.mjs';
+
+            const urls = JSON.parse(fs.readFileSync('/tmp/gate-c-asset-urls.json', 'utf8'));
+            const observations = urls.map((_, index) =>
+              JSON.parse(fs.readFileSync(\`/tmp/gate-c-probes/asset-\${index + 1}.json\`, 'utf8')),
+            );
+            fs.writeFileSync('/tmp/gate-c-probes/anonymous-assets.json', JSON.stringify(observations));
+            const verdict = observations.every(
+              (observation) => classifyAnonymousDenialProbe(observation) === 'NOT_FOUND',
+            ) ? 'ALL_NOT_FOUND' : 'PARTIAL_OR_PUBLIC';
+            fs.writeFileSync('/tmp/gate-c-anonymous-asset-verdict.txt', verdict);
+          "
+          echo "verdict=$(cat /tmp/gate-c-anonymous-asset-verdict.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Finalize access-boundary verdict
+        id: access_boundary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.finalize.outputs.artifact_name }}
+          MANIFEST: ${{ inputs.candidate_id }}-checksum-manifest.json
+          EVIDENCE: ${{ inputs.candidate_id }}-evidence.json
+          RELEASE_ID: ${{ steps.release.outputs.release_id }}
+          CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SOURCE_SHA: ${{ inputs.expected_source_sha }}
+        run: |
+          set -euo pipefail
+          gh release view "${{ inputs.candidate_id }}" \
+            --json databaseId,tagName,targetCommitish,isDraft,isPrerelease,publishedAt,assets \
+            > /tmp/gate-c-final-release.json
+          node --input-type=module -e "
+            import fs from 'node:fs';
+
+            const expectedAssets = [
+              process.env.ARTIFACT,
+              process.env.MANIFEST,
+              process.env.EVIDENCE,
+            ];
+            const payload = {
+              authenticatedRelease: JSON.parse(fs.readFileSync('/tmp/gate-c-final-release.json', 'utf8')),
+              anonymousApi: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-api.json', 'utf8')),
+              anonymousWebTag: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-web.json', 'utf8')),
+              anonymousAssets: JSON.parse(fs.readFileSync('/tmp/gate-c-probes/anonymous-assets.json', 'utf8')),
+              expected: {
+                releaseId: Number(process.env.RELEASE_ID),
+                candidateId: process.env.CANDIDATE_ID,
+                sourceSha: process.env.SOURCE_SHA,
+                assetNames: expectedAssets,
+              },
+            };
+            fs.writeFileSync('/tmp/gate-c-access-boundary-input.json', JSON.stringify(payload));
+          "
+          result="$(node scripts/gate-c-candidate-contract.mjs evaluate-access-boundary \
+            --input /tmp/gate-c-access-boundary-input.json)"
+          printf '%s\n' "$result" > /tmp/gate-c-access-boundary-verdict.json
+          echo "verdict=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).verdict')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_api=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_api')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_web_tag=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_web_tag')" >> "$GITHUB_OUTPUT"
+          echo "anonymous_assets=$(node -pe 'JSON.parse(require(\"fs\").readFileSync(\"/tmp/gate-c-access-boundary-verdict.json\",\"utf8\")).diagnostic.anonymous_assets')" >> "$GITHUB_OUTPUT"
+
+      - name: Publish workflow summary
+        run: |
+          {
+            echo "## Gate C Candidate Build"
+            echo "- candidate_id: \`${{ inputs.candidate_id }}\`"
+            echo "- source_commit: \`${{ inputs.expected_source_sha }}\`"
+            echo "- source_tree: \`${{ inputs.expected_source_tree }}\`"
+            echo "- release_id: \`${{ steps.release.outputs.release_id }}\`"
+            echo "- draft: \`true\`"
+            echo "- prerelease: \`true\`"
+            echo "- published: \`false\`"
+            echo "- anonymous_api: \`${{ steps.anonymous_api.outputs.classification }}\`"
+            echo "- anonymous_web_tag: \`${{ steps.anonymous_web.outputs.verdict }}\`"
+            echo "- anonymous_assets: \`${{ steps.anonymous_assets.outputs.verdict }}\`"
+            echo "- access_boundary_verdict: \`${{ steps.access_boundary.outputs.verdict }}\`"
+            echo "- artifact: \`${{ steps.finalize.outputs.artifact_name }}\`"
+            echo "- dmg_sha256: \`${{ steps.finalize.outputs.final_dmg_sha256 }}\`"
+            echo "- binary_sha256: \`${{ steps.verify.outputs.binary_sha256 }}\`"
+            echo "- codesign: \`${{ steps.verify.outputs.codesign_classification }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

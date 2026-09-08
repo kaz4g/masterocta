@@ -4,7 +4,7 @@ Status: implementation and synthetic automated/visual verification completed loc
 
 ## Milestone boundary
 
-M6 Waveform 1.5 prepares the Inspector's available space, measured width/DPR, cancellable consumers, and one Workspace Preview Controller. M7 owns the analyzer, query contract, binary cache, Canvas rendering, navigation, frame selection, ranged preview, and read-only marker contract. Portable Project and Slice/Sample Chain remain separate future milestones; they are not silently included in this implementation.
+M6 Waveform 1.5 prepares the Inspector's available space, measured width/DPR, cancellable consumers, and one Workspace Preview Controller. M7 owns the analyzer, query contract, binary cache, Canvas rendering, navigation, frame selection, ranged preview, and read-only marker contract. Portable Project and Slice/Sample Chain remain separate milestones. AUTO-SLICE-1 already present on main is retained as an independent module/API; this integration does not replace its analysis or draft contracts.
 
 ## Query contract
 

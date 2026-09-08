@@ -4,14 +4,27 @@
 mod audio_pool;
 mod audio_runtime;
 mod catalog_runtime;
+mod clone_runtime;
 mod device_detection;
+mod host_metadata_policy;
 mod legacy_read_adapter;
+mod local_artifact;
+mod mutation_gate;
+mod prepared_rename_runtime;
+mod project_compatibility;
 pub mod project_manager;
 mod project_reader;
 mod purge;
+mod rename_planning_facts;
+mod rename_recovery_runtime;
+mod rename_write_runtime;
 mod root_registry;
+mod slice_workbench;
 mod v2_api;
 mod write_runtime;
+
+#[cfg(test)]
+mod gate_c_clone_rescan;
 
 use audio_pool::{
     cancel_transfer, collect_audio_files_recursive, copy_audio_files_or_use_existing,
@@ -1356,8 +1369,22 @@ pub fn run() {
             app.manage(catalog);
             let audio_runtime = audio_runtime::open_shared_audio_runtime(&data_directory)?;
             app.manage(audio_runtime);
+            app.manage(Arc::new(slice_workbench::SliceWorkbench::new()?));
             let write_runtime = write_runtime::open_shared_write_runtime(&data_directory)?;
             app.manage(write_runtime);
+            let executor_local_paths =
+                rename_write_runtime::executor_local_paths_for_data_directory(&data_directory)?;
+            let rename_write_runtime =
+                rename_write_runtime::open_shared_rename_write_runtime(&data_directory)?;
+            app.manage(rename_write_runtime);
+            let prepared_rename_runtime =
+                prepared_rename_runtime::open_shared_prepared_rename_runtime(
+                    &data_directory,
+                    executor_local_paths,
+                )?;
+            app.manage(prepared_rename_runtime);
+            let clone_runtime = clone_runtime::open_shared_clone_runtime(&data_directory)?;
+            app.manage(clone_runtime);
 
             // Clear WebView session storage in the background on app startup
             let window = app.get_webview_window("main").unwrap();
@@ -1374,10 +1401,20 @@ pub fn run() {
             v2_api::v2_root_register,
             v2_api::v2_root_status,
             v2_api::v2_root_enable_write,
+            v2_api::v2_root_disable_write,
             v2_api::v2_root_close,
             v2_api::v2_library_list,
             v2_api::v2_asset_metadata_get,
             v2_api::v2_asset_metadata_replace,
+            v2_api::v2_audio_onsets_start,
+            v2_api::v2_audio_onsets_status,
+            v2_api::v2_audio_onsets_cancel,
+            v2_api::v2_slice_draft_get,
+            v2_api::v2_slice_proposal_create,
+            v2_api::v2_slice_draft_update,
+            v2_api::v2_audio_waveform_range_get,
+            v2_api::v2_audio_preview_region_create,
+            v2_api::v2_audio_preview_region_read,
             v2_api::v2_audio_waveform_get,
             v2_api::v2_audio_waveform_prepare,
             v2_api::v2_audio_waveform_query,
@@ -1390,6 +1427,27 @@ pub fn run() {
             v2_api::v2_change_status,
             v2_api::v2_change_recover,
             v2_api::v2_change_recovery_status,
+            v2_api::v2_rename_plan,
+            v2_api::v2_rename_get_plan,
+            v2_api::v2_rename_get_prepared_plan,
+            v2_api::v2_rename_authorize,
+            v2_api::v2_rename_create_backup,
+            v2_api::v2_rename_prepare,
+            v2_api::v2_rename_continuation_status,
+            v2_api::v2_rename_continue,
+            v2_api::v2_rename_apply,
+            v2_api::v2_rename_verify_committed,
+            v2_api::v2_rename_get_committed_evidence,
+            v2_api::v2_rename_get_status,
+            v2_api::v2_rename_recovery_status,
+            v2_api::v2_rename_recover,
+            v2_api::v2_rename_verify_rolled_back,
+            v2_api::v2_clone_record_source_evidence,
+            v2_api::v2_clone_create_managed,
+            v2_api::v2_clone_verify_external,
+            v2_api::v2_clone_verification_status,
+            v2_api::v2_clone_reverify,
+            v2_api::v2_clone_issue_authority,
             greet,
             scan_devices,
             scan_custom_directory,

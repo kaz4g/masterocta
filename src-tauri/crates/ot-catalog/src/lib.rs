@@ -1,12 +1,14 @@
 #![forbid(unsafe_code)]
 
+mod slice_drafts;
+
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
     LibrarySnapshot, ManualAssetMetadata, ManualNote, ManualTag, ParserProvenance,
-    RootRelativePath, SampleReferenceStatus, SampleSettings, SampleSettingsEvidence,
-    SampleSettingsOwner, SampleSettingsParseStatus, SampleSlice, SampleSlotId, SampleSlotKind,
-    SampleStorageScope, SampleUsageEdge, SampleUsageKind, SlotAssignment, StateDocument,
-    StateDocumentKind, StateDocumentParseStatus, StateDocumentRole,
+    ProjectCompatibilityEvidence, RootRelativePath, SampleReferenceStatus, SampleSettings,
+    SampleSettingsEvidence, SampleSettingsOwner, SampleSettingsParseStatus, SampleSlice,
+    SampleSlotId, SampleSlotKind, SampleStorageScope, SampleUsageEdge, SampleUsageKind,
+    SlotAssignment, StateDocument, StateDocumentKind, StateDocumentParseStatus, StateDocumentRole,
 };
 use ot_storage_ports::{
     AssetMetadataCatalog, CatalogError, CatalogFailureCode, CatalogRootIdentity,
@@ -19,8 +21,9 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 5;
+const LATEST_SCHEMA_VERSION: u64 = 7;
 const MIGRATIONS: &[(u64, &str)] = &[
+    // Entries are applied in ascending version order.
     (1, include_str!("../migrations/0001_catalog_foundation.sql")),
     (2, include_str!("../migrations/0002_file_inventory.sql")),
     (
@@ -35,6 +38,11 @@ const MIGRATIONS: &[(u64, &str)] = &[
         5,
         include_str!("../migrations/0005_manual_asset_metadata.sql"),
     ),
+    (
+        6,
+        include_str!("../migrations/0006_project_compatibility_evidence.sql"),
+    ),
+    (7, include_str!("../migrations/0007_slice_drafts.sql")),
 ];
 
 type StateProjection = (
@@ -231,6 +239,10 @@ impl SqliteCatalog {
         )?;
 
         insert_state_projection(&transaction, root_row_id, scan_id, snapshot)?;
+        transaction.execute(
+            "DELETE FROM sample_settings WHERE root_id = ?1",
+            [root_row_id],
+        )?;
         insert_sample_settings(&transaction, root_row_id, scan_id, snapshot)?;
 
         transaction.execute(
@@ -702,7 +714,7 @@ impl SqliteCatalog {
             .prepare(
                 "SELECT id, project_relative_path, source_relative_path, document_kind, \
                         document_role, bank_index, parse_status, parser_name, parser_revision, \
-                        source_version \
+                        source_version, compatibility_evidence \
                  FROM state_documents \
                  WHERE root_id = ?1 AND scan_session_id = ?2 \
                  ORDER BY source_relative_path",
@@ -721,6 +733,7 @@ impl SqliteCatalog {
                     row.get::<_, String>(7)?,
                     row.get::<_, String>(8)?,
                     row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
                 ))
             })
             .map_err(unavailable)?;
@@ -737,6 +750,7 @@ impl SqliteCatalog {
                 parser_name,
                 parser_revision,
                 source_version,
+                compatibility_evidence,
             ) = row.map_err(unavailable)?;
             state_documents.push(StateDocument {
                 project_relative_path: stored_path(project_path)?,
@@ -755,6 +769,10 @@ impl SqliteCatalog {
                     parser_name,
                     parser_revision,
                     source_version,
+                    compatibility_evidence: compatibility_evidence
+                        .as_deref()
+                        .map(project_compatibility_evidence_from_database)
+                        .transpose()?,
                 },
             });
         }
@@ -1015,6 +1033,7 @@ impl SqliteCatalog {
                     parser_name,
                     parser_revision,
                     source_version,
+                    compatibility_evidence: None,
                 },
                 source_os_version,
                 evidence: settings_evidence_from_database(&evidence)?,
@@ -1081,8 +1100,8 @@ fn insert_state_projection(
             "INSERT INTO state_documents \
              (root_id, scan_session_id, project_relative_path, source_relative_path, \
               document_kind, document_role, bank_index, parse_status, parser_name, \
-              parser_revision, source_version) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              parser_revision, source_version, compatibility_evidence) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 root_row_id,
                 scan_id,
@@ -1095,6 +1114,10 @@ fn insert_state_projection(
                 document.parser_provenance.parser_name,
                 document.parser_provenance.parser_revision,
                 document.parser_provenance.source_version,
+                document
+                    .parser_provenance
+                    .compatibility_evidence
+                    .map(project_compatibility_evidence_to_database),
             ],
         )?;
         document_ids.insert(
@@ -1782,6 +1805,29 @@ fn settings_evidence_from_database(value: &str) -> Result<SampleSettingsEvidence
     }
 }
 
+fn project_compatibility_evidence_to_database(
+    evidence: ProjectCompatibilityEvidence,
+) -> &'static str {
+    match evidence {
+        ProjectCompatibilityEvidence::UpstreamLibrary => "upstream_library",
+        ProjectCompatibilityEvidence::VerifiedMasterOctaFixture => "verified_master_octa_fixture",
+    }
+}
+
+fn project_compatibility_evidence_from_database(
+    value: &str,
+) -> Result<ProjectCompatibilityEvidence, CatalogError> {
+    match value {
+        "upstream_library" => Ok(ProjectCompatibilityEvidence::UpstreamLibrary),
+        "verified_master_octa_fixture" => {
+            Ok(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
+        }
+        _ => Err(CatalogError::InvalidStoredData {
+            field: "compatibility_evidence",
+        }),
+    }
+}
+
 fn u8_from_database(value: i64, field: &'static str) -> Result<u8, CatalogError> {
     u8::try_from(value).map_err(|_| CatalogError::InvalidStoredData { field })
 }
@@ -2193,6 +2239,7 @@ mod tests {
             parser_name: "masterocta/ot-tools-io".into(),
             parser_revision: "fixture-revision".into(),
             source_version: Some("1.40A".into()),
+            compatibility_evidence: Some(ProjectCompatibilityEvidence::UpstreamLibrary),
         };
         snapshot.state_documents = vec![
             StateDocument {
@@ -2204,6 +2251,7 @@ mod tests {
                 parse_status: StateDocumentParseStatus::Parsed,
                 parser_provenance: ParserProvenance {
                     source_version: Some("bank:23".into()),
+                    compatibility_evidence: None,
                     ..provenance.clone()
                 },
             },
@@ -2248,6 +2296,7 @@ mod tests {
             parser_name: "masterocta/ot-tools-io".into(),
             parser_revision: "fixture-revision".into(),
             source_version: Some("1.40A".into()),
+            compatibility_evidence: None,
         };
         snapshot.sample_settings = vec![
             SampleSettings {
@@ -2326,7 +2375,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 7);
         drop(catalog);
 
         let reopened = SqliteCatalog::open(&path).unwrap();
@@ -2336,13 +2385,13 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 5);
+        assert_eq!(count, 7);
         drop(reopened);
         drop(directory);
     }
 
     #[test]
-    fn schema_v1_database_migrates_to_v5_without_losing_existing_projection() {
+    fn schema_v1_database_migrates_to_v7_without_losing_existing_projection() {
         let directory = TempDir::new().unwrap();
         let path = database_path(&directory, "v1.sqlite3");
         let mut connection = Connection::open(&path).unwrap();
@@ -2381,7 +2430,7 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(versions, 5);
+        assert_eq!(versions, 7);
         assert_eq!(snapshot.sets[0].display_name, "Existing Set");
         assert_eq!(
             snapshot.sets[0].projects[0].display_name,
@@ -2397,7 +2446,7 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); \
-                 INSERT INTO schema_migrations VALUES (6, 'future');",
+                 INSERT INTO schema_migrations VALUES (8, 'future');",
             )
             .unwrap();
         drop(connection);
@@ -2406,8 +2455,8 @@ mod tests {
         assert_eq!(
             error,
             CatalogError::UnsupportedSchema {
-                found: 6,
-                supported: 5,
+                found: 8,
+                supported: 7,
             }
         );
     }
@@ -2547,6 +2596,32 @@ mod tests {
             )
             .unwrap();
         assert_eq!(counts, (2, 1));
+    }
+
+    #[test]
+    fn rescan_with_unchanged_file_sidecar_settings_replaces_stale_projection() {
+        let (_directory, _path, mut catalog) = open_temp_catalog();
+        let observation = observation('7', "Rescan sidecar");
+        let snapshot = snapshot_with_sample_settings();
+
+        catalog.store_snapshot(&observation, &snapshot).unwrap();
+        let rescan = catalog.store_snapshot(&observation, &snapshot).unwrap();
+
+        assert_eq!(rescan.revision.get(), 2);
+        assert_eq!(
+            catalog.load_latest_snapshot(&observation.identity).unwrap(),
+            Some(snapshot)
+        );
+        let sidecar_count: i64 = catalog
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM sample_settings \
+                 WHERE owner_kind = 'file_instance_sidecar'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(sidecar_count, 1);
     }
 
     #[test]

@@ -1,12 +1,14 @@
-use crate::device_detection::{scan_directory, OctatrackProject};
+use crate::device_detection::{scan_directory_strict, DeviceScanError, OctatrackProject};
+use crate::host_metadata_policy::is_ignored_host_metadata;
+use crate::project_compatibility::{evaluate_project_compatibility, ProjectCompatibility};
 use crate::project_reader::{compute_sample_usage_for_documents, read_raw_sample_fields};
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
-    LibrarySnapshot, ParserProvenance, RootId, RootRelativePath, SampleReferenceStatus,
-    SampleSettings, SampleSettingsEvidence, SampleSettingsOwner, SampleSettingsParseStatus,
-    SampleSlice, SampleSlotId, SampleSlotKind, SampleStorageScope, SampleUsageEdge,
-    SampleUsageKind, SlotAssignment, StateDocument, StateDocumentKind, StateDocumentParseStatus,
-    StateDocumentRole,
+    LibrarySnapshot, ParserProvenance, ProjectCompatibilityEvidence, RootId, RootRelativePath,
+    SampleReferenceStatus, SampleSettings, SampleSettingsEvidence, SampleSettingsOwner,
+    SampleSettingsParseStatus, SampleSlice, SampleSlotId, SampleSlotKind, SampleStorageScope,
+    SampleUsageEdge, SampleUsageKind, SlotAssignment, StateDocument, StateDocumentKind,
+    StateDocumentParseStatus, StateDocumentRole,
 };
 use ot_storage_ports::{ReadOnlyLibrary, StorageError};
 use ot_tools_io::banks::BANK_FILE_VERSION;
@@ -50,10 +52,13 @@ fn scan_registered_root(
     canonical_root: &Path,
     baseline: &[FileInstance],
 ) -> Result<LibrarySnapshot, StorageError> {
-    let root = canonical_root
-        .to_str()
-        .ok_or_else(|| StorageError::new("UNSUPPORTED_FORMAT: root path is not valid UTF-8"))?;
-    let legacy = scan_directory(root);
+    if canonical_root.to_str().is_none() {
+        return Err(StorageError::new(
+            "UNSUPPORTED_FORMAT: root path is not valid UTF-8",
+        ));
+    }
+    let legacy =
+        scan_directory_strict(canonical_root).map_err(DeviceScanError::into_storage_error)?;
     let mut seen_sets = HashSet::new();
     let mut sets = Vec::new();
 
@@ -206,15 +211,23 @@ fn collect_audio_candidates(
     entries.sort_by_key(|entry| entry.file_name());
 
     for entry in entries {
-        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-            continue;
-        };
-        if name.starts_with('.') {
+        let path = entry.path();
+        if is_ignored_host_metadata(&path) {
             continue;
         }
-        let path = entry.path();
-        let metadata = fs::symlink_metadata(&path)
-            .map_err(|error| StorageError::new(format!("LIBRARY_SCAN_FAILED: {error}")))?;
+        if crate::device_detection::scan_path_injected_unreadable(canonical_root, &path) {
+            return Err(StorageError::new(
+                "LIBRARY_SCAN_FAILED: registered root scan could not be completed",
+            ));
+        }
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            return Err(StorageError::new(
+                "LIBRARY_SCAN_FAILED: registered root contains a non-UTF-8 path",
+            ));
+        };
+        let metadata = fs::symlink_metadata(&path).map_err(|_| {
+            StorageError::new("LIBRARY_SCAN_FAILED: registered root scan could not be completed")
+        })?;
         if metadata.file_type().is_symlink() {
             continue;
         }
@@ -765,7 +778,7 @@ fn parse_sidecar_settings(
             let mut settings = empty_sample_settings(
                 SampleSettingsOwner::FileInstanceSidecar,
                 sidecar_relative,
-                parser_provenance(None),
+                parser_provenance(None, None),
                 None,
             );
             settings.file_instance_relative_path = Some(file_instance_relative);
@@ -777,7 +790,7 @@ fn parse_sidecar_settings(
     let mut settings = empty_sample_settings(
         SampleSettingsOwner::FileInstanceSidecar,
         sidecar_relative,
-        parser_provenance(source_version),
+        parser_provenance(source_version, None),
         None,
     );
     settings.file_instance_relative_path = Some(file_instance_relative);
@@ -904,25 +917,30 @@ fn parse_project_state(
         Err(_) => {
             return (
                 StateDocumentParseStatus::Malformed,
-                parser_provenance(None),
+                parser_provenance(None, None),
                 Vec::new(),
             )
         }
     };
     let source_version = Some(parsed.metadata.os_version.clone());
-    match parsed.check_compatible_os_version() {
-        Ok(true) => {}
-        Ok(false) => {
+    let decision = evaluate_project_compatibility(&parsed);
+    let compatibility_evidence = match decision.compatibility {
+        ProjectCompatibility::Supported { evidence } => Some(evidence),
+        ProjectCompatibility::UnsupportedVersion | ProjectCompatibility::Malformed => None,
+    };
+    match decision.compatibility {
+        ProjectCompatibility::Supported { .. } => {}
+        ProjectCompatibility::UnsupportedVersion => {
             return (
                 StateDocumentParseStatus::UnsupportedVersion,
-                parser_provenance(source_version),
+                parser_provenance(source_version, compatibility_evidence),
                 Vec::new(),
             )
         }
-        Err(_) => {
+        ProjectCompatibility::Malformed => {
             return (
                 StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version),
+                parser_provenance(source_version, compatibility_evidence),
                 Vec::new(),
             )
         }
@@ -932,7 +950,7 @@ fn parse_project_state(
         Err(_) => {
             return (
                 StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version),
+                parser_provenance(source_version, compatibility_evidence),
                 Vec::new(),
             )
         }
@@ -947,7 +965,7 @@ fn parse_project_state(
         let Some(slot_kind) = parse_slot_kind(&slot_type) else {
             return (
                 StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version),
+                parser_provenance(source_version, compatibility_evidence),
                 Vec::new(),
             );
         };
@@ -956,7 +974,7 @@ fn parse_project_state(
             Err(_) => {
                 return (
                     StateDocumentParseStatus::Malformed,
-                    parser_provenance(source_version),
+                    parser_provenance(source_version, compatibility_evidence),
                     Vec::new(),
                 )
             }
@@ -978,7 +996,7 @@ fn parse_project_state(
     }
     (
         StateDocumentParseStatus::Parsed,
-        parser_provenance(source_version),
+        parser_provenance(source_version, compatibility_evidence),
         assignments,
     )
 }
@@ -992,17 +1010,24 @@ fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProv
             } else {
                 StateDocumentParseStatus::UnsupportedVersion
             };
-            (status, parser_provenance(source_version))
+            (status, parser_provenance(source_version, None))
         }
-        Err(_) => (StateDocumentParseStatus::Malformed, parser_provenance(None)),
+        Err(_) => (
+            StateDocumentParseStatus::Malformed,
+            parser_provenance(None, None),
+        ),
     }
 }
 
-fn parser_provenance(source_version: Option<String>) -> ParserProvenance {
+fn parser_provenance(
+    source_version: Option<String>,
+    compatibility_evidence: Option<ProjectCompatibilityEvidence>,
+) -> ParserProvenance {
     ParserProvenance {
         parser_name: STATE_PARSER_NAME.into(),
         parser_revision: STATE_PARSER_REVISION.into(),
         source_version,
+        compatibility_evidence,
     }
 }
 
@@ -1327,7 +1352,7 @@ mod tests {
                 role: StateDocumentRole::Working,
                 bank_index: None,
                 parse_status: StateDocumentParseStatus::Parsed,
-                parser_provenance: parser_provenance(Some("1.40A".into())),
+                parser_provenance: parser_provenance(Some("1.40A".into()), None),
             }],
             slot_assignments: vec![SlotAssignment {
                 project_document_relative_path: source,
@@ -1465,6 +1490,76 @@ mod tests {
             !format!("{documents:?}{assignments:?}{usage_edges:?}{sample_settings:?}")
                 .contains(root.path().to_str().unwrap())
         );
+    }
+
+    #[test]
+    fn verified_1_40_project_roles_are_parsed_without_exposing_or_modifying_paths() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/real_device_os_1_40/project.work");
+        fs::copy(&fixture, project_directory.join("project.work")).unwrap();
+        fs::copy(&fixture, project_directory.join("project.strd")).unwrap();
+        let before = snapshot_files(root.path());
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+
+        assert_eq!(documents.len(), 2);
+        assert!(documents.iter().all(|document| {
+            document.kind == StateDocumentKind::Project
+                && document.parse_status == StateDocumentParseStatus::Parsed
+                && document.parser_provenance.parser_name == STATE_PARSER_NAME
+                && document.parser_provenance.parser_revision == STATE_PARSER_REVISION
+                && document.parser_provenance.source_version.as_deref() == Some("R0173      1.40")
+                && document.parser_provenance.compatibility_evidence
+                    == Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
+        }));
+        assert!(documents
+            .iter()
+            .any(|document| document.role == StateDocumentRole::Working));
+        assert!(documents
+            .iter()
+            .any(|document| document.role == StateDocumentRole::SavedCheckpoint));
+        assert!(assignments.is_empty());
+        assert!(usage_edges.is_empty());
+        assert_eq!(snapshot_files(root.path()), before);
+        assert!(!format!("{documents:?}").contains(root.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn unknown_project_os_is_unsupported_without_partial_usage() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/real_device_os_1_40/project.work");
+        let source = String::from_utf8(fs::read(fixture).unwrap()).unwrap();
+        let unknown = source.replace("R0173      1.40", "R9999      9.99");
+        fs::write(project_directory.join("project.work"), unknown).unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+
+        assert_eq!(documents.len(), 1);
+        assert_eq!(
+            documents[0].parse_status,
+            StateDocumentParseStatus::UnsupportedVersion
+        );
+        assert_eq!(
+            documents[0].parser_provenance.source_version.as_deref(),
+            Some("R9999      9.99")
+        );
+        assert!(assignments.is_empty());
+        assert!(usage_edges.is_empty());
+        assert!(!format!("{documents:?}").contains(root.path().to_str().unwrap()));
     }
 
     #[test]
@@ -1651,8 +1746,17 @@ mod tests {
                 .iter()
                 .map(|file| file.relative_path.as_str())
                 .collect::<Vec<_>>(),
-            vec!["a.aif", "m.AIFF", "z.WAV"]
+            vec![
+                ".hidden-directory/inside.wav",
+                ".hidden.wav",
+                "a.aif",
+                "m.AIFF",
+                "z.WAV"
+            ]
         );
+        assert!(!files
+            .iter()
+            .any(|file| file.relative_path.as_str() == "._fork.wav"));
         assert!(files
             .iter()
             .all(|file| file.storage_scope == SampleStorageScope::Unclassified));
@@ -1791,6 +1895,64 @@ mod tests {
     }
 
     #[test]
+    fn unused_destination_absent_from_baseline_computes_hash_this_scan() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("SET/AUDIO")).unwrap();
+        fs::write(root.path().join("SET/AUDIO/source.wav"), b"source-bytes").unwrap();
+        fs::write(root.path().join("SET/AUDIO/dest.wav"), b"dest-bytes").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let topology = LibrarySnapshot::default();
+
+        let (_assets, initial) = scan_audio_inventory(&canonical, &topology, &[]).unwrap();
+        let source_baseline = initial
+            .iter()
+            .find(|file| file.relative_path.as_str() == "SET/AUDIO/source.wav")
+            .unwrap()
+            .clone();
+        let baseline = vec![source_baseline.clone()];
+        assert!(
+            !baseline
+                .iter()
+                .any(|file| file.relative_path.as_str() == "SET/AUDIO/dest.wav"),
+            "baseline must omit the unused destination path"
+        );
+
+        let expected_dest_hash = test_hash('d');
+        let mut dest_hasher_calls = 0;
+        let (_assets, scanned) =
+            scan_audio_inventory_with(&canonical, &topology, &baseline, &mut |path, _metadata| {
+                if path.ends_with("dest.wav") {
+                    dest_hasher_calls += 1;
+                    Ok(expected_dest_hash.clone())
+                } else {
+                    Ok(test_hash('s'))
+                }
+            })
+            .unwrap();
+
+        assert_eq!(
+            dest_hasher_calls, 1,
+            "destination path must invoke the hasher"
+        );
+        let dest = scanned
+            .iter()
+            .find(|file| file.relative_path.as_str() == "SET/AUDIO/dest.wav")
+            .unwrap();
+        assert_eq!(dest.hash_freshness, ContentHashFreshness::ComputedThisScan);
+        assert_eq!(dest.content_hash, expected_dest_hash);
+        assert_ne!(dest.content_hash, source_baseline.content_hash);
+
+        let failing =
+            scan_audio_inventory_with(&canonical, &topology, &baseline, &mut |_path, _metadata| {
+                Err(StorageError::new("HASH_FAILED: injected"))
+            });
+        assert!(
+            failing.is_err(),
+            "hasher errors must fail the scan instead of reusing metadata"
+        );
+    }
+
+    #[test]
     fn duplicate_bytes_create_one_asset_and_multiple_file_instances() {
         let root = TempDir::new().unwrap();
         fs::write(root.path().join("first.wav"), b"same bytes").unwrap();
@@ -1852,5 +2014,120 @@ mod tests {
             fs::read(outside.path().join("outside.wav")).unwrap(),
             b"outside"
         );
+    }
+
+    fn plant_known_host_metadata(root: &Path) {
+        fs::create_dir_all(root.join(".Spotlight-V100")).unwrap();
+        fs::create_dir_all(root.join(".Trashes")).unwrap();
+        fs::create_dir_all(root.join(".fseventsd")).unwrap();
+        fs::write(root.join(".DS_Store"), b"ds-store").unwrap();
+        fs::write(root.join("._appledouble"), b"appledouble").unwrap();
+    }
+
+    #[test]
+    fn registered_root_scan_ignores_known_host_metadata() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("SET")).unwrap();
+        fs::create_dir(root.path().join("SET/AUDIO")).unwrap();
+        create_project(root.path(), "SET/PROJECT");
+        fs::write(root.path().join("SET/AUDIO/kick.wav"), b"kick").unwrap();
+        plant_known_host_metadata(root.path());
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let snapshot = scan_registered_root(&canonical_root, &[]).unwrap();
+        assert_eq!(snapshot.sets.len(), 1);
+        assert_eq!(snapshot.sets[0].relative_path.as_str(), "SET");
+        assert!(!snapshot.file_instances.iter().any(|file| file
+            .relative_path
+            .as_str()
+            .contains("Spotlight")
+            || file.relative_path.as_str().contains(".DS_Store")
+            || file.relative_path.as_str().starts_with("._")));
+    }
+
+    #[test]
+    fn hidden_project_like_content_is_not_silently_erased() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("SET")).unwrap();
+        fs::create_dir(root.path().join("SET/AUDIO")).unwrap();
+        create_project(root.path(), "SET/PROJECT");
+        create_project(root.path(), ".hidden-project");
+        fs::write(root.path().join(".hidden-project/secret.wav"), b"secret").unwrap();
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let snapshot = scan_registered_root(&canonical_root, &[]).unwrap();
+        assert!(
+            snapshot
+                .standalone_projects
+                .iter()
+                .any(|project| project.relative_path.as_str() == ".hidden-project"),
+            "unknown hidden project-like directories must remain in the snapshot: {snapshot:?}"
+        );
+        assert!(
+            snapshot
+                .file_instances
+                .iter()
+                .any(|file| file.relative_path.as_str() == ".hidden-project/secret.wav"),
+            "hidden audio must not be dropped because the name starts with a dot"
+        );
+    }
+
+    #[test]
+    fn unknown_dot_directory_is_traversed_and_does_not_fail_the_scan() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("SET")).unwrap();
+        fs::create_dir(root.path().join("SET/AUDIO")).unwrap();
+        create_project(root.path(), "SET/PROJECT");
+        fs::create_dir_all(root.path().join(".custom")).unwrap();
+        fs::write(root.path().join(".custom/sentinel-file"), b"sentinel").unwrap();
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let snapshot = scan_registered_root(&canonical_root, &[]).unwrap();
+        assert_eq!(snapshot.sets[0].relative_path.as_str(), "SET");
+    }
+
+    #[test]
+    fn registered_root_uses_strict_scan_instead_of_legacy_best_effort() {
+        use crate::device_detection::{scan_directory, with_injected_unreadable_paths};
+
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("SET")).unwrap();
+        fs::create_dir(root.path().join("SET/AUDIO")).unwrap();
+        create_project(root.path(), "SET/PROJECT");
+        fs::create_dir_all(root.path().join("unknown-dir")).unwrap();
+
+        let legacy = with_injected_unreadable_paths(&["unknown-dir"], || {
+            scan_directory(&root.path().to_string_lossy())
+        });
+        assert_eq!(legacy.locations[0].sets[0].name, "SET");
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let error = with_injected_unreadable_paths(&["unknown-dir"], || {
+            scan_registered_root(&canonical_root, &[])
+        })
+        .unwrap_err();
+        assert!(
+            error.message().starts_with("LIBRARY_SCAN_FAILED:"),
+            "{}",
+            error.message()
+        );
+    }
+
+    #[test]
+    fn registered_root_scan_fails_closed_on_unknown_unreadable_directory() {
+        use crate::device_detection::with_injected_unreadable_paths;
+
+        let root = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("SET")).unwrap();
+        fs::create_dir(root.path().join("SET/AUDIO")).unwrap();
+        create_project(root.path(), "SET/PROJECT");
+        fs::create_dir_all(root.path().join("unknown-dir")).unwrap();
+
+        let canonical_root = root.path().canonicalize().unwrap();
+        let error = with_injected_unreadable_paths(&["unknown-dir"], || {
+            scan_registered_root(&canonical_root, &[])
+        })
+        .unwrap_err();
+        assert!(error.message().starts_with("LIBRARY_SCAN_FAILED:"));
     }
 }

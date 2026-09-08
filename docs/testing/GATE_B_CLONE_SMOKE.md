@@ -27,6 +27,36 @@ this cloned-media smoke.
 
 If any precondition cannot be demonstrated, stop without registering the root.
 
+## Compatibility-policy DMG retest
+
+Run this sequence only after the Project compatibility-policy PR has been
+reviewed and merged and a DMG has been built from that merged commit. Use the
+approved disposable `MasterOCTa-GateB` image. Do not record its absolute mount
+path, Root ID, or device fingerprint in repository evidence.
+
+1. Record the DMG filename, merged application commit, byte size, and SHA-256.
+2. Run `hdiutil verify` against the DMG and require success.
+3. Record the output of `codesign --verify --deep --strict --verbose=2` and
+   `spctl --assess --type execute --verbose=4`; report unsigned or ad-hoc state
+   explicitly rather than treating it as signed.
+4. Install or launch from the verified DMG and register `MasterOCTa-GateB`.
+5. Rescan and confirm every expected Project and Bank state document is
+   `Parsed`, including both `project.work` and `project.strd`.
+6. Enable Edit and confirm that the session-limited write grant succeeds.
+7. Open Review Plan for an additive copy and confirm overwrite/delete remain
+   prohibited.
+8. Approve and execute that exact additive-copy plan once.
+9. Confirm the source and destination SHA-256 values are equal.
+10. Confirm the pre/post SHA-256 of `project.work` is unchanged.
+11. Confirm the pre/post SHA-256 of `project.strd` is unchanged.
+12. Confirm the pre/post SHA-256 of every Bank file is unchanged.
+13. Close the root, remount the disposable image, register it again, and
+    confirm a clean rescan with all expected state documents still `Parsed`.
+14. Record human review of the code/CI evidence and the DMG smoke result.
+15. Sign off Gate B only if every preceding step passed without exception.
+
+M5 remains blocked until step 15 is complete.
+
 ## Additive-copy smoke
 
 1. Start MasterOCTa and register the disposable clone. Confirm that the session
@@ -114,8 +144,30 @@ absolute paths, volume identifiers, personal filenames, or media fingerprints:
 Gate B remains incomplete until this checklist is executed against an approved
 disposable clone **or** the recorded synthetic-disk evidence in
 `docs/testing/GATE_B_SMOKE_EVIDENCE.md` is reviewed and signed off by a human.
-M5 must not begin before that sign-off.
+M5 must not begin before that sign-off; the completed sign-off is recorded
+below.
 
 Automated synthetic-disk smoke (no original media) is available via
 `scripts/gate-b-synthetic-smoke.sh` and recorded under
+`docs/testing/GATE_B_SMOKE_EVIDENCE.md`.
+
+## Completed sign-off
+
+Gate B was signed off **PASS** on 2026-08-31 for personal/local use only.
+
+- source commit:
+  `a10437f3b32c2c116a8e9133dd21c762843ed36e`
+- macOS DMG SHA-256:
+  `9cc41fe4ba507536027e01e365efb395709e6b8c23294d17f3d21c5921f109ae`
+- DMG verification: PASS
+- Octatrack OS 1.40 compatibility: PASS
+- human additive-copy smoke: PASS
+- source/destination SHA-256 match: PASS
+- existing media unchanged: PASS
+- remount persistence: PASS
+
+The build remains ad-hoc signed. Developer ID signing and notarization were not
+required for this personal/local-use gate, so this result is not approval for
+public distribution. It also does not authorize testing against original
+SD/CF media. The detailed automated evidence is recorded in
 `docs/testing/GATE_B_SMOKE_EVIDENCE.md`.

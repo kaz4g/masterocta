@@ -4,8 +4,12 @@
 
 ## 1. 目的
 
-MasterOCTaは既存OSSのOctatrack Managerを素体に、macOSでマウントしたOctatrack MkIIの
+Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントしたOctatrack MkIIの
 ストレージを安全に管理する公開・非商用フォークを開発する。
+
+**Identity split（BRAND-1）:** ユーザー向け表示名は **Masta-Octa**。
+内部互換ID（repo `masterocta`、bundle `jp.d3nousan.masterocta`、
+`Application Support/MasterOCTa`、schema/journal/backup ID）は変更しない。
 
 最終的に狙う機能は次のとおり。
 
@@ -96,30 +100,82 @@ Canvas操作、ranged preview、Workspace共通Preview Controllerまでを含む
 - Security recheck R2／v2 error sanitization: #42マージ済み
 - opportunistic `App.css` unused rule cleanup: #45マージ済み
 - M4-B recovery gate／production recovery導線: #43マージ済み（#47含む）
-- Gate B合成ディスクsmoke証拠: #48マージ済み
+- Gate B合成ディスクsmoke証拠: #48／#56／#57マージ済み；`199114e` で Linux／macOS 両 PASS
 - DEP-1 Tauri security baseline: #49マージ済み
 - DEP-2 frontend toolchain: #50マージ済み
 - SEC-1 containment CI guard: #51マージ済み
-- 現在のmain基準SHA: `0fcb93d`
+- Gate B smoke macOS移植: #55マージ済み
+- Project compatibility policy: #58／#59マージ済み
+- Gate B human sign-off: **PASS**（personal/local use、source `a10437f`）
+- 現在のmain基準SHA: `87c1368`（M5-C5 R4 #82 merge後）
+- M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
+- M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
+- M5-C5 R2 — prepared rename plan snapshot / restart continuation: **COMPLETE**（#79）
+  - `prepared_rename_runtime.rs` + `masterocta-prepared-rename-plan:v1`
+  - `v2_rename_continuation_status` / `v2_rename_continue`
+  - memory-only Continuation Authority
+- M5-C5 R3 — Apply + committed verification: **COMPLETE**（#80、#81）
+  - historical plan identity と current verified clone root を専用 continuation 型で分離
+  - continuation-only `v2_rename_apply`
+  - `v2_rename_verify_committed` read-only post-commit verification
+  - planned references、Invalid/Missing/Unresolved、affected documents、sidecar を検証
+  - mutation/verification DTO separation on Committed apply
+- M5-C5 R4 — Recovery + cross-domain mutation gate: **COMPLETE**（#82）
+  - `v2_rename_recover` production rollback + fresh rescan + postcondition verification
+  - `v2_rename_verify_rolled_back` read-only rollback re-verification
+  - `rename_recovery_runtime.rs` coordinator + `VerifiedRecoveryCloneRoot`
+  - cross-domain `mutation_gate` on enable_write / rename continue / additive apply
+  - RecoveryAuthority（write grant 不要）、Prepared/Committed recovery 拒否
+  - journal 由来 `planId` を restart discovery で返却（in-memory plan 復活なし）
+  - completion criteria 向け production recovery / mutation gate テスト群
+- M5-C5 Phase 4D — Operator UX + Gate C readiness: **COMPLETE**（branch `m5c5-phase4d-operator-ux`）
+  - `src/api/clones.ts` + extended `src/api/rename.ts`（continue/apply/recover/verify + `v2_rename_get_prepared_plan`）
+  - `CloneOperatorPanel`（managed/external clone setup + verification）
+  - `RenameOperatorPanel`（selection-independent Prepared→Continue→Apply→Verify→Recover operator）
+  - Change Drawer 統合、cross-domain visual gate、restart-safe prepared plan review
+  - Gate C automated checks: **PASS pending CI** / Human Gate C: **PENDING**
+- M5-C5 Phase 4A — verified disposable clone authority: **COMPLETE**（#74 に含む）
+- M5-C5 Phase 3 — explicit approval Rename UI: **COMPLETE**（PR #73、`RenameSampleModal` + `src/api/rename.ts`）
+  - Inspector 入口、`Approve & Prepare` → `authorize → backup → prepare`
+  - Continue/Apply/Recover operator UI は Phase 4D `RenameOperatorPanel` へ接続
+- M5-C5 Phase 2 — rename authority / backup / prepare API: **COMPLETE**（#72）
+  - `v2_rename_authorize` / `v2_rename_create_backup` / `v2_rename_prepare`
+  - `v2_rename_get_status` / `v2_rename_recovery_status`
+  - 正規順序 `enable_write → plan → authorize → backup → prepare`
+  - C1/C2 schema 変更なし、production から `RenameSampleExecutor::apply` 未接続
+- M5-C5 Phase 1 — read-only rename planning API: **COMPLETE**（P1 4件の fail-closed 証拠付き）
+  - `v2_rename_plan` / `v2_rename_get_plan` + session plan store + structured DTO
+  - catalog scan revision と `RootSession.observed_revision` の分離・同期
+  - live Project/Bank graph / source `.ot` sidecar / Unicode collision の再検証
+  - Apply・write grant・frontend は Phase 2 以降
+- Gate C rename Apply 自動検証: **M5-C4 完了**（合成 clone + CI smoke）
+- Gate C rename Apply 人手残件: **M5-C5 operator harness** + 実機 clone load smoke
+  （`docs/testing/GATE_C_CLONE_SMOKE.md`）
+- M5-A sample rename impact planning: #61 マージ済み
+- M5-A fail-closed blocker tests: #64 マージ済み
+- M5-A P1 planning fixes（unparseable Project / destination unresolved slots）: #65 マージ済み
+- M5-B lossless Project reference rewrite codec: #62 マージ済み
+- M5-B codec fail-closed／contract tests: #63 マージ済み
+- M5-C1 rename verified multi-file backup: #66 マージ済み
+- M5-C2 rename Mac staging / Prepared journal: #67 マージ済み
 - M2: 完了
-- M3-A: 完了
-- M3-B: 完了
-- M3-C0: 完了
-- M3-C1: 完了
-- M3-C2: 完了
-- M3-C3: 完了
-- M3-D: 完了
-- M3-E1: 完了
-- M3-E2: 完了
-- M3-E3: 完了
 - M3: 完了
 - M4-A: 完了
 - M4-B: 完了
+- Gate B: 完了（personal/local use。public distribution承認ではない）
 - Design System Phase A–D: 完了（DS1–DS7 / UI1–UI6）
-- 現在の作業: Gate B合成ディスクsmoke証拠の人間review、および DEP-3 React Router 修復
-- SQLite schema: v5（M3-E1で追加）
-- 次の機能実装: Gate B人間reviewまでM5へ進まない。
-  DEP-1／DEP-2／SEC-1はマージ済み。Mac `.app`／`.dmg`と実機smokeはmacOSホストで確認する
+- M5-A: **完了**（pure domain/planning contract + blocker matrix）
+- M5-B: **完了**（メモリ専用 PATH 置換 codec）
+- M5-C1: **完了**（Mac側 immutable rename backup）
+- M5-C2 rename Mac staging: **完了**
+- M5-C3 rename clone apply / rollback: **#69 マージ済み**（`373a755`）
+- M5-C4 Gate C automated clone-rescan proof: **#70 マージ済み**（`15eef67`）
+- SQLite schema: v6（compatibility evidence を含む）
+- Developer ID signing / notarization / public distribution は別release gate
+- M5-A contract 正本: `docs/planning/M5_A_SAMPLE_RENAME_IMPACT.md`
+- M5-B contract 正本: `docs/planning/M5_B_REFERENCE_REWRITE.md`
+- M5-C contract 正本: `docs/planning/M5_C_RENAME_TRANSACTION.md`
+- M5-C5 operator harness 正本: `docs/planning/M5_C5_OPERATOR_HARNESS.md`
 - Node基準: 22（`>=22.13.0`、`.nvmrc`）
 - package manager: `pnpm@11.24.0`
 - `ot-tools-io`はコミット
@@ -362,6 +418,25 @@ session／recovery状態をrefreshし、partial保持のwarningを残す。
 recovery bindingを持たないlegacy未完了状態はmediaとbackupを保持したまま`Abandoned`へ安全終端化して
 root全体のblockだけを解除する。
 
-この補完PRが成功しても、`docs/testing/GATE_B_CLONE_SMOKE.md`のhuman-reviewed smokeは別の残条件で
-ある。由来確認済みの使い捨てcloneによるsign-off前にGate B完了や原本media write対応を宣言せず、
-M5へ進まない。
+この補完PRの成功後も、`docs/testing/GATE_B_CLONE_SMOKE.md`のhuman-reviewed smokeは別の残条件
+として残った。由来確認済みの使い捨てcloneによるsign-off前はGate B完了や原本media write対応を
+宣言せず、M5を開始しなかった。
+
+Project compatibility policy follow-upでは、固定`ot-tools-io`の判定を維持しつつ、同libraryが
+unsupportedとする実機Octatrack MkII由来の`VERSION=19`／`R0173`／`1.40`だけを、追跡済みfixtureの
+SHA-256とMETAを根拠にMasterOCTa側で限定承認する。revision／releaseはASCII spaceだけで区切る
+exact tokenとして扱い、未知・malformed・別Project VERSIONは従来どおりread-onlyとする。
+`ensure_write_eligible()`、stable identity、traversal／symlink、overwrite禁止、Intent → Plan → Apply、
+backup／journal／recovery境界は変更しない。Projectを全面serializeせず、additive copy時のProject／
+Bank不変をSHA-256で検証する。
+
+このfollow-up merge後、source
+`a10437f3b32c2c116a8e9133dd21c762843ed36e`のDMGで
+`docs/testing/GATE_B_CLONE_SMOKE.md`のcompatibility-policy retestを実施した。
+DMG検証、Octatrack OS 1.40互換、human additive copy、source／destination SHA一致、
+既存media不変、remount persistenceはいずれもPASSであり、Gate Bはpersonal/local use scopeで
+human sign-off済み。M5へ進行できる。
+
+検証DMGはad-hoc signedであり、Developer ID signing／notarizationはpersonal/local use scopeには
+要求しない。一方、このDMGをpublic distribution artifactとして扱ってはならない。公開配布には
+別途signing、notarization、provenance、release security gateが必要である。

@@ -2,6 +2,22 @@
 
 Implementation and synthetic verification are complete locally. M7 is not yet accepted: visual acceptance with explicitly approved copied real samples remains open. This record captures pre-commit validation; subsequent delivery is recorded in Git and the pull request.
 
+## Latest-main conflict resolution
+
+Integrated main `827c7c5252f8ac8daf484b372202315845fdaf31` with the Waveform commit `82cff53c849029255c238ecb006d78546d487970` using a merge commit (no history rewrite). The six conflicted files retain both feature sets: Waveform query modules/commands and AUTO-SLICE onset/PCM modules/commands; the Workspace PreviewProvider wraps AppShell and the rename modal. All 47 main gateway commands remain, alongside the three Waveform commands. Cargo regenerated the lockfile offline from main with the existing rustix dependency added; no version was manually edited.
+
+Updated main's additional AudioApi test mock and the safe-build command list. Two AUTO-SLICE test helpers now canonicalize their own created TempDir before SQLite opens; this resolves macOS `/var` aliases while preserving production NOFOLLOW behavior. No production slice/rename semantics were changed. Main's AUTO-SLICE work remains separate from the M7 marker contract.
+
+Post-integration verification:
+
+- TypeScript typecheck and production build passed; architecture and containment guards, Rust fmt and workspace/all-target clippy passed.
+- Frontend: **63 files / 490 tests passed**. One initial existing AudioFileTable popover timing failure passed targeted rerun and the final full rerun without code changes.
+- Rust: **1229 tests passed** across the app/integration run (989) and final other-crates run (240); 3 existing ignored and physical-device discovery explicitly excluded. The final other-crates run followed the test-only catalog path correction; no previously tested production code changed.
+- Chrome: **4 E2E tests passed**, covering Waveform, AUTO-SLICE editing/undo, and both rename operator flows. Synthetic data and mocked gateways only. Local font requests through the reused dependency directory were blocked by Vite's serving allow list; functional assertions passed.
+- Eleven tracked test-fixture files remain byte-identical to the merge index. PR diff whitespace check against integrated main passed; an existing main-side trailing blank line outside this PR is unchanged.
+
+Tests used the locked compiler/test binaries from the previously verified dependency installation; the JavaScript lockfile is identical. pnpm's automatic workspace reinstallation could not restore the guide dependencies offline, so the equivalent script binaries were invoked directly. The temporary Playwright configuration selected installed Chrome and a direct Vite server command; it is not part of the PR. Earlier verification below is retained as historical baseline evidence. Real-sample acceptance remains open.
+
 ## Delivered
 
 - M6 Inspector sizing, measured width/DPR, cancellable consumers and Workspace Preview Controller.

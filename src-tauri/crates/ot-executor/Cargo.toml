@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[features]
+test-seams = []
+
 [dependencies]
 fs2 = "0.4"
 ot-backup = { path = "../ot-backup" }
+ot-codec-ports = { path = "../ot-codec-ports" }
 ot-domain = { path = "../ot-domain" }
 ot-plan = { path = "../ot-plan" }
 serde = { version = "1", features = ["derive"] }
@@ -15,6 +19,7 @@ sha2 = "=0.10.9"
 rustix = { version = "=1.1.4", features = ["fs"] }
 
 [dev-dependencies]
+ot-codec = { path = "../ot-codec" }
 tempfile = "3"
 
 [lib]

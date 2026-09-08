@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { AudioApi, ChangeApi, MetadataApi, RootApi, RootSession } from "../../api";
+import type { AudioApi, ChangeApi, CloneApi, MetadataApi, RenameApi, RootApi, RootSession } from "../../api";
 import { RootRegistryPanel } from "./RootRegistryPanel";
+import { renameOperatorApiStubs } from "../../test/renameApiStubs";
 
 const session: RootSession = {
   rootId: "root-opaque",
@@ -27,6 +29,7 @@ function fakeApi(): RootApi {
       writeGrantExpiresInSeconds: 600,
       capabilities: { ...session.capabilities, write: true },
     }),
+    disableWrite: vi.fn().mockResolvedValue(session),
     closeRoot: vi.fn().mockResolvedValue(undefined),
     listLibrary: vi.fn().mockResolvedValue({
       sets: [{
@@ -67,6 +70,33 @@ function fakeApi(): RootApi {
   };
 }
 
+function fakeCloneApi(): CloneApi {
+  return {
+    recordSourceEvidence: vi.fn(),
+    createManagedClone: vi.fn(),
+    verifyExternal: vi.fn(),
+    verificationStatus: vi.fn().mockResolvedValue(null),
+    reverify: vi.fn(),
+  };
+}
+
+function fakeRenameApi(): RenameApi {
+  return {
+    plan: vi.fn(),
+    getPlan: vi.fn(),
+    authorize: vi.fn(),
+    createBackup: vi.fn(),
+    prepare: vi.fn(),
+    getStatus: vi.fn(),
+    recoveryStatus: vi.fn().mockResolvedValue({
+      schema: "rename-recovery-status:v1",
+      recoveryRequired: false,
+      operations: [],
+    }),
+    ...renameOperatorApiStubs(),
+  };
+}
+
 function fakeChangeApi(): ChangeApi {
   return {
     planAdditiveCopy: vi.fn(),
@@ -86,7 +116,7 @@ describe("RootRegistryPanel", () => {
   it("does nothing when the native picker is cancelled", async () => {
     const api = fakeApi();
     const selectDirectory = vi.fn().mockResolvedValue(null);
-    render(<RootRegistryPanel api={api} changeClient={fakeChangeApi()} selectDirectory={selectDirectory} />);
+    render(<RootRegistryPanel api={api} changeClient={fakeChangeApi()} cloneClient={fakeCloneApi()} renameClient={fakeRenameApi()} selectDirectory={selectDirectory} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
 
@@ -98,7 +128,7 @@ describe("RootRegistryPanel", () => {
   it("reports a native picker failure without registering a root", async () => {
     const api = fakeApi();
     const selectDirectory = vi.fn().mockRejectedValue(new Error("picker unavailable"));
-    render(<RootRegistryPanel api={api} changeClient={fakeChangeApi()} selectDirectory={selectDirectory} />);
+    render(<RootRegistryPanel api={api} changeClient={fakeChangeApi()} cloneClient={fakeCloneApi()} renameClient={fakeRenameApi()} selectDirectory={selectDirectory} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
 
@@ -112,7 +142,7 @@ describe("RootRegistryPanel", () => {
     render(
       <RootRegistryPanel
         api={api}
-        changeClient={fakeChangeApi()}
+        changeClient={fakeChangeApi()} cloneClient={fakeCloneApi()} renameClient={fakeRenameApi()}
         selectDirectory={vi.fn().mockResolvedValue(rawPath)}
       />,
     );
@@ -158,7 +188,7 @@ describe("RootRegistryPanel", () => {
     render(
       <RootRegistryPanel
         api={api}
-        changeClient={fakeChangeApi()}
+        changeClient={fakeChangeApi()} cloneClient={fakeCloneApi()} renameClient={fakeRenameApi()}
         audioClient={audioClient}
         metadataClient={metadataClient}
         selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
@@ -200,17 +230,23 @@ describe("RootRegistryPanel", () => {
       <RootRegistryPanel
         api={api}
         changeClient={changeClient}
+        cloneClient={fakeCloneApi()}
+        renameClient={fakeRenameApi()}
         selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
     expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Enable edit mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     expect(await screen.findAllByText("EDIT ENABLED")).toHaveLength(2);
     expect(changeClient.recoveryStatus).toHaveBeenCalledTimes(2);
     expect(api.enableWrite).toHaveBeenCalledWith("root-opaque");
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    expect(api.disableWrite).toHaveBeenCalledWith("root-opaque");
+    expect(await screen.findAllByText("READ ONLY")).toHaveLength(2);
   });
 
   it("refreshes the catalog and recovery gate after an approved rollback", async () => {
@@ -252,16 +288,23 @@ describe("RootRegistryPanel", () => {
       <RootRegistryPanel
         api={api}
         changeClient={changeClient}
+        cloneClient={fakeCloneApi()}
+        renameClient={fakeRenameApi()}
         selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
     expect(await screen.findByText("Rollback required")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText(
-      "I approve rollback of this exact incomplete additive-copy operation.",
-    ));
-    fireEvent.click(screen.getByRole("button", { name: "Roll back incomplete copy" }));
+    const approvalLabel = "I approve rollback of this exact incomplete additive-copy operation.";
+    await waitFor(() => {
+      expect(screen.getByLabelText(approvalLabel)).not.toBeDisabled();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText(approvalLabel));
+    const recoverButton = screen.getByRole("button", { name: "Roll back incomplete copy" });
+    await waitFor(() => expect(recoverButton).not.toBeDisabled());
+    await user.click(recoverButton);
 
     await waitFor(() => expect(changeClient.recoverChange).toHaveBeenCalledWith(
       "root-opaque",
@@ -300,6 +343,8 @@ describe("RootRegistryPanel", () => {
       <RootRegistryPanel
         api={api}
         changeClient={changeClient}
+        cloneClient={fakeCloneApi()}
+        renameClient={fakeRenameApi()}
         audioClient={audioClient}
         metadataClient={metadataClient}
         selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
@@ -318,5 +363,59 @@ describe("RootRegistryPanel", () => {
     await waitFor(() => expect(closeRoot).toBeDisabled());
     fireEvent.click(closeRoot);
     expect(api.closeRoot).not.toHaveBeenCalled();
+  });
+
+  it("shows the rename entry point and prepared notice after recovery status loads", async () => {
+    const api = fakeApi();
+    const renameClient = fakeRenameApi();
+    const audioClient: AudioApi = {
+      prepareWaveform: vi.fn().mockResolvedValue({ state: "READY", metadata: { sampleRate: 44100, channelCount: 1, totalFrames: 44100 }, errorCode: null }),
+      queryWaveform: vi.fn(),
+      createRangedPreviewToken: vi.fn(),
+      getWaveform: vi.fn().mockResolvedValue({
+        durationSeconds: 1,
+        sampleRate: 44100,
+        channels: 1,
+        peaks: [{ min: -0.2, max: 0.4 }],
+      }),
+      createPreviewToken: vi.fn(),
+      readPreview: vi.fn(),
+    };
+    const metadataClient: MetadataApi = {
+      loadManualAssetMetadata: vi.fn().mockResolvedValue({ tags: [], note: "" }),
+      replaceManualAssetMetadata: vi.fn(),
+    };
+    vi.mocked(renameClient.recoveryStatus).mockResolvedValue({
+      schema: "rename-recovery-status:v1",
+      recoveryRequired: false,
+      operations: [{
+        schema: "rename-status:v1",
+        operationId: `operation:v1:${"a".repeat(64)}`,
+        planId: null,
+        state: "prepared",
+        backupSnapshotId: `snapshot:v1:${"a".repeat(64)}`,
+        failureCode: null,
+        planExpired: true,
+        recoveryEligible: false,
+      }],
+    });
+    render(
+      <RootRegistryPanel
+        api={api}
+        changeClient={fakeChangeApi()}
+        cloneClient={fakeCloneApi()}
+        renameClient={renameClient}
+        audioClient={audioClient}
+        metadataClient={metadataClient}
+        selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
+    expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /KICK\.wav/ }));
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByText(/A prepared rename operation exists/i)).toBeInTheDocument();
+    expect(renameClient.recoveryStatus).toHaveBeenCalled();
   });
 });

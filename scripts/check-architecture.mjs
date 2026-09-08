@@ -26,6 +26,7 @@ const metadata = JSON.parse(
 const dependencyRules = new Map([
   ["ot-domain", []],
   ["ot-codec-ports", ["ot-domain"]],
+  ["ot-codec", ["encoding_rs", "ot-codec-ports", "ot-domain"]],
   ["ot-storage-ports", ["ot-domain"]],
   [
     "ot-catalog",
@@ -33,7 +34,8 @@ const dependencyRules = new Map([
   ],
   [
     "ot-audio",
-    ["ot-domain", "rustix", "serde", "serde_json", "sha2", "symphonia"],
+    // AUTO-SLICE-1 uses the reviewed RustFFT implementation for spectral flux.
+    ["ot-domain", "rustfft", "rustix", "serde", "serde_json", "sha2", "symphonia"],
   ],
   ["ot-plan", ["ot-domain", "sha2"]],
   [
@@ -45,6 +47,7 @@ const dependencyRules = new Map([
     [
       "fs2",
       "ot-backup",
+      "ot-codec-ports",
       "ot-domain",
       "ot-plan",
       "rustix",
@@ -64,15 +67,21 @@ const devDependencyRules = new Map(
 devDependencyRules.set("ot-catalog", ["tempfile"]);
 devDependencyRules.set("ot-audio", ["tempfile"]);
 devDependencyRules.set("ot-backup", ["tempfile"]);
-devDependencyRules.set("ot-executor", ["tempfile"]);
+devDependencyRules.set("ot-executor", ["ot-codec", "tempfile"]);
+devDependencyRules.set("ot-codec", ["ot-tools-io"]);
 const allowedCompositionDependencies = new Set([
   "ot-application",
   "ot-audio",
+  "ot-backup",
   "ot-catalog",
+  "ot-codec",
   "ot-domain",
   "ot-executor",
   "ot-plan",
   "ot-storage-ports",
+]);
+const allowedCompositionDevDependencies = new Set([
+  "tempfile",
 ]);
 const packagesByName = new Map(
   metadata.packages.map((cargoPackage) => [cargoPackage.name, cargoPackage]),
@@ -137,6 +146,7 @@ if (!legacyPackage) {
     );
   }
   const unauthorizedDependencies = legacyPackage.dependencies
+    .filter((dependency) => dependency.kind !== "dev")
     .map((dependency) => dependency.name)
     .filter(
       (name) => nextCoreNames.has(name) && !allowedCompositionDependencies.has(name),
@@ -145,6 +155,23 @@ if (!legacyPackage) {
     failures.push(
       "Tauri composition root has unauthorized next-core dependencies: " +
         unauthorizedDependencies.join(", "),
+    );
+  }
+  const actualCompositionDevDependencies = legacyPackage.dependencies
+    .filter((dependency) => dependency.kind === "dev")
+    .map((dependency) => dependency.name)
+    .sort();
+  const expectedCompositionDevDependencies = [
+    ...allowedCompositionDevDependencies,
+  ].sort();
+  if (
+    JSON.stringify(actualCompositionDevDependencies) !==
+    JSON.stringify(expectedCompositionDevDependencies)
+  ) {
+    failures.push(
+      "Tauri composition root dev dependencies must be [" +
+        expectedCompositionDevDependencies.join(", ") +
+        `], found [${actualCompositionDevDependencies.join(", ")}]`,
     );
   }
 }
@@ -159,25 +186,57 @@ const v2Commands = [
   ),
 ];
 const expectedV2Commands = [
+  // Read-only source PCM and revision-checked local drafts; no media Apply.
   "v2_asset_metadata_get",
   "v2_asset_metadata_replace",
+  "v2_audio_onsets_cancel",
+  "v2_audio_onsets_start",
+  "v2_audio_onsets_status",
   "v2_audio_preview_create",
   "v2_audio_preview_range_create",
   "v2_audio_preview_read",
+  "v2_audio_preview_region_create",
+  "v2_audio_preview_region_read",
   "v2_audio_waveform_get",
   "v2_audio_waveform_prepare",
   "v2_audio_waveform_query",
+  "v2_audio_waveform_range_get",
   "v2_change_apply",
   "v2_change_get_plan",
   "v2_change_plan",
   "v2_change_recover",
   "v2_change_recovery_status",
   "v2_change_status",
+  "v2_clone_create_managed",
+  "v2_clone_issue_authority",
+  "v2_clone_record_source_evidence",
+  "v2_clone_reverify",
+  "v2_clone_verification_status",
+  "v2_clone_verify_external",
   "v2_library_list",
+  "v2_rename_apply",
+  "v2_rename_authorize",
+  "v2_rename_continuation_status",
+  "v2_rename_continue",
+  "v2_rename_create_backup",
+  "v2_rename_get_committed_evidence",
+  "v2_rename_get_plan",
+  "v2_rename_get_prepared_plan",
+  "v2_rename_get_status",
+  "v2_rename_plan",
+  "v2_rename_prepare",
+  "v2_rename_recover",
+  "v2_rename_recovery_status",
+  "v2_rename_verify_committed",
+  "v2_rename_verify_rolled_back",
   "v2_root_close",
+  "v2_root_disable_write",
   "v2_root_enable_write",
   "v2_root_register",
   "v2_root_status",
+  "v2_slice_draft_get",
+  "v2_slice_draft_update",
+  "v2_slice_proposal_create",
 ];
 const actualV2Commands = v2Commands.map((match) => match[1]).sort();
 if (JSON.stringify(actualV2Commands) !== JSON.stringify(expectedV2Commands)) {
@@ -198,13 +257,13 @@ for (const [, commandName, parameters] of v2Commands) {
     ) {
       failures.push("v2_root_register must be the only raw path boundary");
     }
-  } else if (commandName === "v2_change_plan") {
+  } else if (commandName === "v2_change_plan" || commandName === "v2_rename_plan") {
     if (
       pathParameters.length !== 1 ||
       !pathParameters[0].startsWith("destination_relative_path")
     ) {
       failures.push(
-        "v2_change_plan may accept only one explicitly named root-relative destination path",
+        `${commandName} may accept only one explicitly named root-relative destination path`,
       );
     }
   } else if (pathParameters.length > 0) {
@@ -220,7 +279,7 @@ if (
   )
 ) {
   failures.push(
-    "v2_change_plan destination must cross the RootRelativePath validation boundary",
+    "v2_change_plan and v2_rename_plan destination must cross the RootRelativePath validation boundary",
   );
 }
 
@@ -269,4 +328,3 @@ if (failures.length > 0) {
 }
 
 console.log("Architecture dependency rules passed.");
-

@@ -2,6 +2,7 @@
 members = [
     ".",
     "crates/ot-domain",
+    "crates/ot-codec",
     "crates/ot-codec-ports",
     "crates/ot-storage-ports",
     "crates/ot-application",
@@ -16,7 +17,7 @@ resolver = "2"
 [package]
 name = "masterocta"
 version = "0.1.0"
-description = "MasterOCTa — a desktop application for safely managing Elektron Octatrack projects"
+description = "Masta-Octa — a desktop application for safely managing Elektron Octatrack projects"
 authors = ["dferlay"]
 edition = "2021"
 
@@ -59,9 +60,15 @@ ot-application = { path = "crates/ot-application" }
 ot-audio = { path = "crates/ot-audio" }
 ot-catalog = { path = "crates/ot-catalog" }
 ot-domain = { path = "crates/ot-domain" }
+ot-backup = { path = "crates/ot-backup" }
+ot-codec = { path = "crates/ot-codec" }
 ot-executor = { path = "crates/ot-executor" }
 ot-plan = { path = "crates/ot-plan" }
 ot-storage-ports = { path = "crates/ot-storage-ports" }
+unicode-normalization = "0.1.24"
+
+[features]
+test-seams = ["ot-executor/test-seams"]
 
 [dev-dependencies]
 tempfile = "3"
