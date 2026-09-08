@@ -1,174 +1,186 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  audioApi,
-  type AudioApi,
-  type AudioPreviewBytes,
-  type AudioWaveform,
-} from "../../api";
-import { Button } from "../../design-system";
-import "./WaveformPreview.css";
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { audioApi, type AudioApi, type AudioFrameRange, type AudioWaveformWindow } from '../../api';
+import { Button } from '../../design-system';
+import { boundedRange, formatFrameTime, fractionAtFrame, frame, frameAtFraction, panRange, peakPath, rangeLength, validateRange, validateWaveform, zoomRange } from './frameMath';
+import './WaveformPreview.css';
 
-const TARGET_POINTS = 640;
-const VIEWBOX_WIDTH = 640;
-const VIEWBOX_HEIGHT = 140;
-
-interface WaveformPreviewProps {
-  rootId: string;
-  assetId: string;
-  displayName: string;
-  api?: AudioApi;
+interface WaveformPreviewProps { rootId: string; assetId: string; displayName: string; api?: AudioApi; }
+type ChannelView = 'split' | 'overlay' | 'left' | 'right';
+function message(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'message' in error ? String(error.message) : 'Audio could not be loaded.';
 }
 
-function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error !== null && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === "string") return message;
-  }
-  return error instanceof Error ? error.message : String(error);
+/** Identity-keyed state prevents even a one-render flash of the previous asset. */
+export function WaveformPreview(props: WaveformPreviewProps) {
+  return <WaveformSession key={`${props.rootId}:${props.assetId}`} {...props} />;
 }
 
-function toArrayBuffer(bytes: AudioPreviewBytes): ArrayBuffer {
-  return bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer;
-}
-
-export function waveformPath(waveform: AudioWaveform): string {
-  if (waveform.peaks.length === 0) return "";
-  const xScale = VIEWBOX_WIDTH / waveform.peaks.length;
-  const center = VIEWBOX_HEIGHT / 2;
-  return waveform.peaks
-    .map((peak, index) => {
-      const x = (index + 0.5) * xScale;
-      const top = center - Math.max(-1, Math.min(1, peak.max)) * center;
-      const bottom = center - Math.max(-1, Math.min(1, peak.min)) * center;
-      return `M${x.toFixed(2)} ${top.toFixed(2)}V${bottom.toFixed(2)}`;
-    })
-    .join("");
-}
-
-function formatDuration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const minutes = Math.floor(seconds / 60);
-  const remaining = Math.floor(seconds % 60);
-  return `${minutes}:${remaining.toString().padStart(2, "0")}`;
-}
-
-export function WaveformPreview({
-  rootId,
-  assetId,
-  displayName,
-  api = audioApi,
-}: WaveformPreviewProps) {
-  const [waveform, setWaveform] = useState<AudioWaveform | null>(null);
-  const [waveformError, setWaveformError] = useState<string | null>(null);
+function WaveformSession({ rootId, assetId, displayName, api = audioApi }: WaveformPreviewProps) {
+  const container = useRef<HTMLDivElement>(null);
+  const [targetPoints, setTargetPoints] = useState(800);
+  const [viewport, setViewport] = useState<AudioFrameRange | null>(null);
+  const [waveform, setWaveform] = useState<AudioWaveformWindow | null>(null);
+  const [overview, setOverview] = useState<AudioWaveformWindow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<AudioFrameRange | null>(null);
+  const [startInput, setStartInput] = useState('0');
+  const [endInput, setEndInput] = useState('');
+  const [rangeError, setRangeError] = useState<string | null>(null);
+  const [channelView, setChannelView] = useState<ChannelView>('split');
+  const anchor = useRef<bigint | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewRange, setPreviewRange] = useState<AudioFrameRange | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [truncated, setTruncated] = useState(false);
+  const [playhead, setPlayhead] = useState<bigint | null>(null);
   const previewRequest = useRef(0);
 
   useEffect(() => {
-    let active = true;
-    setWaveform(null);
-    setWaveformError(null);
-    api.getWaveform(rootId, assetId, TARGET_POINTS).then(
-      (nextWaveform) => {
-        if (active) setWaveform(nextWaveform);
-      },
-      (error) => {
-        if (active) setWaveformError(errorMessage(error));
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [api, assetId, rootId]);
-
-  useEffect(() => () => {
-    if (previewUrl !== null) URL.revokeObjectURL(previewUrl);
-  }, [previewUrl]);
-
-  useEffect(() => () => {
-    previewRequest.current += 1;
+    if (typeof ResizeObserver === 'undefined' || !container.current) return;
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width;
+      if (width > 0) setTargetPoints(Math.max(32, Math.min(4096, Math.ceil(width * Math.min(window.devicePixelRatio || 1, 2)))));
+    });
+    observer.observe(container.current);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    previewRequest.current += 1;
-    setPreviewUrl(null);
-    setPreviewError(null);
-    setTruncated(false);
-  }, [assetId, rootId]);
+    let active = true;
+    setLoading(true);
+    setError(null);
+    const timer = setTimeout(() => {
+      api.queryWaveform(rootId, assetId, { range: viewport, targetPoints }).then(result => {
+        if (!active) return;
+        const next = validateWaveform(result, targetPoints);
+        if (viewport && (next.range.startFrame !== viewport.startFrame || next.range.endFrame !== viewport.endFrame)) {
+          throw new Error('Waveform response does not match the requested range.');
+        }
+        setWaveform(next);
+        if (viewport === null) setOverview(next);
+      }).catch(reason => { if (active) setError(message(reason)); })
+        .finally(() => { if (active) setLoading(false); });
+    }, 100);
+    return () => { active = false; clearTimeout(timer); };
+  }, [api, assetId, rootId, viewport, targetPoints]);
 
-  const path = useMemo(() => waveform === null ? "" : waveformPath(waveform), [waveform]);
+  useEffect(() => () => { previewRequest.current += 1; }, []);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
+  const view = waveform?.range;
+  const duration = waveform ? formatFrameTime(waveform.frameCount, waveform.sampleRate) : null;
+  const audition = selection ?? view;
+  const canPreview = waveform && audition && rangeLength(audition) <= BigInt(waveform.sampleRate) * 30n
+    && rangeLength(audition) * BigInt(waveform.channels * 2) <= 16n * 1024n * 1024n;
+  const fullView = view && waveform && view.startFrame === '0' && view.endFrame === waveform.frameCount;
+
+  function selectRange(next: AudioFrameRange | null) {
+    setSelection(next);
+    setStartInput(next?.startFrame ?? '0');
+    setEndInput(next?.endFrame ?? '');
+    setRangeError(null);
+  }
+  function applyRange() {
+    if (!waveform) return;
+    try { selectRange(validateRange({ startFrame: startInput, endFrame: endInput }, waveform.frameCount)); }
+    catch (reason) { setRangeError(message(reason)); }
+  }
+  function pointerFrame(event: PointerEvent<SVGSVGElement>): bigint {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return frameAtFraction(view!, rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0);
+  }
+  function updateDrag(event: PointerEvent<SVGSVGElement>) {
+    if (anchor.current === null || !view || !waveform) return;
+    const next = pointerFrame(event), first = anchor.current;
+    const left = next < first ? next : first, right = next > first ? next : first;
+    selectRange(boundedRange(left, right - left || 1n, frame(waveform.frameCount)));
+  }
   async function loadPreview() {
-    const request = previewRequest.current + 1;
-    previewRequest.current = request;
-    setPreviewing(true);
-    setPreviewError(null);
-    setPreviewUrl(null);
-    setTruncated(false);
+    if (!canPreview || !audition) return;
+    const request = ++previewRequest.current;
+    const selected = audition;
+    setPreviewing(true); setPreviewError(null); setPreviewUrl(null); setPlayhead(null);
     try {
-      const ticket = await api.createPreviewToken(rootId, assetId);
+      const ticket = await api.createRangePreviewToken(rootId, assetId, selected);
+      if (previewRequest.current !== request) return;
       const bytes = await api.readPreview(rootId, ticket.previewToken);
       if (previewRequest.current !== request) return;
-      const buffer = toArrayBuffer(bytes);
-      if (ticket.mimeType !== "audio/wav" || buffer.byteLength !== ticket.byteLength) {
-        throw new Error("Preview response failed validation.");
+      const buffer = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer;
+      if (ticket.mimeType !== 'audio/wav' || buffer.byteLength !== ticket.byteLength || ticket.truncated) {
+        throw new Error('Preview response failed validation.');
       }
-      const url = URL.createObjectURL(
-        new Blob([buffer], { type: "audio/wav" }),
-      );
-      setPreviewUrl(url);
-      setTruncated(ticket.truncated);
-    } catch (error) {
-      if (previewRequest.current === request) setPreviewError(errorMessage(error));
-    } finally {
-      if (previewRequest.current === request) setPreviewing(false);
-    }
+      setPreviewUrl(URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' })));
+      setPreviewRange(selected);
+    } catch (reason) { if (previewRequest.current === request) setPreviewError(message(reason)); }
+    finally { if (previewRequest.current === request) setPreviewing(false); }
   }
+  const channels = waveform ? (channelView === 'left' ? [0] : channelView === 'right' ? [1] : waveform.channelPeaks.map((_, i) => i)) : [];
+  const plotHeight = channelView === 'split' ? channels.length * 100 : 100;
+  const selectionStart = selection && view ? Math.max(0, fractionAtFrame(frame(selection.startFrame), view)) : 0;
+  const selectionEnd = selection && view ? Math.min(1, fractionAtFrame(frame(selection.endFrame), view)) : 0;
+  const cursor = playhead !== null && view ? fractionAtFrame(playhead, view) : -1;
 
   return (
     <section className="waveform-preview" aria-label={`Waveform preview for ${displayName}`}>
-      <div className="waveform-preview-heading">
-        <p>Waveform</p>
-        {waveform !== null && <span>{formatDuration(waveform.durationSeconds)}</span>}
+      <div className="waveform-preview-heading"><p>Waveform 2.0</p><span>{duration}</span></div>
+      <div className="waveform-toolbar" aria-label="Waveform controls">
+        <Button variant="secondary" disabled={!view || loading || rangeLength(view) <= 1n} onClick={() => setViewport(zoomRange(view!, waveform!.frameCount, 'in', selection))}>Zoom in</Button>
+        <Button variant="secondary" disabled={!view || loading || !!fullView} onClick={() => setViewport(zoomRange(view!, waveform!.frameCount, 'out', selection))}>Zoom out</Button>
+        <Button variant="secondary" disabled={!view || loading || !!fullView} onClick={() => setViewport(null)}>Fit</Button>
+        <Button variant="secondary" disabled={!selection || loading} onClick={() => setViewport(selection)}>Zoom selection</Button>
+        <label>Channels<select aria-label="Waveform channels" value={channelView} onChange={event => setChannelView(event.target.value as ChannelView)}>
+          <option value="split">{waveform?.channels === 1 ? 'Mono' : 'Stereo · split'}</option>
+          {waveform?.channels === 2 && <><option value="overlay">Stereo · overlay</option><option value="left">Left</option><option value="right">Right</option></>}
+        </select></label>
       </div>
-
-      {waveform === null && waveformError === null && (
-        <p className="waveform-preview-status" role="status">Generating waveform...</p>
-      )}
-      {waveform !== null && (
-        <svg
-          aria-label="Audio waveform"
-          className="waveform-preview-plot"
-          role="img"
-          viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-        >
-          <line x1="0" x2={VIEWBOX_WIDTH} y1={VIEWBOX_HEIGHT / 2} y2={VIEWBOX_HEIGHT / 2} />
-          <path d={path} />
-        </svg>
-      )}
-      {waveformError !== null && (
-        <p className="waveform-preview-error" role="alert">{waveformError}</p>
-      )}
-
-      <div className="waveform-preview-actions">
-        <Button type="button" variant="secondary" disabled={previewing} onClick={loadPreview}>
-          {previewing ? "Preparing preview..." : "Load preview"}
-        </Button>
+      <div ref={container} className="waveform-canvas" aria-busy={loading}>
+        {waveform && view && <svg className="waveform-preview-plot" role="img" aria-label="Audio waveform" viewBox={`0 0 1000 ${plotHeight}`} preserveAspectRatio="none"
+          onPointerDown={event => { if (loading || event.button !== 0) return; anchor.current = pointerFrame(event); event.currentTarget.setPointerCapture?.(event.pointerId); updateDrag(event); }}
+          onPointerMove={updateDrag} onPointerUp={event => { updateDrag(event); anchor.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); }}
+          onPointerCancel={() => { anchor.current = null; }}>
+          {channels.map((channel, index) => <g key={channel} transform={`translate(0,${channelView === 'split' ? index * 100 : 0})`}>
+            <line x1="0" x2="1000" y1="50" y2="50" className="waveform-center" />
+            <path data-channel={channel} className={`waveform-channel waveform-channel-${channel}`} d={peakPath(waveform.channelPeaks[channel], view, waveform.framesPerPeak)} />
+            <text x="8" y="16" className="waveform-channel-label">{waveform.channels === 1 ? 'MONO' : channel === 0 ? 'L' : 'R'}</text>
+          </g>)}
+          {selectionEnd > selectionStart && <rect className="waveform-selection" x={selectionStart * 1000} y="0" width={(selectionEnd - selectionStart) * 1000} height={plotHeight} />}
+          {cursor >= 0 && cursor <= 1 && <line className="waveform-playhead" x1={cursor * 1000} x2={cursor * 1000} y1="0" y2={plotHeight} />}
+        </svg>}
+        {loading && <p className="waveform-preview-status" role="status">{waveform ? 'Loading detail…' : 'Generating waveform…'}</p>}
       </div>
-      {previewUrl !== null && (
-        <audio aria-label={`Preview ${displayName}`} controls preload="metadata" src={previewUrl} />
-      )}
-      {truncated && (
-        <p className="waveform-preview-notice">Preview is limited to the first 60 seconds.</p>
-      )}
-      {previewError !== null && (
-        <p className="waveform-preview-error" role="alert">{previewError}</p>
-      )}
-      <p className="waveform-preview-boundary">
-        Peaks are cached locally. Preview access uses a one-shot, short-lived token.
-      </p>
+      {view && waveform && <>
+        <div className="waveform-time-ruler"><span>{formatFrameTime(view.startFrame, waveform.sampleRate)}</span><span>{formatFrameTime(view.endFrame, waveform.sampleRate)}</span></div>
+        {overview && <div className="waveform-overview">
+          <svg aria-label="Full audio overview" role="img" viewBox="0 0 1000 100" preserveAspectRatio="none">
+            <path className="waveform-channel waveform-channel-0" d={peakPath(overview.channelPeaks[0], overview.range, overview.framesPerPeak)} />
+            <rect className="waveform-viewport" x={fractionAtFrame(frame(view.startFrame), overview.range) * 1000} y="0" width={Number(rangeLength(view) * 1_000_000n / frame(waveform.frameCount)) / 1000} height="100" />
+          </svg>
+        </div>}
+        <div className="waveform-pan">
+          <Button variant="secondary" aria-label="Pan waveform left" disabled={loading || view.startFrame === '0'} onClick={() => setViewport(panRange(view, waveform.frameCount, -1))}>←</Button>
+          <input type="range" aria-label="Waveform position" min="0" max="10000" step="1" disabled={loading || !!fullView}
+            value={fullView ? 0 : Number(frame(view.startFrame) * 10000n / (frame(waveform.frameCount) - rangeLength(view)))}
+            onChange={event => setViewport(boundedRange((frame(waveform.frameCount) - rangeLength(view)) * BigInt(event.target.value) / 10000n, rangeLength(view), frame(waveform.frameCount)))} />
+          <Button variant="secondary" aria-label="Pan waveform right" disabled={loading || view.endFrame === waveform.frameCount} onClick={() => setViewport(panRange(view, waveform.frameCount, 1))}>→</Button>
+        </div>
+        <p className="waveform-detail-meta">{waveform.sampleRate.toLocaleString()} Hz · {waveform.channels === 1 ? 'Mono' : 'Stereo'} · {waveform.framesPerPeak} frames / peak</p>
+        <fieldset className="waveform-range"><legend>Selection · source frames</legend>
+          <label>Start<input aria-label="Selection start frame" inputMode="numeric" value={startInput} onChange={event => setStartInput(event.target.value)} /></label>
+          <label>End (exclusive)<input aria-label="Selection end frame" inputMode="numeric" value={endInput} onChange={event => setEndInput(event.target.value)} /></label>
+          <Button variant="secondary" onClick={applyRange}>Set range</Button>
+          <Button variant="secondary" disabled={!selection} onClick={() => selectRange(null)}>Clear</Button>
+        </fieldset>
+        {selection && <p className="waveform-selection-label">Selected {formatFrameTime(selection.startFrame, waveform.sampleRate)}–{formatFrameTime(selection.endFrame, waveform.sampleRate)}</p>}
+      </>}
+      {rangeError && <p role="alert" className="waveform-preview-error">{rangeError}</p>}
+      {error && <p role="alert" className="waveform-preview-error">{error}</p>}
+      <div className="waveform-preview-actions"><Button variant="secondary" disabled={previewing || !canPreview || loading || error !== null} onClick={loadPreview}>{previewing ? 'Preparing preview…' : 'Load preview'}</Button></div>
+      {waveform && !canPreview && <p className="waveform-preview-notice">Select or zoom to a range of up to 30 seconds (16 MiB) to preview it.</p>}
+      {previewUrl && <audio aria-label={`Preview ${displayName}`} controls preload="metadata" src={previewUrl}
+        onTimeUpdate={event => { if (previewRange && waveform) setPlayhead(frame(previewRange.startFrame) + BigInt(Math.floor(event.currentTarget.currentTime * waveform.sampleRate))); }} />}
+      {previewError && <p role="alert" className="waveform-preview-error">{previewError}</p>}
+      <p className="waveform-preview-boundary">Drag to select. Zoom and selection leave the original audio unchanged.</p>
     </section>
   );
 }

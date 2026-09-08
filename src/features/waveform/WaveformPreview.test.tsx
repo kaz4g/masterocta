@@ -1,168 +1,108 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AudioApi, AudioWaveform } from "../../api";
-import { WaveformPreview, waveformPath } from "./WaveformPreview";
-
-const waveform: AudioWaveform = {
-  analyzerVersion: "waveform:v1",
-  sampleRate: 44100,
-  channels: 2,
-  frameCount: 44100,
-  durationSeconds: 1,
-  samplesPerPeak: 256,
-  peaks: [
-    { min: -0.5, max: 0.75 },
-    { min: -1, max: 1 },
-  ],
-};
-
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AudioApi, AudioWaveformWindow } from '../../api';
+import { waveformApiStubs, waveformFixture } from '../../test/audioApiStubs';
+import { WaveformPreview } from './WaveformPreview';
 function api(): AudioApi {
-  return {
-    getWaveform: vi.fn().mockResolvedValue(waveform),
-    createPreviewToken: vi.fn().mockResolvedValue({
-      previewToken: "preview:v1:opaque",
-      expiresInSeconds: 120,
-      mimeType: "audio/wav",
-      byteLength: 4,
-      durationMillis: 1000,
-      truncated: false,
-    }),
-    readPreview: vi.fn().mockResolvedValue(new Uint8Array([82, 73, 70, 70]).buffer),
-  };
+  return { ...waveformApiStubs(), getWaveform: vi.fn(), createPreviewToken: vi.fn(), readPreview: vi.fn().mockResolvedValue(new Uint8Array([82, 73, 70, 70]).buffer) };
 }
-
-describe("WaveformPreview", () => {
-  beforeEach(() => {
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:preview"),
-      revokeObjectURL: vi.fn(),
-    });
+const props = { rootId: 'root-opaque', assetId: 'asset:v1:opaque', displayName: 'kick.wav' };
+async function selectRange(start: string, end: string) {
+  await screen.findByRole('img', { name: 'Audio waveform' });
+  fireEvent.change(screen.getByLabelText('Selection start frame'), { target: { value: start } });
+  fireEvent.change(screen.getByLabelText('Selection end frame'), { target: { value: end } });
+  fireEvent.click(screen.getByRole('button', { name: 'Set range' }));
+}
+describe('Waveform 2.0', () => {
+  beforeEach(() => { vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:preview'), revokeObjectURL: vi.fn() }); });
+  afterEach(() => vi.unstubAllGlobals());
+  it('requests source-frame peaks and independently renders both stereo channels', async () => {
+    const client = api(); render(<WaveformPreview {...props} api={client} />);
+    const plot = await screen.findByRole('img', { name: 'Audio waveform' });
+    expect(client.queryWaveform).toHaveBeenCalledWith(props.rootId, props.assetId, { range: null, targetPoints: 800 });
+    expect(plot.querySelector('[data-channel="0"]')).toBeInTheDocument();
+    expect(plot.querySelector('[data-channel="1"]')).toBeInTheDocument();
+    expect(plot.querySelector('[data-channel="0"]')?.getAttribute('d')).not.toBe(plot.querySelector('[data-channel="1"]')?.getAttribute('d'));
+    fireEvent.change(screen.getByLabelText('Waveform channels'), { target: { value: 'right' } });
+    expect(plot.querySelector('[data-channel="0"]')).not.toBeInTheDocument();
+    expect(plot.querySelector('[data-channel="1"]')).toBeInTheDocument();
+    expect(client.getWaveform).not.toHaveBeenCalled();
   });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it('requests new detail on zoom and preserves selection independently of the viewport', async () => {
+    const client = api(); render(<WaveformPreview {...props} api={client} />);
+    await selectRange('100', '132');
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom selection' }));
+    await waitFor(() => expect(client.queryWaveform).toHaveBeenLastCalledWith(props.rootId, props.assetId, { range: { startFrame: '100', endFrame: '132' }, targetPoints: 800 }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Fit' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Fit' }));
+    await waitFor(() => expect(client.queryWaveform).toHaveBeenLastCalledWith(props.rootId, props.assetId, { range: null, targetPoints: 800 }));
+    expect(screen.getByLabelText('Selection start frame')).toHaveValue('100');
+    expect(screen.getByLabelText('Selection end frame')).toHaveValue('132');
   });
-
-  it("loads waveform peaks with opaque IDs", async () => {
-    const client = api();
-    render(
-      <WaveformPreview
-        api={client}
-        rootId="root-opaque"
-        assetId="asset:v1:opaque"
-        displayName="kick.wav"
-      />,
-    );
-
-    expect(await screen.findByRole("img", { name: "Audio waveform" })).toBeInTheDocument();
-    expect(client.getWaveform).toHaveBeenCalledWith(
-      "root-opaque",
-      "asset:v1:opaque",
-      640,
-    );
-    expect(screen.getByText("0:01")).toBeInTheDocument();
-  });
-
-  it("redeems a short-lived token before exposing preview bytes to audio", async () => {
-    const client = api();
-    render(
-      <WaveformPreview
-        api={client}
-        rootId="root-opaque"
-        assetId="asset:v1:opaque"
-        displayName="kick.wav"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Load preview" }));
-
-    await waitFor(() => expect(client.readPreview).toHaveBeenCalledWith(
-      "root-opaque",
-      "preview:v1:opaque",
-    ));
-    expect(client.createPreviewToken).toHaveBeenCalledWith(
-      "root-opaque",
-      "asset:v1:opaque",
-    );
-    expect(await screen.findByLabelText("Preview kick.wav")).toHaveAttribute(
-      "src",
-      "blob:preview",
-    );
-  });
-
-  it("reports waveform failure without creating a preview token", async () => {
-    const client = api();
-    vi.mocked(client.getWaveform).mockRejectedValue(new Error("source changed"));
-    render(
-      <WaveformPreview
-        api={client}
-        rootId="root-opaque"
-        assetId="asset:v1:opaque"
-        displayName="kick.wav"
-      />,
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("source changed");
+  it('previews an exact selected range beyond 60 seconds through a root-bound token', async () => {
+    const client = api(); vi.mocked(client.queryWaveform).mockImplementation((_root, _asset, query) => Promise.resolve(waveformFixture(query, '62000', 1000)));
+    render(<WaveformPreview {...props} api={client} />);
+    await selectRange('61000', '62000');
+    fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
+    expect(await screen.findByLabelText('Preview kick.wav')).toHaveAttribute('src', 'blob:preview');
+    expect(client.createRangePreviewToken).toHaveBeenCalledWith(props.rootId, props.assetId, { startFrame: '61000', endFrame: '62000' });
+    expect(client.readPreview).toHaveBeenCalledWith(props.rootId, 'preview:v1:opaque');
     expect(client.createPreviewToken).not.toHaveBeenCalled();
   });
-
-  it("rejects preview bytes that do not match the bounded token response", async () => {
-    const client = api();
-    vi.mocked(client.createPreviewToken).mockResolvedValue({
-      previewToken: "preview:v1:opaque",
-      expiresInSeconds: 120,
-      mimeType: "audio/wav",
-      byteLength: 99,
-      durationMillis: 1000,
-      truncated: false,
-    });
-    render(
-      <WaveformPreview
-        api={client}
-        rootId="root-opaque"
-        assetId="asset:v1:opaque"
-        displayName="kick.wav"
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Load preview" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Preview response failed validation.",
-    );
-    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  it('rejects malformed/outside ranges before preview or detail IPC', async () => {
+    const client = api(); render(<WaveformPreview {...props} api={client} />);
+    await selectRange('01', '999999');
+    expect(await screen.findByRole('alert')).toHaveTextContent('whole source frame');
+    expect(screen.getByRole('button', { name: 'Zoom selection' })).toBeDisabled();
+    expect(client.createRangePreviewToken).not.toHaveBeenCalled();
   });
-
-  it("does not create a Blob URL when an in-flight preview outlives the component", async () => {
-    const client = api();
-    let resolvePreview: ((bytes: ArrayBuffer) => void) | undefined;
-    vi.mocked(client.readPreview).mockReturnValue(new Promise((resolve) => {
-      resolvePreview = resolve;
-    }));
-    const view = render(
-      <WaveformPreview
-        api={client}
-        rootId="root-opaque"
-        assetId="asset:v1:opaque"
-        displayName="kick.wav"
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Load preview" }));
+  it('rejects mismatched preview bytes and releases the previous object URL', async () => {
+    const client = api(); render(<WaveformPreview {...props} api={client} />);
+    await screen.findByRole('img', { name: 'Audio waveform' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
+    await screen.findByLabelText('Preview kick.wav');
+    vi.mocked(client.readPreview).mockResolvedValue(new Uint8Array([1]).buffer);
+    fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Preview response failed validation');
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+  });
+  it('does not show an old asset or create a Blob when a preview outlives the selection', async () => {
+    const client = api(); let finish: ((bytes: ArrayBuffer) => void) | undefined;
+    vi.mocked(client.readPreview).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const view = render(<WaveformPreview {...props} api={client} />);
+    await screen.findByRole('img', { name: 'Audio waveform' });
+    fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
     await waitFor(() => expect(client.readPreview).toHaveBeenCalled());
-
-    view.unmount();
-    resolvePreview?.(new Uint8Array([82, 73, 70, 70]).buffer);
-    await Promise.resolve();
-
+    view.rerender(<WaveformPreview {...props} assetId="asset:new" displayName="new.wav" api={client} />);
+    expect(screen.queryByRole('img', { name: 'Audio waveform' })).not.toBeInTheDocument();
+    await act(async () => finish?.(new Uint8Array([82, 73, 70, 70]).buffer));
     expect(URL.createObjectURL).not.toHaveBeenCalled();
+    await screen.findByRole('img', { name: 'Audio waveform' });
+    expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled();
   });
-
-  it("clamps untrusted peak values when building the SVG path", () => {
-    const path = waveformPath({
-      ...waveform,
-      peaks: [{ min: -5, max: 5 }],
-    });
-
-    expect(path).toBe("M320.00 0.00V140.00");
+  it('discards stale waveform responses when an asset changes', async () => {
+    const client = api(); let finish: ((waveform: AudioWaveformWindow) => void) | undefined;
+    vi.mocked(client.queryWaveform).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const view = render(<WaveformPreview {...props} api={client} />);
+    await waitFor(() => expect(client.queryWaveform).toHaveBeenCalled());
+    view.rerender(<WaveformPreview {...props} assetId="asset:new" api={client} />);
+    await act(async () => finish?.({ ...waveformFixture(), sampleRate: 1000 }));
+    expect(screen.queryByText(/1,000 Hz/)).not.toBeInTheDocument();
+    await screen.findByRole('img', { name: 'Audio waveform' });
+    expect(screen.getByText(/44,100 Hz/)).toBeInTheDocument();
+  });
+  it('shows source failure and never enables stale preview access', async () => {
+    const client = api(); vi.mocked(client.queryWaveform).mockRejectedValue(new Error('source changed'));
+    render(<WaveformPreview {...props} api={client} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('source changed');
+    expect(screen.getByRole('button', { name: 'Load preview' })).toBeDisabled();
+  });
+  it('uses measured pixel width for its point budget', async () => {
+    let resize: ResizeObserverCallback | undefined;
+    vi.stubGlobal('ResizeObserver', class { constructor(callback: ResizeObserverCallback) { resize = callback; } observe() {} disconnect() {} });
+    const client = api(); render(<WaveformPreview {...props} api={client} />);
+    act(() => resize?.([{ contentRect: { width: 1200 } } as ResizeObserverEntry], {} as ResizeObserver));
+    await waitFor(() => expect(client.queryWaveform).toHaveBeenLastCalledWith(props.rootId, props.assetId, { range: null, targetPoints: 1200 }));
   });
 });

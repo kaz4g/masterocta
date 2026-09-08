@@ -1,3 +1,4 @@
+import { waveformApiStubs } from "../../test/audioApiStubs";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -155,7 +156,7 @@ describe("RootRegistryPanel", () => {
     expect(screen.getByText("KICK.wav")).toBeInTheDocument();
     expect(screen.getByText("LIVE_SET/AUDIO/KICK.wav")).toBeInTheDocument();
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
-    expect(screen.getByText("Notes & details")).toBeInTheDocument();
+    expect(screen.getByText("Sample inspector")).toBeInTheDocument();
     expect(screen.queryByLabelText("Asset inspector")).not.toBeInTheDocument();
     expect(screen.queryByText(rawPath)).not.toBeInTheDocument();
     expect(api.registerRoot).toHaveBeenCalledWith(rawPath);
@@ -165,6 +166,7 @@ describe("RootRegistryPanel", () => {
   it("loads shell Inspector waveform and metadata for the selected asset", async () => {
     const api = fakeApi();
     const audioClient: AudioApi = {
+      ...waveformApiStubs(),
       getWaveform: vi.fn().mockResolvedValue({
         durationSeconds: 1,
         sampleRate: 44100,
@@ -209,11 +211,11 @@ describe("RootRegistryPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Usage graph")).toBeInTheDocument();
     expect(screen.getByLabelText("Usage summary")).toHaveTextContent("1 used");
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    await waitFor(() => expect(audioClient.queryWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:opaque",
-      640,
-    );
+      { range: null, targetPoints: 800 },
+    ));
     expect(metadataClient.loadManualAssetMetadata).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:opaque",
@@ -293,6 +295,7 @@ describe("RootRegistryPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Choose root..." }));
     expect(await screen.findByText("Rollback required")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Operations" }));
     const approvalLabel = "I approve rollback of this exact incomplete additive-copy operation.";
     await waitFor(() => {
       expect(screen.getByLabelText(approvalLabel)).not.toBeDisabled();
@@ -317,6 +320,7 @@ describe("RootRegistryPanel", () => {
     const api = fakeApi();
     const changeClient = fakeChangeApi();
     const audioClient: AudioApi = {
+      ...waveformApiStubs(),
       getWaveform: vi.fn().mockResolvedValue({
         durationSeconds: 1,
         sampleRate: 44100,
@@ -352,6 +356,7 @@ describe("RootRegistryPanel", () => {
     fireEvent.change(screen.getByLabelText("Destination relative path"), {
       target: { value: "LIVE_SET/PROJECT_A/KICK_COPY.wav" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Operations" }));
     fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
 
     await waitFor(() => expect(closeRoot).toBeDisabled());
@@ -363,6 +368,7 @@ describe("RootRegistryPanel", () => {
     const api = fakeApi();
     const renameClient = fakeRenameApi();
     const audioClient: AudioApi = {
+      ...waveformApiStubs(),
       getWaveform: vi.fn().mockResolvedValue({
         durationSeconds: 1,
         sampleRate: 44100,

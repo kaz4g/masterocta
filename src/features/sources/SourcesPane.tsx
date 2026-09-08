@@ -4,6 +4,7 @@ import { Button, StatusBadge } from '../../design-system'
 import './SourcesPane.css'
 
 export interface SourcesPaneProps {
+  compact?: boolean
   session: RootSession | null
   busy?: boolean
   error?: string | null
@@ -21,6 +22,7 @@ export interface SourcesPaneProps {
  * Does not own catalog browsing — that stays in Library (UI3 / CatalogLibraryBrowser).
  */
 export function SourcesPane({
+  compact = false,
   session,
   busy = false,
   error = null,
@@ -36,7 +38,7 @@ export function SourcesPane({
     busy || writeBlocked || session === null || !session.capabilities.stableDeviceIdentity
 
   return (
-    <div className="mo-sources-pane" aria-labelledby="mo-sources-title">
+    <div className={`mo-sources-pane${compact ? " mo-sources-pane--compact" : ""}`} aria-labelledby="mo-sources-title">
       <div className="mo-sources-pane__title-row">
         <h2 id="mo-sources-title">Sources</h2>
         <StatusBadge tone={writeEnabled ? 'warning' : 'readonly'}>
@@ -44,7 +46,7 @@ export function SourcesPane({
         </StatusBadge>
       </div>
       <p className="mo-sources-pane__lede">
-        Registered Octatrack roots. Only the native picker may submit an absolute path.
+        Choose an Octatrack card, a backup, or a local sample folder.
       </p>
 
       <div className="mo-sources-pane__actions">

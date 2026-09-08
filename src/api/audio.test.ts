@@ -54,4 +54,19 @@ describe("audioApi", () => {
     expect(JSON.stringify(calls)).not.toContain("/Volumes/");
     expect(JSON.stringify(calls)).not.toContain("sha256:");
   });
+  it("preserves exact decimal frame coordinates on range queries and preview", async () => {
+    const calls: Array<[string, IpcCommandArgs | undefined]> = [];
+    const transport: IpcTransport = async <Response>(command: string, args?: IpcCommandArgs) => {
+      calls.push([command, args]); return {} as Response;
+    };
+    const api = createAudioApi(createIpcClient(transport));
+    const range = { startFrame: "9007199254740993", endFrame: "9007199254741000" };
+    await api.queryWaveform("root-opaque", "asset-opaque", { range, targetPoints: 1024 });
+    await api.createRangePreviewToken("root-opaque", "asset-opaque", range);
+    expect(calls).toEqual([
+      ["v2_audio_waveform_query", { rootId: "root-opaque", assetId: "asset-opaque", query: { range, targetPoints: 1024 } }],
+      ["v2_audio_preview_range_create", { rootId: "root-opaque", assetId: "asset-opaque", range }],
+    ]);
+  });
+
 });

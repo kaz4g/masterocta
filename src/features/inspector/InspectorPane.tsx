@@ -26,7 +26,7 @@ export function InspectorPane({
     <aside className="mo-inspector-pane" aria-label="Inspector">
       <header className="mo-inspector-pane__header">
         <p className="mo-inspector-pane__kicker">Inspector</p>
-        <h2 className="mo-inspector-pane__title">Notes & details</h2>
+        <h2 className="mo-inspector-pane__title">Sample inspector</h2>
         {hasAsset ? (
           <>
             <p className="mo-inspector-pane__asset">{assetLabel}</p>

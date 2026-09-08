@@ -5,7 +5,8 @@ import './AppShell.css'
 
 export interface AppShellProps extends HTMLAttributes<HTMLElement> {
   /** Left Sources column (root / set navigation chrome). */
-  sources: ReactNode
+  sources?: ReactNode
+  contextBar?: ReactNode
   /** Center Library / Project workspace. */
   main: ReactNode
   /** Optional right Inspector (UI4 Notes / waveform / metadata). */
@@ -25,11 +26,12 @@ export interface AppShellProps extends HTMLAttributes<HTMLElement> {
  */
 export function AppShell({
   sources,
+  contextBar,
   main,
   inspector,
   changeDrawer,
   sourcesSize,
-  defaultSourcesSize = 28,
+  defaultSourcesSize = 18,
   onSourcesSizeChange,
   className,
   ...rest
@@ -37,47 +39,27 @@ export function AppShell({
   const merged = ['mo-app-shell', className].filter(Boolean).join(' ')
   const showInspector = inspector != null
 
+  const workspace = showInspector ? (
+    <SplitPane className="mo-app-shell__body" defaultPrimarySize={70} minPrimary={55} maxPrimary={75}>
+      <SplitPane.Primary className="mo-app-shell__main">{main}</SplitPane.Primary>
+      <SplitPane.Divider />
+      <SplitPane.Secondary className="mo-app-shell__inspector">{inspector}</SplitPane.Secondary>
+    </SplitPane>
+  ) : <div className="mo-app-shell__main">{main}</div>
+
   return (
     <section className={merged} aria-label={PRODUCT_WORKSPACE_LABEL} {...rest}>
-      <SplitPane
-        className="mo-app-shell__body"
-        primarySize={sourcesSize}
-        defaultPrimarySize={defaultSourcesSize}
-        onPrimarySizeChange={onSourcesSizeChange}
-        minPrimary={18}
-        maxPrimary={showInspector ? 36 : 42}
-      >
-        <SplitPane.Primary
-          className="mo-app-shell__sources"
-          data-testid="app-shell-sources"
-        >
-          {sources}
-        </SplitPane.Primary>
-        <SplitPane.Divider data-testid="app-shell-divider" />
-        <SplitPane.Secondary>
-          {showInspector ? (
-            <SplitPane
-              className="mo-app-shell__body"
-              defaultPrimarySize={72}
-              minPrimary={55}
-              maxPrimary={85}
-            >
-              <SplitPane.Primary className="mo-app-shell__main">
-                {main}
-              </SplitPane.Primary>
-              <SplitPane.Divider />
-              <SplitPane.Secondary className="mo-app-shell__inspector">
-                {inspector}
-              </SplitPane.Secondary>
-            </SplitPane>
-          ) : (
-            <div className="mo-app-shell__main">{main}</div>
-          )}
-        </SplitPane.Secondary>
-      </SplitPane>
-      {changeDrawer != null && (
-        <div className="mo-app-shell__change-drawer">{changeDrawer}</div>
-      )}
+      {contextBar != null && <div className="mo-app-shell__context">{contextBar}</div>}
+      {sources != null ? (
+        <SplitPane className="mo-app-shell__body" primarySize={sourcesSize}
+          defaultPrimarySize={defaultSourcesSize} onPrimarySizeChange={onSourcesSizeChange}
+          minPrimary={18} maxPrimary={showInspector ? 36 : 42}>
+          <SplitPane.Primary className="mo-app-shell__sources" data-testid="app-shell-sources">{sources}</SplitPane.Primary>
+          <SplitPane.Divider data-testid="app-shell-divider" />
+          <SplitPane.Secondary>{workspace}</SplitPane.Secondary>
+        </SplitPane>
+      ) : workspace}
+      {changeDrawer != null && <div className="mo-app-shell__change-drawer">{changeDrawer}</div>}
     </section>
   )
 }

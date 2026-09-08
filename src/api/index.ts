@@ -3,6 +3,9 @@ export type { IpcClient, IpcCommandArgs, IpcTransport } from "./client";
 export { audioApi, createAudioApi } from "./audio";
 export type {
   AudioApi,
+  AudioFrameRange,
+  AudioWaveformQuery,
+  AudioWaveformWindow,
   AudioPreviewBytes,
   AudioPreviewToken,
   AudioWaveform,

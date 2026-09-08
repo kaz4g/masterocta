@@ -28,6 +28,7 @@ import {
   RenamePreparedNotice,
   RenameSampleModal,
 } from "../changes";
+import { OperationsDialog } from "../changes/OperationsDialog";
 import { InspectorPane } from "../inspector";
 import {
   CatalogLibraryBrowser,
@@ -97,6 +98,7 @@ export function RootRegistryPanel({
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameModalAsset, setRenameModalAsset] = useState<CatalogAssetSelection | null>(null);
   const [cloneVerification, setCloneVerification] = useState<CloneVerification | null>(null);
+  const [operationsOpen, setOperationsOpen] = useState(false);
   const [sourceEvidenceId, setSourceEvidenceId] = useState<string | null>(null);
 
   async function refreshCloneVerification(rootId: string) {
@@ -180,6 +182,7 @@ export function RootRegistryPanel({
       setRenameRecovery(null);
       setRenameModalOpen(false);
       setRenameModalAsset(null);
+      setOperationsOpen(false);
       setCloneVerification(null);
       setChangeBusy(false);
     } catch (reason) {
@@ -409,8 +412,9 @@ export function RootRegistryPanel({
   return (
     <>
       <AppShell
-      sources={
+      contextBar={
         <SourcesPane
+          compact
           session={session}
           busy={busy || changeBusy}
           error={error}
@@ -420,19 +424,10 @@ export function RootRegistryPanel({
           onDisableWrite={disableWrite}
           writeBlocked={writeBlocked}
         >
-          {catalogReady && (
-            <CloneOperatorPanel
-              session={session}
-              cloneVerification={cloneVerification}
-              busy={busy || changeBusy}
-              sourceEvidenceRecorded={sourceEvidenceId !== null}
-              onCreateManagedClone={handleCreateManagedClone}
-              onRecordSourceEvidence={handleRecordSourceEvidence}
-              onRegisterExternalClone={handleRegisterExternalClone}
-              onVerifyExternal={handleVerifyExternalClone}
-              onReverify={handleReverifyClone}
-            />
-          )}
+          {catalogReady && <div className="mo-workspace-operation-status">
+            <Button variant="secondary" onClick={() => setOperationsOpen(true)}>Operations</Button>
+            <span role="status">{writeBlocked ? "Check operation safety status" : renameRecovery.operations.length + (recovery?.operations.length ?? 0) > 0 ? "Saved operations available" : "No pending operations"}</span>
+          </div>}
         </SourcesPane>
       }
       main={
@@ -505,7 +500,20 @@ export function RootRegistryPanel({
       }
       changeDrawer={
         catalogReady ? (
-          <>
+          <OperationsDialog open={operationsOpen} busy={busy || changeBusy} onClose={() => setOperationsOpen(false)}>
+          {catalogReady && (
+            <CloneOperatorPanel
+              session={session}
+              cloneVerification={cloneVerification}
+              busy={busy || changeBusy}
+              sourceEvidenceRecorded={sourceEvidenceId !== null}
+              onCreateManagedClone={handleCreateManagedClone}
+              onRecordSourceEvidence={handleRecordSourceEvidence}
+              onRegisterExternalClone={handleRegisterExternalClone}
+              onVerifyExternal={handleVerifyExternalClone}
+              onReverify={handleReverifyClone}
+            />
+          )}
             <RenameOperatorPanel
               session={session}
               changeRecovery={recovery}
@@ -534,7 +542,7 @@ export function RootRegistryPanel({
               onBusyChange={setChangeBusy}
               onRecoveryChange={setRecovery}
             />
-          </>
+          </OperationsDialog>
         ) : undefined
       }
     />

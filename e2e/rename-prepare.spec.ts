@@ -199,7 +199,7 @@ test.describe("Rename prepare workflow", () => {
     await expect(page.getByRole("button", { name: "Edit" })).toBeEnabled();
     await page.getByRole("button", { name: "Edit" }).click();
     await expect(
-      page.getByTestId("app-shell-sources").getByText("EDIT ENABLED", { exact: true }),
+      page.locator(".mo-app-shell__context").getByText("EDIT ENABLED", { exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: /KICK\.wav/ }).click();
     await page.getByRole("button", { name: "Rename" }).click();
@@ -324,7 +324,7 @@ test.describe("Rename prepare workflow", () => {
     await expect(page.getByRole("button", { name: "Edit" })).toBeEnabled();
     await page.getByRole("button", { name: "Edit" }).click();
     await expect(
-      page.getByTestId("app-shell-sources").getByText("EDIT ENABLED", { exact: true }),
+      page.locator(".mo-app-shell__context").getByText("EDIT ENABLED", { exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: /KICK\.wav/ }).click();
     await page.getByRole("button", { name: "Rename" }).click();

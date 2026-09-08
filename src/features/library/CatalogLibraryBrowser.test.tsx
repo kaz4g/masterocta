@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { waveformApiStubs } from "../../test/audioApiStubs";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AudioApi, LibrarySnapshot, MetadataApi } from "../../api";
 import { CatalogLibraryBrowser } from "./CatalogLibraryBrowser";
@@ -128,6 +129,7 @@ describe("CatalogLibraryBrowser", () => {
 
   it("clears the selected file when switching locations", async () => {
     const audioClient: AudioApi = {
+      ...waveformApiStubs(),
       getWaveform: vi.fn().mockResolvedValue({
         analyzerVersion: "waveform:v1",
         sampleRate: 44100,
@@ -168,6 +170,7 @@ describe("CatalogLibraryBrowser", () => {
 
   it("opens manual metadata for the selected opaque AssetId", async () => {
     const audioClient: AudioApi = {
+      ...waveformApiStubs(),
       getWaveform: vi.fn().mockResolvedValue({
         analyzerVersion: "waveform:v1",
         sampleRate: 44100,
@@ -204,11 +207,11 @@ describe("CatalogLibraryBrowser", () => {
       "root-opaque",
       "asset:v1:pool",
     );
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    await waitFor(() => expect(audioClient.queryWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:pool",
-      640,
-    );
+      { range: null, targetPoints: 800 },
+    ));
     expect(screen.getByLabelText("Asset inspector")).not.toHaveTextContent("sha256:");
   });
 

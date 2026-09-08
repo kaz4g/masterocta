@@ -186,11 +186,12 @@ test.describe("Rename operator workflow", () => {
     await expect(page.getByText("PROJECT_A")).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: "Edit" }).click();
     await expect(
-      page.getByTestId("app-shell-sources").getByText("EDIT ENABLED", { exact: true }),
+      page.locator(".mo-app-shell__context").getByText("EDIT ENABLED", { exact: true }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "Operations" }).click();
     await page.getByRole("button", { name: "Create managed disposable clone" }).click({ timeout: 15000 });
     await expect(
-      page.getByTestId("app-shell-sources").getByText("VERIFIED CLONE", { exact: true }),
+      page.getByRole("dialog", { name: "File operations" }).getByText("VERIFIED CLONE", { exact: true }),
     ).toBeVisible();
     await page.getByRole("checkbox", {
       name: /approve continuing this exact operation/i,
@@ -307,9 +308,11 @@ test.describe("Rename operator workflow", () => {
 
     await page.goto("/");
     await chooseRoot(page);
+    await page.getByRole("button", { name: "Operations" }).click();
     await expect(page.getByText("LIVE_SET/AUDIO/KICK_DEEP.wav")).toBeVisible({ timeout: 10000 });
     await page.reload();
     await chooseRoot(page);
+    await page.getByRole("button", { name: "Operations" }).click();
     await expect(page.getByText("LIVE_SET/AUDIO/KICK_DEEP.wav")).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole("button", { name: "Continue prepared rename" })).toBeVisible();
   });

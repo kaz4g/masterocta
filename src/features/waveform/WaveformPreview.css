@@ -1,65 +1,28 @@
-.waveform-preview {
-  display: grid;
-  gap: 0.75rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--color-border-subtle, #353b45);
-}
-
-.waveform-preview-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.waveform-preview-heading p {
-  margin: 0;
-  color: var(--color-text-muted, #a7adb8);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.waveform-preview-heading span,
-.waveform-preview-status,
-.waveform-preview-notice,
-.waveform-preview-boundary {
-  margin: 0;
-  color: var(--color-text-muted, #a7adb8);
-  font-size: 0.78rem;
-}
-
-.waveform-preview-plot {
-  width: 100%;
-  min-height: 7rem;
-  border: 1px solid var(--color-border-subtle, #353b45);
-  border-radius: 0.4rem;
-  background: #11151b;
-}
-
-.waveform-preview-plot line {
-  stroke: #343b46;
-  stroke-width: 1;
-}
-
-.waveform-preview-plot path {
-  fill: none;
-  stroke: #f2a33c;
-  stroke-width: 1.4;
-}
-
-.waveform-preview-actions {
-  display: flex;
-}
-
-.waveform-preview audio {
-  width: 100%;
-  min-height: 2rem;
-}
-
-.waveform-preview-error {
-  margin: 0;
-  color: var(--color-status-danger, #ff7a7a);
-  font-size: 0.8rem;
-}
+.waveform-preview { display: grid; gap: .7rem; min-width: 0; }
+.waveform-preview-heading, .waveform-time-ruler { display: flex; justify-content: space-between; gap: 1rem; }
+.waveform-preview-heading p { font-weight: var(--mo-font-weight-bold); margin: 0; }
+.waveform-preview-heading span, .waveform-time-ruler, .waveform-detail-meta, .waveform-selection-label { font-size: var(--mo-font-size-xs); color: var(--mo-text-muted); font-variant-numeric: tabular-nums; }
+.waveform-toolbar { display: flex; align-items: end; flex-wrap: wrap; gap: .35rem; }
+.waveform-toolbar label, .waveform-range label { display: grid; gap: .2rem; font-size: var(--mo-font-size-xs); min-width: 0; }
+.waveform-toolbar select, .waveform-range input { width: 100%; min-width: 0; padding: .35rem; background: var(--mo-surface-2); color: var(--mo-text); border: 1px solid var(--mo-border); border-radius: var(--mo-radius-sm); }
+.waveform-canvas { position: relative; min-height: 160px; background: var(--mo-canvas); border: 1px solid var(--mo-border); border-radius: var(--mo-radius-md); overflow: hidden; }
+.waveform-preview-plot { display: block; width: 100%; height: 220px; touch-action: none; cursor: crosshair; }
+.waveform-channel { fill: none; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.waveform-channel-0 { stroke: var(--mo-accent); }
+.waveform-channel-1 { stroke: var(--mo-text-soft); }
+.waveform-center { stroke: var(--mo-border); vector-effect: non-scaling-stroke; }
+.waveform-channel-label { fill: var(--mo-text-muted); font-size: 12px; }
+.waveform-selection, .waveform-viewport { fill: color-mix(in srgb, var(--mo-accent) 20%, transparent); stroke: var(--mo-accent); vector-effect: non-scaling-stroke; pointer-events: none; }
+.waveform-playhead { stroke: var(--mo-text); stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.waveform-overview { height: 40px; background: var(--mo-canvas); border: 1px solid var(--mo-border); }
+.waveform-overview svg { width: 100%; height: 100%; }
+.waveform-pan { display: flex; align-items: center; gap: .3rem; }
+.waveform-pan input { width: 100%; min-width: 0; accent-color: var(--mo-accent); }
+.waveform-range { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem; margin: 0; min-width: 0; padding: .5rem; border: 1px solid var(--mo-border); }
+.waveform-range legend { color: var(--mo-text-muted); font-size: var(--mo-font-size-xs); }
+.waveform-preview-status { margin: 0; padding: .5rem; color: var(--mo-text-soft); font-size: var(--mo-font-size-sm); }
+.waveform-canvas[aria-busy=true] .waveform-preview-status { position: absolute; inset: 0 auto auto 0; background: var(--mo-surface-1); }
+.waveform-preview-error { color: var(--mo-danger); font-size: var(--mo-font-size-sm); margin: 0; }
+.waveform-preview-notice, .waveform-preview-boundary { color: var(--mo-text-muted); font-size: var(--mo-font-size-xs); margin: 0; line-height: 1.5; }
+.waveform-preview audio { width: 100%; min-width: 0; }
+.waveform-detail-meta, .waveform-selection-label { margin: 0; }

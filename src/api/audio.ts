@@ -15,6 +15,19 @@ export interface AudioWaveform {
   peaks: WaveformPeak[];
 }
 
+/** Canonical decimal u64 source PCM frames, with an exclusive end. */
+export interface AudioFrameRange { startFrame: string; endFrame: string; }
+export interface AudioWaveformQuery { range: AudioFrameRange | null; targetPoints: number; }
+export interface AudioWaveformWindow {
+  analyzerVersion: 'waveform:v2';
+  sampleRate: number;
+  channels: number;
+  frameCount: string;
+  range: AudioFrameRange;
+  framesPerPeak: string;
+  channelPeaks: WaveformPeak[][];
+}
+
 export interface AudioPreviewToken {
   previewToken: string;
   expiresInSeconds: number;
@@ -27,6 +40,8 @@ export interface AudioPreviewToken {
 export type AudioPreviewBytes = ArrayBuffer | number[];
 
 export interface AudioApi {
+  queryWaveform(rootId: string, assetId: string, query: AudioWaveformQuery): Promise<AudioWaveformWindow>;
+  createRangePreviewToken(rootId: string, assetId: string, range: AudioFrameRange): Promise<AudioPreviewToken>;
   getWaveform(
     rootId: string,
     assetId: string,
@@ -38,6 +53,10 @@ export interface AudioApi {
 
 export function createAudioApi(client: IpcClient = ipcClient): AudioApi {
   return {
+    queryWaveform: (rootId, assetId, query) =>
+      client.request<AudioWaveformWindow>('v2_audio_waveform_query', { rootId, assetId, query }),
+    createRangePreviewToken: (rootId, assetId, range) =>
+      client.request<AudioPreviewToken>('v2_audio_preview_range_create', { rootId, assetId, range }),
     getWaveform: (rootId, assetId, targetPoints) =>
       client.request<AudioWaveform>("v2_audio_waveform_get", {
         rootId,

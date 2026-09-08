@@ -152,10 +152,23 @@ export function CatalogLibraryBrowser({
   const [locationKey, setLocationKey] = useState<string | null>(null);
   const selectedLocation = locations.find((location) => location.key === locationKey)
     ?? locations[0];
-  const audioFiles = useMemo(
+  const locationFiles = useMemo(
     () => filesFor(selectedLocation, snapshot.audioFiles),
     [selectedLocation, snapshot.audioFiles],
   );
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("name");
+  const [page, setPage] = useState(0);
+  const audioFiles = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase();
+    return locationFiles.filter(file => !term || file.relativePath.toLocaleLowerCase().includes(term))
+      .sort((a, b) => (sort === "size" ? b.byteSize - a.byteSize : 0)
+        || (a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0));
+  }, [locationFiles, search, sort]);
+  useEffect(() => { setPage(0); }, [selectedLocation, search, sort]);
+  const lastPage = Math.max(0, Math.ceil(audioFiles.length / 100) - 1);
+  const currentPage = Math.min(page, lastPage);
+  const visibleFiles = audioFiles.slice(currentPage * 100, (currentPage + 1) * 100);
   const [selectedFileInstanceId, setSelectedFileInstanceId] = useState<string | null>(null);
   const selectedFile = audioFiles.find(
     (file) => file.fileInstanceId === selectedFileInstanceId,
@@ -200,8 +213,12 @@ export function CatalogLibraryBrowser({
     >
       <div className="catalog-library-column catalog-library-files" aria-label="Audio files">
         <h4>Audio files</h4>
+        <div className="catalog-library-search">
+          <label>Search this location<input type="search" aria-label="Search samples" value={search} onChange={event => setSearch(event.target.value)} placeholder="Name or folder…" /></label>
+          <label>Sort<select aria-label="Sort samples" value={sort} onChange={event => setSort(event.target.value)}><option value="name">Name</option><option value="size">Size · largest first</option></select></label>
+        </div>
         <div className="catalog-library-options">
-          {audioFiles.map((file) => (
+          {visibleFiles.map((file) => (
             <button
               type="button"
               className="catalog-library-file"
@@ -217,9 +234,14 @@ export function CatalogLibraryBrowser({
             </button>
           ))}
           {audioFiles.length === 0 && (
-            <p className="catalog-library-empty">No audio files indexed here.</p>
+            <p className="catalog-library-empty">{search ? "No samples match this search." : "No audio files indexed here."}</p>
           )}
         </div>
+        {lastPage > 0 && <nav className="catalog-library-pagination" aria-label="Sample pages">
+          <button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button>
+          <span>{currentPage + 1} / {lastPage + 1} · {audioFiles.length} samples</span>
+          <button disabled={currentPage === lastPage} onClick={() => setPage(currentPage + 1)}>Next</button>
+        </nav>}
       </div>
 
       {!shellInspector && (
@@ -284,7 +306,7 @@ export function CatalogLibraryBrowser({
   }
 
   return (
-    <section className="catalog-library" aria-labelledby="catalog-library-title">
+    <section className={`catalog-library${shellInspector ? " catalog-library--workspace" : ""}`} aria-labelledby="catalog-library-title">
       <div className="catalog-library-title-row">
         <div>
           <p className="catalog-library-kicker">Catalog Library</p>

@@ -6,7 +6,7 @@ describe('InspectorPane', () => {
   it('shows empty guidance when no asset is selected', () => {
     render(<InspectorPane />)
     expect(screen.getByLabelText('Inspector')).toBeInTheDocument()
-    expect(screen.getByText('Notes & details')).toBeInTheDocument()
+    expect(screen.getByText('Sample inspector')).toBeInTheDocument()
     expect(
       screen.getByText('Select an audio file to inspect waveform, usage, and notes.'),
     ).toBeInTheDocument()

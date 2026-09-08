@@ -97,3 +97,7 @@ class FakeAudioContext {
 // Keep the rAF position loop from running in tests (avoids open handles / act noise)
 globalThis.requestAnimationFrame = vi.fn(() => 0)
 globalThis.cancelAnimationFrame = vi.fn()
+
+// jsdom lacks native dialog display methods; mounted content remains intact.
+HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
