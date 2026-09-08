@@ -2044,6 +2044,26 @@ fn apply_migration(
     version: u64,
     sql: &str,
 ) -> Result<(), CatalogError> {
+    // SQLite ignores `PRAGMA foreign_keys` inside a transaction. Rebuild
+    // migrations such as 0008 must disable enforcement *before* BEGIN so
+    // DROP TABLE does not CASCADE-delete usage_edges / sample_settings.
+    connection
+        .pragma_update(None, "foreign_keys", "OFF")
+        .map_err(|error| migration_error(version, error))?;
+    let applied = apply_migration_in_transaction(connection, version, sql);
+    let restored = restore_foreign_keys(connection, version);
+    match (applied, restored) {
+        (Ok(()), Ok(())) => assert_no_foreign_key_violations(connection, version),
+        (Err(error), _) => Err(error),
+        (Ok(()), Err(error)) => Err(error),
+    }
+}
+
+fn apply_migration_in_transaction(
+    connection: &mut Connection,
+    version: u64,
+    sql: &str,
+) -> Result<(), CatalogError> {
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| migration_error(version, error))?;
@@ -2065,6 +2085,44 @@ fn apply_migration(
     transaction
         .commit()
         .map_err(|error| migration_error(version, error))
+}
+
+fn restore_foreign_keys(connection: &Connection, version: u64) -> Result<(), CatalogError> {
+    connection
+        .pragma_update(None, "foreign_keys", "ON")
+        .map_err(|error| migration_error(version, error))?;
+    let enabled: bool = connection
+        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+        .map_err(|error| migration_error(version, error))?;
+    if !enabled {
+        return Err(CatalogError::Integrity {
+            message: format!(
+                "SQLite foreign key enforcement stayed disabled after migration {version}"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn assert_no_foreign_key_violations(
+    connection: &Connection,
+    version: u64,
+) -> Result<(), CatalogError> {
+    let mut statement = connection
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(|error| migration_error(version, error))?;
+    if statement
+        .query([])
+        .map_err(|error| migration_error(version, error))?
+        .next()
+        .map_err(|error| migration_error(version, error))?
+        .is_some()
+    {
+        return Err(CatalogError::Integrity {
+            message: format!("foreign key violations after migration {version}"),
+        });
+    }
+    Ok(())
 }
 
 fn scan_from_database(
@@ -2392,7 +2450,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, LATEST_SCHEMA_VERSION as i64);
         drop(catalog);
 
         let reopened = SqliteCatalog::open(&path).unwrap();
@@ -2402,13 +2460,13 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, LATEST_SCHEMA_VERSION as i64);
         drop(reopened);
         drop(directory);
     }
 
     #[test]
-    fn schema_v1_database_migrates_to_v7_without_losing_existing_projection() {
+    fn schema_v1_database_migrates_to_latest_without_losing_existing_projection() {
         let directory = TempDir::new().unwrap();
         let path = database_path(&directory, "v1.sqlite3");
         let mut connection = Connection::open(&path).unwrap();
@@ -2429,8 +2487,8 @@ mod tests {
                  VALUES (1, 1, 'SET', 'Existing Set', 1, 0); \
                  INSERT INTO projects \
                    (root_id, scan_session_id, relative_path, display_name, is_standalone, \
-                    parent_set_relative_path, has_project_file, has_saved_checkpoint, has_banks, sort_order) \
-                 VALUES (1, 1, 'SET/PROJECT', 'Existing Project', 0, 'SET', 1, 0, 1, 0);",
+                    parent_set_relative_path, has_project_file, has_banks, sort_order) \
+                 VALUES (1, 1, 'SET/PROJECT', 'Existing Project', 0, 'SET', 1, 1, 0);",
             )
             .unwrap();
         drop(connection);
@@ -2447,7 +2505,7 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(versions, 7);
+        assert_eq!(versions, LATEST_SCHEMA_VERSION as i64);
         assert_eq!(snapshot.sets[0].display_name, "Existing Set");
         assert_eq!(
             snapshot.sets[0].projects[0].display_name,
@@ -2461,10 +2519,11 @@ mod tests {
         let path = database_path(&directory, "future.sqlite3");
         let connection = Connection::open(&path).unwrap();
         connection
-            .execute_batch(
+            .execute_batch(&format!(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); \
-                 INSERT INTO schema_migrations VALUES (8, 'future');",
-            )
+                 INSERT INTO schema_migrations VALUES ({}, 'future');",
+                LATEST_SCHEMA_VERSION + 1
+            ))
             .unwrap();
         drop(connection);
 
@@ -2472,8 +2531,8 @@ mod tests {
         assert_eq!(
             error,
             CatalogError::UnsupportedSchema {
-                found: 8,
-                supported: 7,
+                found: LATEST_SCHEMA_VERSION + 1,
+                supported: LATEST_SCHEMA_VERSION,
             }
         );
     }

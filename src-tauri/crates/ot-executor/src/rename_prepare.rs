@@ -731,10 +731,11 @@ fn raw_path_resolves_to_relative(
     document_relative_path: &str,
     expected: &str,
 ) -> Result<(), ExecutorError> {
-    if resolve_raw_path_from_document(raw_path, document_relative_path)? != expected {
-        return Err(ExecutorError::InvalidPlan);
+    let resolved = resolve_raw_path_from_document(raw_path, document_relative_path)?;
+    if resolved == expected || resolved.eq_ignore_ascii_case(expected) {
+        return Ok(());
     }
-    Ok(())
+    Err(ExecutorError::InvalidPlan)
 }
 
 /// Resolve `PATH=` against the project directory (parent of the document).
@@ -1811,6 +1812,24 @@ mod tests {
         assert!(
             raw_path_resolves_to_relative("kick.wav", WORK_PATH, "SET/PROJECT/kick.wav").is_ok()
         );
+        assert!(raw_path_resolves_to_relative(
+            "../AUDIO/kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/Kick.wav"
+        )
+        .is_ok());
+        assert!(raw_path_resolves_to_relative(
+            "../audio/kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/Kick.wav"
+        )
+        .is_ok());
+        assert!(raw_path_resolves_to_relative(
+            "../AUDIO/Kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/other.wav"
+        )
+        .is_err());
         assert!(
             resolve_raw_path_from_document("../AUDIO/kick.wav", WORK_PATH).unwrap() == SOURCE_PATH
         );
