@@ -419,8 +419,9 @@ Later-RC freeze evidence conditions satisfied by RC5:
 
 Phase 3 workflow merge (#96 / #97) did **not** clear these blockers by itself.
 Runs `34016038137`, `34061897324`, and `34068535069` failed before a complete
-freeze tuple existed. RC5 run `34077117176` and local re-verification satisfied
-the later-RC freeze conditions; this docs-only ledger records that tuple.
+freeze tuple existed. RC5 run `34077117176` and local re-verification proved
+the later-RC candidate workflow, provenance, storage, and access-boundary
+mechanics. A current-main freeze tuple does not exist until RC6 is frozen.
 
 Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
 (`.github/workflows/gate-c-candidate.yml`). Do not use
@@ -476,39 +477,54 @@ Phase 3 merge
 → draft candidate retrieved
 → local SHA256 re-verification PASS
 → provenance / access boundary confirmation PASS
-→ docs-only freeze ledger PR (this branch)
-→ ledger merge
-→ Human Gate C on the frozen RC5 candidate
+→ docs-only freeze ledger PR merged (#106 / 87a46b9)
+→ P2 correction PR (this branch)
+→ review + CI
+→ merge
+→ merge SHA main CI success
+→ open PR を 0 件にする
+  (#103 / #104 は branch を残して一時 close。M5 完了後に reopen/rebase)
+→ RC6 source commit/tree を新しい main tip で固定（まだ UNSET）
+→ Gate C Candidate Build を 1 回 dispatch
+→ artifact / provenance / access boundary を再検証
+→ RC6 freeze ledger PR
+→ Human Gate C on frozen RC6
+→ M5 closure PR
 ```
 
 A successful workflow run alone does **not** freeze an RC. A docs-only ledger
 PR must record the run evidence before that RC may be treated as `FROZEN`.
-Until this ledger merges to `main`, RC5 is not formally frozen on `main`.
-Do not reuse RC2 run `34016038137`, RC3 run `34061897324`, RC4 run
-`34068535069`, or any in-progress DMG from those attempts as later candidate
-evidence. RC5 dispatch is one-shot. Do not rerun run `34077117176`, redispatch
-`gate-c-rc5-7b5b740d1db1`, or create RC6 without a new operator sequence.
+RC5 is frozen as a historical candidate only. Current-main Human Gate C on RC5
+is **FORBIDDEN**. Do not reuse RC2 run `34016038137`, RC3 run `34061897324`,
+RC4 run `34068535069`, or any in-progress DMG from those attempts as later
+candidate evidence. RC5 dispatch is one-shot. Do not rerun run `34077117176`,
+redispatch `gate-c-rc5-7b5b740d1db1`, or create RC6 without a new operator
+sequence.
 
-After RC5 ledger merge and before Human Gate C:
+After RC5 ledger merge (#106) and before RC6 freeze:
 
 ```text
 RC1 = FROZEN_FAILED
 RC2 = NOT_CREATED / identity UNSET
 RC3 = NOT_CREATED / historical pre-freeze failure
 RC4 = NOT_CREATED / historical pre-freeze failure
-RC5 = FROZEN
+RC5 = FROZEN (historical). current-main Human Gate C = FORBIDDEN
+RC6 = NOT_CREATED / identity UNSET / RC6_REQUIRED
 Human Gate C = NOT_RUN
 Gate C = NOT_PASS
 M5 = INCOMPLETE
+remaining M5 blockers = RC6 freeze + Human Gate C
 public distribution = NOT AUTHORIZED
 ```
 
 RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. RC3 official identity fields remain `UNSET`. RC4 official
-identity fields remain `UNSET`. Human Gate C remains `NOT_RUN`; Gate C remains
-`NOT_PASS`; M5 remains `INCOMPLETE`. The remaining M5 blocker is Human Gate C
-only. Signing, notarization, and public distribution remain separate gates.
+identity fields remain `UNSET`. RC5 official identity is recorded as a
+historical freeze only. RC6 official identity fields remain `UNSET`.
+Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains
+`INCOMPLETE`. The remaining M5 blockers are RC6 freeze and Human Gate C.
+Signing, notarization, and public distribution remain separate gates.
 
 ## RC3
 
@@ -706,33 +722,33 @@ The next candidate is RC5. Its source commit and tree must be chosen by a
 fresh operator preflight on `main` after the access-boundary proof fix merges.
 Do not pre-fix an RC5 identity here.
 
-### Post-RC5 M5 scope audit
+### RC6 rebaseline after RC5 historical freeze
 
 | Field | Value |
 |---|---|
-| audited RC5 source commit | `7b5b740d1db195f99d2bd78b46713531cfda41c5` |
-| audited RC5 source tree | `1b32b802d779e8ef9fe6a06183ded160355a1f88` |
-| audited later-main endpoint | `827c7c5252f8ac8daf484b372202315845fdaf31` |
-| audited later-main tree | `837454269ae6bc6b2b005cf77efdd7dc20a2ddb8` |
-| changed feature area | Auto Slice / PCM analysis and draft editing |
-| M5 Gate C semantic change | `NO` |
-| verdict | `POST_RC5_M5_SCOPE_AUDIT_PASS` |
+| RC5 source commit | `7b5b740d1db195f99d2bd78b46713531cfda41c5` |
+| RC5 source tree | `1b32b802d779e8ef9fe6a06183ded160355a1f88` |
+| current main after RC5 ledger merge | `87a46b9d249503232f7b5fb92ebe7b50333614b1` |
+| current main tree after RC5 ledger merge | `c8c434055366e0504837ceab068f1f51d6b51cd6` |
+| Auto Slice merge on main | `827c7c5252f8ac8daf484b372202315845fdaf31` |
+| RC5 ledger merge PR | [#106](https://github.com/kaz4g/masterocta/pull/106) |
+| current-main Human Gate C on RC5 | `FORBIDDEN` |
+| next required candidate | `RC6_REQUIRED` |
 
-The reviewed post-RC5 diff adds the Auto Slice / PCM analysis feature.
-It does not modify the frozen RC5 Rename Plan → Prepare → Continue → Apply
-transaction, committed rename evidence contract, Gate C byte-manifest
-comparison, or Gate C candidate workflow.
-
-This audit does not extend RC5 certification to later commits. RC5 certifies
-only source commit `7b5b740d1db195f99d2bd78b46713531cfda41c5`
-and source tree `1b32b802d779e8ef9fe6a06183ded160355a1f88`.
-Post-RC5 Auto Slice functionality is outside the RC5 Gate C certification scope.
+RC5 is a historical frozen candidate for source
+`7b5b740d1db195f99d2bd78b46713531cfda41c5` only. Current `main` advanced
+through Auto Slice merge `827c7c5252f8ac8daf484b372202315845fdaf31` and RC5
+ledger merge `87a46b9d249503232f7b5fb92ebe7b50333614b1`. RC5 must not be used
+for current-main Human Gate C. Do not substitute the RC5 DMG, rebuild from the
+RC5 source commit, or treat RC5 as the current-main Gate C certification
+target. RC6 is required from a fresh operator preflight on the post-P2 main
+tip. Do not pre-fix an RC6 identity in this correction.
 
 ## RC5
 
 | Field | Value |
 |---|---|
-| status | `FROZEN` after this ledger merges to `main`; not formally frozen on `main` until then |
+| status | `FROZEN` (historical). current-main Human Gate C = `FORBIDDEN` |
 | candidate_id | `gate-c-rc5-7b5b740d1db1` |
 | source commit | `7b5b740d1db195f99d2bd78b46713531cfda41c5` |
 | source tree | `1b32b802d779e8ef9fe6a06183ded160355a1f88` |
@@ -779,7 +795,7 @@ Post-RC5 Auto Slice functionality is outside the RC5 Gate C certification scope.
 | codesign classification | `AD_HOC_VERIFIED` |
 | codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
 | spctl result | `rejected_expected` |
-| Human Gate C | `NOT_RUN` |
+| Human Gate C | `NOT_RUN` (RC5 is historical only; current-main use forbidden) |
 
 RC5 source-to-artifact provenance chain:
 
@@ -853,10 +869,44 @@ complementary evidence:
 - local access-verdict SHA256 recorded above
 
 Do not rerun run `34077117176` or redispatch `gate-c-rc5-7b5b740d1db1`. Do
-not create RC6 without a new operator sequence. Do not rebuild the RC5 artifact
-from source for Human Gate C. RC5 is a personal/local evaluation candidate,
-not a public release. Human Gate C remains `NOT_RUN`. Gate C remains
-`NOT_PASS`. M5 remains `INCOMPLETE`.
+not use RC5 for current-main Human Gate C. RC6 is required from a fresh
+operator preflight on post-P2 `main`. Do not create RC6 without that operator
+sequence. Do not rebuild the RC5 artifact from source for Human Gate C. RC5 is
+a personal/local evaluation candidate and a historical freeze record, not a
+public release and not the current-main Gate C target. Human Gate C remains
+`NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+
+## RC6
+
+| Field | Value |
+|---|---|
+| status | `NOT_CREATED` |
+| requirement | `RC6_REQUIRED` |
+| source commit | `UNSET` |
+| source tree | `UNSET` |
+| artifact | `UNSET` |
+| artifact SHA256 | `UNSET` |
+| app binary SHA256 | `UNSET` |
+| workflow name | `UNSET` |
+| workflow run ID | `UNSET` |
+| workflow run attempt | `UNSET` |
+| workflow run URL | `UNSET` |
+| workflow checkout SHA | `UNSET` |
+| build environment | `UNSET` |
+| codesign verification | `UNSET` |
+| DMG verification | `UNSET` |
+| in-run checksum manifest identity | `UNSET` |
+| in-run checksum manifest storage | `UNSET` |
+| in-run checksum manifest retrieval | `UNSET` |
+| candidate storage | `UNSET` |
+| candidate access boundary | `UNSET` |
+| public distribution | `NOT AUTHORIZED` |
+
+Do not infer these values from the current `main` tip. They stay `UNSET` until
+an explicit RC6 freeze records them together from a one-shot dispatch on the
+post-P2 main tip. RC5 identity must not be copied or reused as RC6 identity.
+Human Gate C on current `main` requires RC6 freeze first. Human Gate C remains
+`NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 
 ## Gate C safety boundary
 

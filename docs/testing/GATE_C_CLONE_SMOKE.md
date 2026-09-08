@@ -40,17 +40,20 @@ mean all macOS dotfiles are ignored.
 - Capture a complete pre-run per-file byte manifest with
   `scripts/gate-c-byte-manifest.mjs` **before** root registration and **before**
   rename. Whole-image checksums are not a substitute.
-- Human Gate C uses the frozen RC5 candidate recorded in
+- Human Gate C uses the frozen RC6 candidate recorded in
   `GATE_C_RC_LEDGER.md`. Install or launch from that verified DMG only.
-- Human Gate C may start only after the RC5 docs-only freeze ledger merges to
-  `main`. Until that merge, RC5 is not formally frozen on `main`.
-- Use the RC5 candidate bytes already retrieved from private candidate storage.
-  Do not record local absolute paths for that storage in repository evidence.
+- Human Gate C may start only after the RC6 docs-only freeze ledger merges to
+  `main`. RC5 is a historical frozen candidate only; current-main Human Gate C
+  on RC5 is **FORBIDDEN**.
+- Use the RC6 candidate bytes retrieved from private candidate storage after RC6
+  freeze. Do not record local absolute paths for that storage in repository
+  evidence.
 - Do not rebuild the application from source for this smoke, even from the
   frozen commit. Rebuilding from the recorded commit is **STOP**.
 - Confirm the launched executable SHA256 matches the recorded inner app binary
-  SHA256:
-  `sha256:ca76fedcc7a18e8f61350a14f7ddf4303da91126ebdba4ee70fef3dd921290dc`.
+  SHA256 of the frozen RC6 candidate. Until RC6 freeze, that value is `UNSET`.
+- Do not use the RC5 DMG or RC5 inner binary SHA256 for current-main Human
+  Gate C.
 - Use the frozen candidate produced by **`Gate C Candidate Build`**
   (`.github/workflows/gate-c-candidate.yml`). Do **not** use
   `.github/workflows/rc-release.yml` for Gate C candidates.
@@ -103,11 +106,23 @@ RC2 attempt 34016038137 FAILURE recorded
 → RC5 attempt 34077117176 SUCCESS recorded
 → draft candidate retrieved and SHA256 re-verified locally PASS
 → provenance / access boundary confirmed PASS
-→ docs-only freeze ledger PR merged
-→ Human Gate C on frozen RC5 using this checklist
+→ docs-only freeze ledger PR merged (#106 / 87a46b9)
+→ P2 correction PR
+→ review + CI
+→ merge
+→ merge SHA main CI success
+→ open PR を 0 件にする
+  (#103 / #104 は branch を残して一時 close。M5 完了後に reopen/rebase)
+→ RC6 source commit/tree fixed by operator preflight on the new main tip
+→ Gate C Candidate Build dispatched once as gate-c-rc6-<12hex>
+→ draft candidate retrieved and SHA256 re-verified locally PASS
+→ provenance / access boundary confirmed PASS
+→ RC6 freeze ledger PR merged
+→ Human Gate C on frozen RC6 using this checklist
+→ M5 closure PR
 ```
 
-Frozen RC5 candidate coordinates for Human Gate C:
+Historical RC5 candidate coordinates (not for current-main Human Gate C):
 
 | Field | Value |
 |---|---|
@@ -124,15 +139,18 @@ Frozen RC5 candidate coordinates for Human Gate C:
 | access boundary verdict | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
 | public distribution | `NOT AUTHORIZED` |
 
-RC5 freezes only the source commit and tree recorded above. Post-RC5 Auto Slice
-changes through `827c7c5252f8ac8daf484b372202315845fdaf31` are outside this Gate C certification scope. Do not substitute a later-main build for the frozen
-RC5 candidate during Human Gate C.
+RC5 is a historical frozen candidate only. Current-main Human Gate C on RC5 is
+**FORBIDDEN**. Current `main` advanced through Auto Slice merge
+`827c7c5252f8ac8daf484b372202315845fdaf31` and RC5 ledger merge
+`87a46b9d249503232f7b5fb92ebe7b50333614b1`. Do not substitute the RC5 DMG, a
+later-main build, or any RC5 bytes for current-main Human Gate C. RC6 is
+required before Human Gate C may start.
 
 Do not reuse the RC2, RC3, or RC4 run, their candidate IDs, or any in-progress
 DMG as later candidate evidence. RC5 dispatch is one-shot. Do not rerun run
 `34077117176`, redispatch `gate-c-rc5-7b5b740d1db1`, or create RC6 without a
 new operator sequence. A successful workflow run alone does not freeze the
-candidate. Human Gate C starts only after the RC5 freeze ledger merge.
+candidate. Human Gate C starts only after the RC6 freeze ledger merge.
 
 ## Byte-manifest commands
 
@@ -219,10 +237,10 @@ shasum -a 256 \
    clone root and outside the repository.
 4. Confirm capture succeeded: exit 0, complete JSON, `schema` is
    `masterocta-gate-c-byte-manifest:v1`, and no `.partial` file remains.
-5. Verify the frozen RC5 DMG (`hdiutil verify` must succeed), record the
+5. Verify the frozen RC6 DMG (`hdiutil verify` must succeed), record the
    codesign/`spctl` outcome, install or launch from that DMG, and confirm the
-   launched executable SHA256 matches
-   `sha256:ca76fedcc7a18e8f61350a14f7ddf4303da91126ebdba4ee70fef3dd921290dc`.
+   launched executable SHA256 matches the recorded inner app binary SHA256 of
+   that RC6 candidate. Using the RC5 DMG or RC5 inner binary SHA256 is **STOP**.
    Rebuilding from the recorded commit is STOP.
 6. Register the disposable clone read-only and confirm baseline catalog scan
    shows the intended source sample as `Resolved` with zero blocking
