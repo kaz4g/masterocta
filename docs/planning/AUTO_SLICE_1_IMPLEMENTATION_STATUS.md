@@ -2,6 +2,9 @@
 
 設計基準: [AUTO_SLICE_1_TECHNICAL_DESIGN.md](AUTO_SLICE_1_TECHNICAL_DESIGN.md)
 
+残実装の詳細計画: [AUTO_SLICE_2_COMPLETION_PLAN.md](AUTO_SLICE_2_COMPLETION_PLAN.md)
+（設定保存・範囲編集、長尺、精度評価、既存設定統合、`.ot`出力と実機受入。設計案であり実装完了ではない。）
+
 AS-0〜AS-4のローカル編集機能を接続した。Libraryの音声Inspectorから
 **Detect attacks → 候補確認 → Apply candidates to draft → 手修正・区間試聴**を行える。
 ドラフトはアプリ内SQLiteに保存する。`.ot`出力と媒体へのApplyは未実装。
