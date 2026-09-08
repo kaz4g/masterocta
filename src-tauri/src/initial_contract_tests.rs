@@ -940,7 +940,7 @@ fn ct02_unique_directory_case_is_consistent_through_prepare() {
 
 #[test]
 fn ct03_resolver_ambiguous_inventory_is_not_filesystem_substitute() {
-    let project = RootRelativePath::parse("SET/PROJECT/project.work").unwrap();
+    let project = RootRelativePath::parse("SET/PROJECT").unwrap();
     let inventory = HashSet::from([
         "SET/AUDIO/Kick.wav".to_owned(),
         "SET/AUDIO/kick.wav".to_owned(),
