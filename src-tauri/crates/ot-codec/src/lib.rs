@@ -17,16 +17,15 @@ pub use reference_resolution::{
 };
 
 mod project_document;
+mod project_structure;
 mod reference_resolution;
+use project_structure::{
+    decode_reversible_windows_1258, encode_reversible_windows_1258, is_flex_recorder_buffer,
+    parse_sample_blocks as parse_structure_sample_blocks, slot_kind_token, SampleStructureError,
+    StructureSampleBlock, SAMPLE_END, SAMPLE_START,
+};
 use std::collections::HashSet;
 use std::ops::Range;
-
-const SAMPLE_START: &str = "[SAMPLE]";
-const SAMPLE_END: &str = "[/SAMPLE]";
-/// Flex 129–136 appear as recorder buffers with empty PATH on tracked OS 1.40
-/// fixtures. They are preserved but are not `SampleSlotId` rewrite targets.
-const FLEX_RECORDER_MIN: u16 = 129;
-const FLEX_RECORDER_MAX: u16 = 136;
 
 /// Memory-only surgical PATH rewriter for Project `.work` / `.strd` documents.
 ///
@@ -43,7 +42,7 @@ impl ProjectReferenceCodec for MemoryProjectReferenceCodec {
         bytes: &[u8],
     ) -> Result<Vec<SlotPathRef>, ReferenceRewriteError> {
         let text = decode_windows_1258(bytes)?;
-        Ok(inspectable_slots(&parse_sample_blocks(&text)?))
+        Ok(inspectable_slots(&parse_rewrite_sample_blocks(&text)?))
     }
 
     fn apply_path_patches(
@@ -60,7 +59,7 @@ fn apply_path_patches(
     patches: &[SlotPathPatch],
 ) -> Result<EncodedPatch, ReferenceRewriteError> {
     let text = decode_windows_1258(original)?;
-    let blocks = parse_sample_blocks(&text)?;
+    let blocks = parse_rewrite_sample_blocks(&text)?;
     let inspect_before = inspectable_slots(&blocks);
     validate_unique_patch_targets(patches)?;
 
@@ -105,34 +104,41 @@ fn apply_path_patches(
     })
 }
 
-fn decode_windows_1258(bytes: &[u8]) -> Result<String, ReferenceRewriteError> {
-    let (decoded, _, had_errors) = encoding_rs::WINDOWS_1258.decode(bytes);
-    if had_errors {
-        return Err(ReferenceRewriteError::IrreversibleEncoding);
-    }
-    let text = decoded.into_owned();
-    let (encoded, _, had_unmappable) = encoding_rs::WINDOWS_1258.encode(&text);
-    if had_unmappable || encoded.as_ref() != bytes {
-        return Err(ReferenceRewriteError::IrreversibleEncoding);
-    }
-    Ok(text)
+pub(crate) fn decode_windows_1258(bytes: &[u8]) -> Result<String, ReferenceRewriteError> {
+    decode_reversible_windows_1258(bytes).map_err(map_structure_error_to_rewrite)
 }
 
 fn encode_windows_1258(text: &str) -> Result<Vec<u8>, ReferenceRewriteError> {
-    let (encoded, _, had_unmappable) = encoding_rs::WINDOWS_1258.encode(text);
-    if had_unmappable {
-        return Err(ReferenceRewriteError::IrreversibleEncoding);
-    }
-    Ok(encoded.into_owned())
+    encode_reversible_windows_1258(text).map_err(map_structure_error_to_rewrite)
 }
 
-#[derive(Clone, Debug)]
-struct SampleBlock {
-    kind: SampleSlotKind,
-    number: u16,
-    raw_path: String,
-    path_range: Range<usize>,
+fn map_structure_error_to_rewrite(error: SampleStructureError) -> ReferenceRewriteError {
+    match error {
+        SampleStructureError::IrreversibleEncoding => ReferenceRewriteError::IrreversibleEncoding,
+        SampleStructureError::UnclosedSampleBlock => ReferenceRewriteError::UnclosedSampleBlock,
+        SampleStructureError::UnexpectedSampleCloser => {
+            ReferenceRewriteError::UnexpectedSampleCloser
+        }
+        SampleStructureError::NestedSampleBlock => ReferenceRewriteError::NestedSampleBlock,
+        SampleStructureError::DuplicateField => ReferenceRewriteError::DuplicateField,
+        SampleStructureError::DuplicatePathLine => ReferenceRewriteError::DuplicatePathLine,
+        SampleStructureError::MissingType => ReferenceRewriteError::MissingType,
+        SampleStructureError::MissingSlot => ReferenceRewriteError::MissingSlot,
+        SampleStructureError::MissingPath => ReferenceRewriteError::MissingPath,
+        SampleStructureError::DuplicateSlot { kind, number } => {
+            ReferenceRewriteError::DuplicateSlot {
+                kind: slot_kind_token(kind).to_owned(),
+                number,
+            }
+        }
+        SampleStructureError::InvalidSlot => ReferenceRewriteError::InvalidSlot,
+        SampleStructureError::UnsupportedSlotType => ReferenceRewriteError::UnsupportedSlotType,
+        SampleStructureError::UnsafePathText => ReferenceRewriteError::UnsafePathText,
+        SampleStructureError::MalformedDocument => ReferenceRewriteError::UnexpectedSampleCloser,
+    }
 }
+
+type SampleBlock = StructureSampleBlock;
 
 impl SampleBlock {
     fn inspectable_slot(&self) -> Option<SampleSlotId> {
@@ -140,126 +146,12 @@ impl SampleBlock {
     }
 }
 
-fn parse_sample_blocks(text: &str) -> Result<Vec<SampleBlock>, ReferenceRewriteError> {
-    let lines = text_lines(text);
-    let mut blocks = Vec::new();
-    let mut seen = HashSet::new();
-    let mut index = 0;
-    while index < lines.len() {
-        match classify_line(lines[index].content)? {
-            LineKind::Other => {
-                index += 1;
-            }
-            LineKind::Close => return Err(ReferenceRewriteError::UnexpectedSampleCloser),
-            LineKind::Open => {
-                index += 1;
-                let mut slot_type = None;
-                let mut slot_number = None;
-                let mut path = None;
-                loop {
-                    if index >= lines.len() {
-                        return Err(ReferenceRewriteError::UnclosedSampleBlock);
-                    }
-                    match classify_line(lines[index].content)? {
-                        LineKind::Open => return Err(ReferenceRewriteError::NestedSampleBlock),
-                        LineKind::Close => {
-                            index += 1;
-                            break;
-                        }
-                        LineKind::Other => {
-                            let line = &lines[index];
-                            if let Some(value) = field_value(line.content, "TYPE") {
-                                if slot_type.is_some() {
-                                    return Err(ReferenceRewriteError::DuplicateField);
-                                }
-                                slot_type = Some(parse_slot_kind(value)?);
-                            } else if let Some(value) = field_value(line.content, "SLOT") {
-                                if slot_number.is_some() {
-                                    return Err(ReferenceRewriteError::DuplicateField);
-                                }
-                                slot_number = Some(parse_slot_number(value)?);
-                            } else if let Some(value) = field_value(line.content, "PATH") {
-                                if path.is_some() {
-                                    return Err(ReferenceRewriteError::DuplicatePathLine);
-                                }
-                                ensure_safe_raw_path(value)?;
-                                let value_start =
-                                    line.content_start + line.content.len() - value.len();
-                                let value_end = line.content_start + line.content.len();
-                                path = Some((value_start..value_end, value.to_owned()));
-                            }
-                            index += 1;
-                        }
-                    }
-                }
-                let kind = slot_type.ok_or(ReferenceRewriteError::MissingType)?;
-                let number = slot_number.ok_or(ReferenceRewriteError::MissingSlot)?;
-                validate_observed_slot(kind, number)?;
-                let (path_range, raw_path) = path.ok_or(ReferenceRewriteError::MissingPath)?;
-                let block = SampleBlock {
-                    kind,
-                    number,
-                    raw_path,
-                    path_range,
-                };
-                if !seen.insert((block.kind, block.number)) {
-                    return Err(ReferenceRewriteError::DuplicateSlot {
-                        kind: slot_kind_token(block.kind).to_owned(),
-                        number: block.number,
-                    });
-                }
-                blocks.push(block);
-            }
-        }
+fn parse_rewrite_sample_blocks(text: &str) -> Result<Vec<SampleBlock>, ReferenceRewriteError> {
+    let blocks = parse_structure_sample_blocks(text).map_err(map_structure_error_to_rewrite)?;
+    for block in &blocks {
+        validate_observed_slot(block.kind, block.number)?;
     }
     Ok(blocks)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LineKind {
-    Open,
-    Close,
-    Other,
-}
-
-struct TextLine<'a> {
-    content: &'a str,
-    content_start: usize,
-}
-
-fn text_lines(text: &str) -> Vec<TextLine<'_>> {
-    let mut lines = Vec::new();
-    let mut pos = 0;
-    while pos < text.len() {
-        let rest = &text[pos..];
-        let step = rest.find('\n').map(|index| index + 1).unwrap_or(rest.len());
-        let content = rest[..step].trim_end_matches(['\r', '\n']);
-        lines.push(TextLine {
-            content,
-            content_start: pos,
-        });
-        pos += step;
-        if step == rest.len() {
-            break;
-        }
-    }
-    lines
-}
-
-fn classify_line(line: &str) -> Result<LineKind, ReferenceRewriteError> {
-    if line == SAMPLE_START {
-        return Ok(LineKind::Open);
-    }
-    if line == SAMPLE_END {
-        return Ok(LineKind::Close);
-    }
-    if line.eq_ignore_ascii_case(SAMPLE_START) || line.eq_ignore_ascii_case(SAMPLE_END) {
-        return Err(ReferenceRewriteError::NestedSampleBlock);
-    }
-    if line.contains(SAMPLE_START) || line.contains(SAMPLE_END) {
-        return Err(ReferenceRewriteError::NestedSampleBlock);
-    }
-    Ok(LineKind::Other)
 }
 
 fn validate_observed_slot(kind: SampleSlotKind, number: u16) -> Result<(), ReferenceRewriteError> {
@@ -268,10 +160,6 @@ fn validate_observed_slot(kind: SampleSlotKind, number: u16) -> Result<(), Refer
     } else {
         Err(ReferenceRewriteError::InvalidSlot)
     }
-}
-
-fn is_flex_recorder_buffer(kind: SampleSlotKind, number: u16) -> bool {
-    kind == SampleSlotKind::Flex && (FLEX_RECORDER_MIN..=FLEX_RECORDER_MAX).contains(&number)
 }
 
 fn ensure_safe_raw_path(path: &str) -> Result<(), ReferenceRewriteError> {
@@ -390,51 +278,6 @@ fn verify_reparse(
         }
     }
     Ok(())
-}
-
-fn field_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let line_bytes = line.as_bytes();
-    let key_bytes = key.as_bytes();
-    if line_bytes.len() < key_bytes.len() + 1 {
-        return None;
-    }
-    if !line_bytes[..key_bytes.len()].eq_ignore_ascii_case(key_bytes) {
-        return None;
-    }
-    if line_bytes[key_bytes.len()] != b'=' {
-        return None;
-    }
-    Some(&line[key_bytes.len() + 1..])
-}
-
-fn parse_slot_kind(value: &str) -> Result<SampleSlotKind, ReferenceRewriteError> {
-    if value.eq_ignore_ascii_case("STATIC") {
-        Ok(SampleSlotKind::Static)
-    } else if value.eq_ignore_ascii_case("FLEX") {
-        Ok(SampleSlotKind::Flex)
-    } else {
-        Err(ReferenceRewriteError::UnsupportedSlotType)
-    }
-}
-
-fn parse_slot_number(value: &str) -> Result<u16, ReferenceRewriteError> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(ReferenceRewriteError::InvalidSlot);
-    }
-    let number = value
-        .parse::<u16>()
-        .map_err(|_| ReferenceRewriteError::InvalidSlot)?;
-    if number == 0 {
-        return Err(ReferenceRewriteError::InvalidSlot);
-    }
-    Ok(number)
-}
-
-fn slot_kind_token(kind: SampleSlotKind) -> &'static str {
-    match kind {
-        SampleSlotKind::Static => "STATIC",
-        SampleSlotKind::Flex => "FLEX",
-    }
 }
 
 #[cfg(test)]
@@ -886,4 +729,5 @@ mod tests {
 
     mod contract_tests;
     mod project_document_tests;
+    mod structure_contract_tests;
 }

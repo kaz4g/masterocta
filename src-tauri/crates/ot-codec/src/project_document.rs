@@ -1,10 +1,14 @@
 #![forbid(unsafe_code)]
 
+use crate::project_structure::{
+    classify_observed_slot, decode_reversible_windows_1258, field_value,
+    parse_sample_blocks as parse_structure_sample_blocks, ObservedSlotKind, SampleStructureError,
+    META_END, META_START,
+};
 use ot_domain::{
     ProjectCompatibilityEvidence, RecorderBufferId, SampleSlotId, SampleSlotKind,
     StateDocumentParseStatus,
 };
-use std::collections::HashSet;
 
 pub const PROJECT_PARSER_NAME: &str = "masterocta/ot-codec-project";
 pub const PROJECT_PARSER_REVISION: &str = "v1";
@@ -14,11 +18,6 @@ const META_VERSION: u32 = 19;
 const VERIFIED_OS_REVISION: &str = "R0173";
 const VERIFIED_OS_RELEASE: &str = "1.40";
 const UPSTREAM_RELEASE_SUFFIXES: [&str; 3] = ["1.40A", "1.40B", "1.40C"];
-
-const SAMPLE_START: &str = "[SAMPLE]";
-const SAMPLE_END: &str = "[/SAMPLE]";
-const META_START: &str = "[META]";
-const META_END: &str = "[/META]";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectDocumentParseResult {
@@ -56,19 +55,6 @@ struct MetaFields {
     file_type: String,
     project_version: u32,
     os_version: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct ParsedSampleBlock {
-    kind: SampleSlotKind,
-    number: u16,
-    raw_path: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BlockKind {
-    Meta,
-    Sample,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -128,7 +114,7 @@ pub fn parse_project_document(bytes: &[u8]) -> ProjectDocumentParseResult {
         };
     }
 
-    match parse_sample_blocks(&text) {
+    match parse_document_sample_blocks(&text) {
         Ok((regular_assignments, recorder_buffers)) => ProjectDocumentParseResult {
             parse_status: StateDocumentParseStatus::Parsed,
             compatibility,
@@ -160,20 +146,56 @@ fn malformed_result(source_version: Option<String>) -> ProjectDocumentParseResul
 }
 
 fn decode_windows_1258(bytes: &[u8]) -> Result<String, ()> {
-    let (decoded, _, had_errors) = encoding_rs::WINDOWS_1258.decode(bytes);
-    if had_errors {
-        return Err(());
+    decode_reversible_windows_1258(bytes).map_err(|_| ())
+}
+
+fn parse_document_sample_blocks(
+    text: &str,
+) -> Result<(Vec<RegularSampleAssignment>, Vec<RecorderBufferObservation>), StateDocumentParseStatus>
+{
+    let blocks =
+        parse_structure_sample_blocks(text).map_err(map_structure_error_to_parse_status)?;
+    let mut regular_assignments = Vec::new();
+    let mut recorder_buffers = Vec::new();
+
+    for block in blocks {
+        match classify_observed_slot(block.kind, block.number) {
+            ObservedSlotKind::Regular(slot) => {
+                if !block.raw_path.is_empty() {
+                    regular_assignments.push(RegularSampleAssignment {
+                        slot,
+                        raw_path: block.raw_path,
+                    });
+                }
+            }
+            ObservedSlotKind::Recorder(buffer) => {
+                recorder_buffers.push(RecorderBufferObservation {
+                    buffer,
+                    raw_path: block.raw_path,
+                });
+            }
+            ObservedSlotKind::Invalid => return Err(StateDocumentParseStatus::Malformed),
+        }
     }
-    let text = decoded.into_owned();
-    let (encoded, _, had_unmappable) = encoding_rs::WINDOWS_1258.encode(&text);
-    if had_unmappable || encoded.as_ref() != bytes {
-        return Err(());
-    }
-    Ok(text)
+
+    regular_assignments.sort_by(|left, right| {
+        (slot_kind_rank(left.slot.kind()), left.slot.number())
+            .cmp(&(slot_kind_rank(right.slot.kind()), right.slot.number()))
+    });
+    recorder_buffers.sort_by_key(|entry| entry.buffer.buffer_number());
+    Ok((regular_assignments, recorder_buffers))
+}
+
+fn map_structure_error_to_parse_status(_error: SampleStructureError) -> StateDocumentParseStatus {
+    StateDocumentParseStatus::Malformed
+}
+
+fn slot_kind_rank(kind: SampleSlotKind) -> u8 {
+    ot_domain::slot_kind_rank(kind)
 }
 
 fn parse_meta_block(text: &str) -> Result<MetaFields, StateDocumentParseStatus> {
-    let lines = text_lines(text);
+    let lines = meta_text_lines(text);
     let mut index = 0;
     while index < lines.len() {
         if lines[index].content == META_START {
@@ -181,8 +203,10 @@ fn parse_meta_block(text: &str) -> Result<MetaFields, StateDocumentParseStatus> 
             let mut file_type = None;
             let mut project_version = None;
             let mut os_version = None;
+            let mut found_end = false;
             while index < lines.len() {
                 if lines[index].content == META_END {
+                    found_end = true;
                     break;
                 }
                 let line = &lines[index];
@@ -203,6 +227,9 @@ fn parse_meta_block(text: &str) -> Result<MetaFields, StateDocumentParseStatus> 
                     os_version = Some(value.to_owned());
                 }
                 index += 1;
+            }
+            if !found_end {
+                return Err(StateDocumentParseStatus::Malformed);
             }
             let file_type = file_type.ok_or(StateDocumentParseStatus::Malformed)?;
             let project_version = project_version.ok_or(StateDocumentParseStatus::Malformed)?;
@@ -294,235 +321,22 @@ fn valid_release(value: &str) -> bool {
         && (bytes.len() == 2 || bytes[2].is_ascii_uppercase())
 }
 
-fn parse_sample_blocks(
-    text: &str,
-) -> Result<(Vec<RegularSampleAssignment>, Vec<RecorderBufferObservation>), StateDocumentParseStatus>
-{
-    let lines = text_lines(text);
-    let mut regular_assignments = Vec::new();
-    let mut recorder_buffers = Vec::new();
-    let mut seen = HashSet::new();
-    let mut index = 0;
-
-    while index < lines.len() {
-        match classify_block_line(lines[index].content) {
-            BlockLine::Other => index += 1,
-            BlockLine::Close(BlockKind::Sample) => return Err(StateDocumentParseStatus::Malformed),
-            BlockLine::Close(BlockKind::Meta) => return Err(StateDocumentParseStatus::Malformed),
-            BlockLine::Open(BlockKind::Meta) => {
-                index = skip_closed_block(&lines, index + 1, META_END)?;
-            }
-            BlockLine::Open(BlockKind::Sample) => {
-                index += 1;
-                let block = parse_sample_block(&lines, &mut index)?;
-                if !seen.insert((block.kind, block.number)) {
-                    return Err(StateDocumentParseStatus::Malformed);
-                }
-                match classify_slot(block.kind, block.number) {
-                    SlotClassification::Regular(slot) => {
-                        if !block.raw_path.is_empty() {
-                            regular_assignments.push(RegularSampleAssignment {
-                                slot,
-                                raw_path: block.raw_path,
-                            });
-                        }
-                    }
-                    SlotClassification::Recorder(buffer) => {
-                        recorder_buffers.push(RecorderBufferObservation {
-                            buffer,
-                            raw_path: block.raw_path,
-                        });
-                    }
-                    SlotClassification::Invalid => {
-                        return Err(StateDocumentParseStatus::Malformed);
-                    }
-                }
-            }
-        }
-    }
-
-    regular_assignments.sort_by(|left, right| {
-        (slot_kind_rank(left.slot.kind()), left.slot.number())
-            .cmp(&(slot_kind_rank(right.slot.kind()), right.slot.number()))
-    });
-    recorder_buffers.sort_by_key(|entry| entry.buffer.buffer_number());
-    Ok((regular_assignments, recorder_buffers))
-}
-
-enum SlotClassification {
-    Regular(SampleSlotId),
-    Recorder(RecorderBufferId),
-    Invalid,
-}
-
-fn classify_slot(kind: SampleSlotKind, number: u16) -> SlotClassification {
-    if let Ok(slot) = SampleSlotId::new(kind, number) {
-        return SlotClassification::Regular(slot);
-    }
-    if kind == SampleSlotKind::Flex {
-        if let Ok(buffer) = RecorderBufferId::new(number) {
-            return SlotClassification::Recorder(buffer);
-        }
-    }
-    SlotClassification::Invalid
-}
-
-fn parse_sample_block(
-    lines: &[TextLine<'_>],
-    index: &mut usize,
-) -> Result<ParsedSampleBlock, StateDocumentParseStatus> {
-    let mut slot_type = None;
-    let mut slot_number = None;
-    let mut path = None;
-
-    while *index < lines.len() {
-        match classify_block_line(lines[*index].content) {
-            BlockLine::Open(_) => return Err(StateDocumentParseStatus::Malformed),
-            BlockLine::Close(BlockKind::Sample) => {
-                *index += 1;
-                break;
-            }
-            BlockLine::Close(BlockKind::Meta) => return Err(StateDocumentParseStatus::Malformed),
-            BlockLine::Other => {
-                let line = &lines[*index];
-                if let Some(value) = field_value(line.content, "TYPE") {
-                    if slot_type.is_some() {
-                        return Err(StateDocumentParseStatus::Malformed);
-                    }
-                    slot_type = Some(parse_slot_kind(value)?);
-                } else if let Some(value) = field_value(line.content, "SLOT") {
-                    if slot_number.is_some() {
-                        return Err(StateDocumentParseStatus::Malformed);
-                    }
-                    slot_number = Some(parse_slot_number(value)?);
-                } else if let Some(value) = field_value(line.content, "PATH") {
-                    if path.is_some() {
-                        return Err(StateDocumentParseStatus::Malformed);
-                    }
-                    path = Some(value.to_owned());
-                }
-                *index += 1;
-            }
-        }
-    }
-
-    let kind = slot_type.ok_or(StateDocumentParseStatus::Malformed)?;
-    let number = slot_number.ok_or(StateDocumentParseStatus::Malformed)?;
-    let raw_path = path.ok_or(StateDocumentParseStatus::Malformed)?;
-    Ok(ParsedSampleBlock {
-        kind,
-        number,
-        raw_path,
-    })
-}
-
-fn skip_closed_block(
-    lines: &[TextLine<'_>],
-    start: usize,
-    end_marker: &str,
-) -> Result<usize, StateDocumentParseStatus> {
-    let mut index = start;
-    while index < lines.len() {
-        if lines[index].content == end_marker {
-            return Ok(index + 1);
-        }
-        index += 1;
-    }
-    Err(StateDocumentParseStatus::Malformed)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BlockLine {
-    Open(BlockKind),
-    Close(BlockKind),
-    Other,
-}
-
-fn classify_block_line(line: &str) -> BlockLine {
-    if line == META_START {
-        return BlockLine::Open(BlockKind::Meta);
-    }
-    if line == META_END {
-        return BlockLine::Close(BlockKind::Meta);
-    }
-    if line == SAMPLE_START {
-        return BlockLine::Open(BlockKind::Sample);
-    }
-    if line == SAMPLE_END {
-        return BlockLine::Close(BlockKind::Sample);
-    }
-    if line.eq_ignore_ascii_case(META_START)
-        || line.eq_ignore_ascii_case(META_END)
-        || line.eq_ignore_ascii_case(SAMPLE_START)
-        || line.eq_ignore_ascii_case(SAMPLE_END)
-        || line.contains(META_START)
-        || line.contains(META_END)
-        || line.contains(SAMPLE_START)
-        || line.contains(SAMPLE_END)
-    {
-        return BlockLine::Open(BlockKind::Sample);
-    }
-    BlockLine::Other
-}
-
-struct TextLine<'a> {
+struct MetaTextLine<'a> {
     content: &'a str,
 }
 
-fn text_lines(text: &str) -> Vec<TextLine<'_>> {
+fn meta_text_lines(text: &str) -> Vec<MetaTextLine<'_>> {
     let mut lines = Vec::new();
     let mut pos = 0;
     while pos < text.len() {
         let rest = &text[pos..];
         let step = rest.find('\n').map(|index| index + 1).unwrap_or(rest.len());
         let content = rest[..step].trim_end_matches(['\r', '\n']);
-        lines.push(TextLine { content });
+        lines.push(MetaTextLine { content });
         pos += step;
         if step == rest.len() {
             break;
         }
     }
     lines
-}
-
-fn field_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let line_bytes = line.as_bytes();
-    let key_bytes = key.as_bytes();
-    if line_bytes.len() < key_bytes.len() + 1 {
-        return None;
-    }
-    if !line_bytes[..key_bytes.len()].eq_ignore_ascii_case(key_bytes) {
-        return None;
-    }
-    if line_bytes[key_bytes.len()] != b'=' {
-        return None;
-    }
-    Some(&line[key_bytes.len() + 1..])
-}
-
-fn parse_slot_kind(value: &str) -> Result<SampleSlotKind, StateDocumentParseStatus> {
-    if value.eq_ignore_ascii_case("STATIC") {
-        Ok(SampleSlotKind::Static)
-    } else if value.eq_ignore_ascii_case("FLEX") {
-        Ok(SampleSlotKind::Flex)
-    } else {
-        Err(StateDocumentParseStatus::Malformed)
-    }
-}
-
-fn parse_slot_number(value: &str) -> Result<u16, StateDocumentParseStatus> {
-    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(StateDocumentParseStatus::Malformed);
-    }
-    let number = value
-        .parse::<u16>()
-        .map_err(|_| StateDocumentParseStatus::Malformed)?;
-    if number == 0 {
-        return Err(StateDocumentParseStatus::Malformed);
-    }
-    Ok(number)
-}
-
-fn slot_kind_rank(kind: SampleSlotKind) -> u8 {
-    ot_domain::slot_kind_rank(kind)
 }
