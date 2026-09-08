@@ -383,7 +383,7 @@ impl ContractHarness {
         }
     }
 
-    fn prepare_continue_apply(&self, plan: &RenamePlanDto) {
+    fn prepare_continue_apply(&self, plan: &RenamePlanDto) -> LibrarySnapshot {
         let authority = authorize_rename_sync(
             &self.registry,
             &self.catalog,
@@ -477,13 +477,14 @@ impl ContractHarness {
                 &applied.mutation_state,
             );
         }
-        if let Err(error) = scan_library_sync(&self.registry, &self.catalog, &self.root_id) {
-            fail(
+        match scan_library_sync(&self.registry, &self.catalog, &self.root_id) {
+            Ok((_, live)) => live,
+            Err(error) => fail(
                 "harness",
                 "rescan",
-                "production rescan after apply",
+                "production live rescan after apply",
                 &format!("{error:?}"),
-            );
+            ),
         }
     }
 
@@ -566,21 +567,99 @@ fn assert_project_documents_parsed(scenario: &str, snapshot: &LibrarySnapshot) {
     }
 }
 
-fn assert_no_recorder_buffer_assignments(scenario: &str, snapshot: &LibrarySnapshot) {
-    let leaked = snapshot
+/// Recorder buffers are FLEX 129–136 and cannot be stored as `SampleSlotId`
+/// (domain max is 128). A leaked buffer would appear as an unexpected Flex
+/// assignment, not as `number() >= 129`.
+fn assert_no_flex_assignments(scenario: &str, snapshot: &LibrarySnapshot) {
+    let flex = snapshot
         .slot_assignments
         .iter()
-        .filter(|assignment| {
-            assignment.slot.kind() == SampleSlotKind::Flex && assignment.slot.number() >= 129
-        })
+        .filter(|assignment| assignment.slot.kind() == SampleSlotKind::Flex)
         .count();
-    if leaked != 0 {
+    if flex != 0 {
         fail(
             scenario,
             "catalog_assignments",
-            "zero Recorder Buffer assignments",
-            &leaked.to_string(),
+            "zero Flex assignments (FLEX 129–136 must stay RecorderBufferId)",
+            &flex.to_string(),
         );
+    }
+}
+
+fn assignment_observation_keys(
+    snapshot: &LibrarySnapshot,
+) -> Vec<(String, String, u16, String, String)> {
+    let mut keys = snapshot
+        .slot_assignments
+        .iter()
+        .map(|assignment| {
+            (
+                assignment
+                    .project_document_relative_path
+                    .as_str()
+                    .to_owned(),
+                format!("{:?}", assignment.slot.kind()),
+                assignment.slot.number(),
+                format!("{:?}", assignment.reference_status),
+                assignment
+                    .referenced_file_relative_path
+                    .as_ref()
+                    .map(|path| path.as_str().to_owned())
+                    .unwrap_or_default(),
+            )
+        })
+        .collect::<Vec<_>>();
+    keys.sort();
+    keys
+}
+
+fn file_instance_paths(snapshot: &LibrarySnapshot) -> Vec<String> {
+    let mut paths = snapshot
+        .file_instances
+        .iter()
+        .map(|file| file.relative_path.as_str().to_owned())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths
+}
+
+fn assert_live_matches_catalog(scenario: &str, live: &LibrarySnapshot, catalog: &LibrarySnapshot) {
+    let live_assignments = assignment_observation_keys(live);
+    let catalog_assignments = assignment_observation_keys(catalog);
+    if live_assignments != catalog_assignments {
+        fail(
+            scenario,
+            "rescan_vs_catalog",
+            "live scan assignments match catalog load",
+            &format!("live={live_assignments:?} catalog={catalog_assignments:?}"),
+        );
+    }
+    let live_files = file_instance_paths(live);
+    let catalog_files = file_instance_paths(catalog);
+    if live_files != catalog_files {
+        fail(
+            scenario,
+            "rescan_vs_catalog",
+            "live scan file paths match catalog load",
+            &format!("live={live_files:?} catalog={catalog_files:?}"),
+        );
+    }
+}
+
+/// Same-directory basename replace that does not call production
+/// `rewrite_same_directory_path`. The observed prefix and separator stay as
+/// written in the fixture PATH.
+fn expected_rewritten_raw_path(from_raw_path: &str, new_basename: &str) -> String {
+    match from_raw_path.rfind(['/', '\\']) {
+        Some(index) if !from_raw_path[index + 1..].is_empty() => {
+            format!("{}{new_basename}", &from_raw_path[..=index])
+        }
+        _ => fail(
+            "fixture",
+            "expected_rewritten_raw_path",
+            "PATH with a directory prefix and basename",
+            from_raw_path,
+        ),
     }
 }
 
@@ -660,7 +739,7 @@ fn ct01_recorder_buffer_survives_rename() {
     let harness = open_harness_on(media);
     let snapshot = harness.load_snapshot();
     assert_project_documents_parsed(CT01, &snapshot);
-    assert_no_recorder_buffer_assignments(CT01, &snapshot);
+    assert_no_flex_assignments(CT01, &snapshot);
 
     let work = regular_assignments_for(&snapshot, "SET/PROJECT/project.work");
     let strd = regular_assignments_for(&snapshot, "SET/PROJECT/project.strd");
@@ -685,9 +764,9 @@ fn ct01_recorder_buffer_survives_rename() {
         fail(CT01, "plan", "Planned", "Blocked");
     };
     assert_plan_targets_only_static001(CT01, &plan);
-    harness.prepare_continue_apply(&plan);
-
+    let live_after = harness.prepare_continue_apply(&plan);
     let after_snapshot = harness.load_snapshot();
+    assert_live_matches_catalog(CT01, &live_after, &after_snapshot);
     for document in ["SET/PROJECT/project.work", "SET/PROJECT/project.strd"] {
         let static001 = assignment_for(&after_snapshot, document, SampleSlotKind::Static, 1);
         if static001.reference_status != SampleReferenceStatus::Resolved
@@ -732,7 +811,7 @@ fn ct01_recorder_buffer_survives_rename() {
             }
         }
     }
-    assert_no_recorder_buffer_assignments(CT01, &after_snapshot);
+    assert_no_flex_assignments(CT01, &after_snapshot);
 
     let expected_project = ct01_project_bytes("../AUDIO/001-renamed.wav", "../AUDIO/001.wav");
     for name in ["project.work", "project.strd"] {
@@ -868,34 +947,32 @@ fn run_ct02_case(scenario_suffix: &str, raw_path: &str) {
             "slot missing",
         );
     }
-    harness.prepare_continue_apply(&plan);
-
+    let live_after = harness.prepare_continue_apply(&plan);
     let after_snapshot = harness.load_snapshot();
-    let updated = assignment_for(
-        &after_snapshot,
-        "SET/PROJECT/project.work",
-        SampleSlotKind::Static,
-        1,
-    );
-    if updated.reference_status != SampleReferenceStatus::Resolved
-        || updated
-            .referenced_file_relative_path
-            .as_ref()
-            .map(|path| path.as_str())
-            != Some("SET/AUDIO/Renamed.wav")
-    {
-        fail(
-            &scenario,
-            "rescan",
-            "Resolved SET/AUDIO/Renamed.wav",
-            &format!(
-                "{:?} {:?}",
-                updated.reference_status, updated.referenced_file_relative_path
-            ),
-        );
+    assert_live_matches_catalog(&scenario, &live_after, &after_snapshot);
+    for document in ["SET/PROJECT/project.work", "SET/PROJECT/project.strd"] {
+        let updated = assignment_for(&after_snapshot, document, SampleSlotKind::Static, 1);
+        if updated.reference_status != SampleReferenceStatus::Resolved
+            || updated
+                .referenced_file_relative_path
+                .as_ref()
+                .map(|path| path.as_str())
+                != Some("SET/AUDIO/Renamed.wav")
+        {
+            fail(
+                &scenario,
+                "rescan",
+                &format!("{document} Resolved SET/AUDIO/Renamed.wav"),
+                &format!(
+                    "{:?} {:?}",
+                    updated.reference_status, updated.referenced_file_relative_path
+                ),
+            );
+        }
     }
 
-    let expected = build_project_document(&[("STATIC", "001", "../AUDIO/Renamed.wav")]);
+    let expected_raw = expected_rewritten_raw_path(raw_path, "Renamed.wav");
+    let expected = build_project_document(&[("STATIC", "001", &expected_raw)]);
     for name in ["project.work", "project.strd"] {
         let observed = fs::read(harness.media_root.path().join("SET/PROJECT").join(name)).unwrap();
         if observed != expected {
@@ -965,10 +1042,12 @@ fn ct03_filesystem_ambiguous_blocks_plan() {
     let media = TempDir::new().unwrap();
     fs::create_dir_all(media.path().join("SET/AUDIO")).unwrap();
     if !filesystem_is_case_sensitive(&media.path().join("SET/AUDIO")) {
-        eprintln!(
-            "{CT03} filesystem: unsupported on this host (not case-sensitive); not counted as executed PASS"
+        fail(
+            CT03,
+            "host_capability",
+            "case-sensitive filesystem so Kick.wav and kick.wav can coexist",
+            "case-insensitive host (this case is not executed and must not be counted as PASS)",
         );
-        return;
     }
     eprintln!("{CT03} filesystem: case-sensitive host; executing binding case");
     seed_standard_tree(
@@ -1008,14 +1087,11 @@ fn ct03_filesystem_ambiguous_blocks_plan() {
                     .iter()
                     .map(|reason| reason.code.as_str())
                     .collect();
-                if !codes
-                    .iter()
-                    .any(|code| *code == "UNRESOLVED_REFERENCE" || code.contains("AMBIGUOUS"))
-                {
+                if !codes.iter().any(|code| *code == "UNRESOLVED_REFERENCE") {
                     fail(
                         CT03,
                         "plan",
-                        "Blocked because the related reference is ambiguous",
+                        "Blocked with UNRESOLVED_REFERENCE (planner mapping for Ambiguous)",
                         &format!("{codes:?}"),
                     );
                 }
@@ -1059,10 +1135,12 @@ fn ct03_filesystem_unique_control_reaches_prepare() {
     let media = TempDir::new().unwrap();
     fs::create_dir_all(media.path().join("SET/AUDIO")).unwrap();
     if !filesystem_is_case_sensitive(&media.path().join("SET/AUDIO")) {
-        eprintln!(
-            "{CT03} filesystem control: unsupported on this host (not case-sensitive); not counted as executed PASS"
+        fail(
+            CT03,
+            "host_capability",
+            "case-sensitive filesystem required for the unique-control binding",
+            "case-insensitive host (this case is not executed and must not be counted as PASS)",
         );
-        return;
     }
     seed_standard_tree(
         media.path(),
