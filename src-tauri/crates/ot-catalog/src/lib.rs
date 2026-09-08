@@ -2141,6 +2141,9 @@ fn migration_error(version: u64, error: rusqlite::Error) -> CatalogError {
 }
 
 #[cfg(test)]
+mod migration_contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use ot_domain::RootId;

@@ -1,0 +1,14 @@
+Historical catalog schema v7 fixture
+====================================
+
+These SQL files are a frozen copy of migrations 0001–0007 as they existed
+when main still advertised LATEST_SCHEMA_VERSION = 7.
+
+Provenance:
+  freeze commit (main at planning time): 8519dccdf3ced8ee008c357c6036afa2270f9ec0
+  last change among 0001–0007:          bf9748cd9f7bc202bbc97b683a494327b1b7f7aa
+    (0007_slice_drafts.sql)
+
+Do not replace these copies with the live MIGRATIONS array. CT-04 must feed
+the production migrator a v7 database built only from this frozen history so
+later additive migrations cannot silently become the input schema.
