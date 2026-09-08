@@ -18,6 +18,8 @@ on:
       - 'vite.config.*'
       - 'playwright.config.*'
       - 'scripts/**'
+      - 'docs/testing/GATE_C_*.md'
+      - 'docs/testing/FAT_HASH_1_ASSESSMENT.md'
       - '.github/workflows/**'
       - '.github/actions/**'
   pull_request:
@@ -35,6 +37,8 @@ on:
       - 'vite.config.*'
       - 'playwright.config.*'
       - 'scripts/**'
+      - 'docs/testing/GATE_C_*.md'
+      - 'docs/testing/FAT_HASH_1_ASSESSMENT.md'
       - '.github/workflows/**'
       - '.github/actions/**'
 
