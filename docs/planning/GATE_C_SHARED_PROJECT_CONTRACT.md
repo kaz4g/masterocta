@@ -15,14 +15,16 @@ This document records the shared contract that replaces that split behavior.
 
 | Responsibility | Owner | Revision |
 |---|---|---|
-| Project bytes → META, SAMPLE classification, compatibility | `ot-codec::parse_project_document` | `masterocta/ot-codec-project` / `v1` |
+| Reversible Windows-1258 + SAMPLE structure scan | `ot-codec::project_structure` | shared with reader + rewrite |
+| Project bytes → META, compatibility, assignments | `ot-codec::parse_project_document` | `masterocta/ot-codec-project` / `v1` |
 | Surgical PATH rewrite (regular slots only) | `ot-codec::MemoryProjectReferenceCodec` | existing M5-B contract |
-| Syntax + inventory reference resolution | `ot-codec::reference_resolution` | same as parser |
+| Syntax + inventory reference identity | `ot-domain::reference_identity` | re-exported by `ot-codec::reference_resolution` |
 | Catalog persistence | `ot-catalog` / `legacy_read_adapter` | no re-interpretation |
-| Bank binary decode | pinned `ot-tools-io` + `bank_validation` | header/version/slot bounds |
+| Bank binary decode + bounds | pinned `ot-tools-io` + `bank_validation` | `masterocta/bank-validation` / `v1` |
 
-The shared Project parser accepts `&[u8]` only. It does not open filesystem paths,
-Tauri handles, or SQLite.
+The shared structure parser accepts `&[u8]` only, validates reversible Windows-1258,
+and tracks PATH byte ranges in the source buffer (not decoded UTF-8 offsets alone).
+Neither parser nor rewrite opens filesystem paths, Tauri handles, or SQLite.
 
 ## Slot classification
 
@@ -54,24 +56,44 @@ Unknown VERSION → `UnsupportedVersion` (read-only). Malformed META/token →
 
 ## Reference identity
 
+Contract owner: `ot-domain::reference_identity` (exact → unique ASCII case →
+`Ambiguous`). Steps:
+
 1. Resolve raw Project-relative `PATH=` syntax to a root-relative path.
 2. Match inventory with exact path first, then ASCII case-insensitive **unique**
    match.
 3. Multiple case-insensitive candidates → `Ambiguous` (edit blocked).
 4. Same content hash at different paths remains distinct file instances.
 
+Rename planning treats `Ambiguous` assignments that case-match the rename source as
+unresolved. Prepare proves backup `PATH=` bytes against the approved source using
+`raw_path_matches_inventory_reference` (unique case match allowed; basename-only
+lowercasing forbidden).
+
 Catalog, rename planning, Prepare, and Apply re-verification use the same rules.
+`ot-executor` does not depend on `ot-codec` directly.
 
-## Coverage
+## Coverage and discovery flags
 
-Project discovery accepts directories with `project.work`, `project.strd`, or
-`bank01.work`. Coverage is incomplete when:
+| Flag | Meaning |
+|---|---|
+| `has_project_file` | `project.work` exists (Working) |
+| `has_saved_checkpoint` | `project.strd` exists (SavedCheckpoint) |
+| `has_banks` | any `bank01`–`bank16` `.work` or `.strd` exists |
 
-- a discovered project lacks an indexed Working document while `has_project_file`
-- a discovered project lacks an indexed SavedCheckpoint while `has_saved_checkpoint`
-- bank-only layout exists without `project.work` / `project.strd`
+Project discovery accepts directories with any of the above. **Usage graph
+completeness** and **set project coverage** are separate:
 
-Incomplete coverage blocks rename planning (`IncompleteSetProjectCoverage`).
+- Coverage incomplete when a flagged Working/Saved document is missing from the
+  indexed catalog projection, or when bank-only layout exists without either
+  `project.work` or `project.strd`.
+- Usage graph incomplete when coverage is incomplete, indexed bank documents are
+  missing/unparsed while `has_banks`, or Working project documents are missing while
+  `has_project_file`.
+
+Empty topology → both incomplete (no vacuous `.all()` on empty sets).
+Incomplete coverage blocks rename planning (`IncompleteSetProjectCoverage`);
+incomplete usage blocks with `IncompleteUsageGraph`.
 
 ## Rename plan schema
 
@@ -86,6 +108,31 @@ During RC6 clone-load smoke, Edit mode reported unsupported/malformed catalog st
 for a Project whose `.work` / `.strd` pair matched the 12-SAMPLE layout with FLEX
 129–136 and a non-empty PATH on slot 133. This contract targets that false
 `Malformed` without claiming a re-run of Human Gate C.
+
+## Bank machine slot numbering
+
+Evidence from tracked fixtures and `ot-tools-io` decode (not Elektron spec):
+
+| Domain | Index range | Notes |
+|---|---|---|
+| Project `SLOT=` | 1–128 Static/Flex | 1-based in text |
+| Project recorder buffers | FLEX 129–136 | `RecorderBufferId`, excluded from rename |
+| Bank machine static/flex raw | 0–127, 255 | 0 = slot 1; 255 = unassigned |
+| Bank flex observed recorder range | 129–136 | parseable, excluded from regular usage |
+| Bank raw ≥128 (except 129–136 flex) | — | not mapped to regular usage |
+
+Usage is built from the same in-memory `BankFile` immediately after decode +
+validation. Bank provenance records `masterocta/bank-validation` / `v1`, not the
+Project parser name.
+
+## Catalog migration trust (0010)
+
+Migration `0008` FK handling was corrected (FK toggle outside immediate TX). Existing
+databases that already applied pre-fix `0008` are marked
+`observational_projection_untrusted` on open (schema ≥ 8). Write/plan/prepare paths
+fail closed until `replace_projection` (rescan) succeeds. Fresh migrations from v7
+and below retain data and stay trusted. **No user production DB migration is applied
+from this remediation branch.**
 
 ## Bank checksum
 
