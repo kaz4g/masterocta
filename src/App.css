@@ -141,7 +141,7 @@ h1 {
 
 .no-matches-icon {
   font-size: 2rem;
-  /* border-gray (#333) on the near-black panel is all but invisible. */
+  /* border-gray (var(--mo-border)) on the near-black panel is all but invisible. */
   color: var(--mo-text-dim);
 }
 
@@ -184,7 +184,7 @@ h1 {
 }
 
 .location-card:hover {
-  border-color: #555555;
+  border-color: var(--mo-border-strong);
   border-left-color: var(--mo-accent-hover);
 }
 
@@ -511,7 +511,7 @@ h1 {
 
 .status-audio-pool {
   background-color: transparent;
-  color: #4a9eff;
+  color: var(--mo-info);
   border-color: rgba(74, 158, 255, 0.7);
 }
 
@@ -627,7 +627,7 @@ h1 {
   left: 50%;
   transform: translateX(-50%);
   background-color: var(--mo-surface-1);
-  border: 1px solid #4caf50;
+  border: 1px solid var(--mo-success);
   color: var(--mo-text);
   padding: 0.5rem 1.2rem;
   border-radius: 6px;
@@ -713,7 +713,7 @@ h1 {
 }
 
 .context-menu-item.danger {
-  color: #dc3545;
+  color: var(--mo-danger);
 }
 
 .context-menu-item.danger:hover {
@@ -722,7 +722,7 @@ h1 {
 
 /* "Convert to Octatrack format" reads as a fix action: green when available */
 .context-menu-item.convert:not(:disabled):not(.disabled) {
-  color: #4caf50;
+  color: var(--mo-success);
 }
 
 .context-menu-item.convert:not(:disabled):not(.disabled):hover {
@@ -770,7 +770,7 @@ h1 {
   top: 0.5rem;
   right: 0.75rem;
   font-size: 1.4rem;
-  color: #4a9eff;
+  color: var(--mo-info);
 }
 
 .audio-pool-card:hover {
@@ -789,7 +789,7 @@ h1 {
   font-weight: 600;
   font-size: 0.875rem;
   margin-bottom: 0.5rem;
-  color: #4a9eff;
+  color: var(--mo-info);
   font-family: 'Courier New', monospace;
 }
 
@@ -806,7 +806,7 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid rgba(74, 158, 255, 0.7);
-  color: #4a9eff;
+  color: var(--mo-info);
 }
 
 .audio-pool-card.audio-pool-empty .audio-pool-info span {
@@ -1103,7 +1103,7 @@ h1 {
 }
 
 .modal-content.error-modal .modal-header h3 i {
-  color: #dc3545;
+  color: var(--mo-danger);
 }
 
 .modal-header {
@@ -1219,7 +1219,7 @@ h1 {
 .modal-button.danger {
   background-color: rgba(220, 53, 69, 0.15);
   border-color: rgba(220, 53, 69, 0.5);
-  color: #dc3545;
+  color: var(--mo-danger);
 }
 
 .modal-button.danger:hover {
@@ -1237,7 +1237,7 @@ h1 {
 }
 
 .modal-button.danger.focused {
-  outline-color: #dc3545;
+  outline-color: var(--mo-danger);
 }
 
 .modal-input {
@@ -1260,7 +1260,7 @@ h1 {
 
 .modal-input.shake {
   animation: inputShake 0.4s ease;
-  border-color: #dc3545 !important;
+  border-color: var(--mo-danger) !important;
 }
 
 .modal-input-wrapper {
@@ -1332,7 +1332,7 @@ h1 {
 
 .copy-progress-bar-fill {
   height: 100%;
-  background: #4caf50;
+  background: var(--mo-success);
   border-radius: 3px;
   transition: width 0.2s ease;
 }
@@ -1375,7 +1375,7 @@ h1 {
 }
 
 .modal-error {
-  color: #dc3545;
+  color: var(--mo-danger);
   font-size: 0.95rem;
   margin-top: 0.5rem;
 }
@@ -1383,7 +1383,7 @@ h1 {
 /* View/Edit mode toggle */
 .mode-toggle {
   display: flex;
-  background: #2a2a2a;
+  background: var(--mo-surface-2);
   border-radius: 6px;
   padding: 2px;
   border: 1px solid #444;
@@ -1409,11 +1409,11 @@ h1 {
 
 .mode-toggle-btn.active {
   background: #3a7bc8;
-  color: #fff;
+  color: var(--mo-text);
 }
 
 .mode-toggle-btn.active:last-child {
-  background: #f59e0b;
+  background: var(--mo-warning);
 }
 
 /* Header tabs for Project Details page */
@@ -1631,7 +1631,7 @@ h1 {
 }
 
 .pattern-track-indicator.audio {
-  color: #4a9eff;
+  color: var(--mo-info);
   background-color: rgba(74, 158, 255, 0.15);
   border: 1px solid rgba(74, 158, 255, 0.4);
 }
@@ -1773,8 +1773,8 @@ h1 {
   left: 0;
   right: 0;
   bottom: 0;
-  background: #1a1a1a;
-  border: 2px solid #333;
+  background: var(--mo-surface-1);
+  border: 2px solid var(--mo-border);
   border-radius: 10px;
   transition: background-color 0.3s ease, border-color 0.3s ease;
   overflow: hidden;
@@ -1799,7 +1799,7 @@ h1 {
   width: 12px;
   left: 2px;
   top: 2px;
-  background: #555;
+  background: var(--mo-border-strong);
   border-radius: 50%;
   transition: transform 0.3s ease, background-color 0.3s ease, box-shadow 0.3s ease;
   z-index: 2;
@@ -1817,16 +1817,16 @@ h1 {
 
 .toggle-slider-container input:checked + .toggle-slider:before {
   transform: translateX(16px);
-  background: #fff;
+  background: var(--mo-text);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .toggle-switch:hover .toggle-slider {
-  border-color: #555;
+  border-color: var(--mo-border-strong);
 }
 
 .toggle-switch:hover .toggle-slider:before {
-  background: #666;
+  background: var(--mo-text-dim);
 }
 
 .toggle-slider-container input:checked + .toggle-slider:hover {
@@ -1834,7 +1834,7 @@ h1 {
 }
 
 .toggle-slider-container input:checked + .toggle-slider:hover:before {
-  background: #fff;
+  background: var(--mo-text);
 }
 
 /* Pending state while transition is processing */
@@ -1945,7 +1945,7 @@ h1 {
 
 .bank-selector:hover {
   border-color: var(--mo-accent);
-  background-color: #0a0a0a;
+  background-color: var(--mo-canvas);
 }
 
 .bank-selector:focus {
@@ -2083,7 +2083,7 @@ h1 {
 .overview-section .compact-value {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--mo-text);
   font-family: 'Courier New', monospace;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   display: flex;
@@ -2100,10 +2100,10 @@ h1 {
 .overview-section .compact-input {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--mo-text);
   font-family: 'Courier New', monospace;
-  background: #1a1a1a;
-  border: 1px solid #f59e0b;
+  background: var(--mo-surface-1);
+  border: 1px solid var(--mo-warning);
   border-radius: 3px;
   padding: 0.3rem 0.4rem;
   outline: none;
@@ -2130,8 +2130,8 @@ h1 {
 }
 
 .overview-section .compact-select option {
-  background: #1a1a1a;
-  color: #fff;
+  background: var(--mo-surface-1);
+  color: var(--mo-text);
 }
 
 .overview-section .compact-input:disabled {
@@ -2141,7 +2141,7 @@ h1 {
 
 .overview-section .compact-input.shake {
   animation: inputShake 0.4s ease;
-  border-color: #dc3545 !important;
+  border-color: var(--mo-danger) !important;
   box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3) !important;
 }
 
@@ -2161,8 +2161,8 @@ h1 {
   align-items: center;
   max-width: 80px;
   width: 100%;
-  background: #1a1a1a;
-  border: 1px solid #f59e0b;
+  background: var(--mo-surface-1);
+  border: 1px solid var(--mo-warning);
   border-radius: 3px;
   padding: 0.3rem 0.4rem;
   box-sizing: border-box;
@@ -2187,7 +2187,7 @@ h1 {
   min-width: 1ch;
   font-size: 1.1rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--mo-text);
   font-family: 'Courier New', monospace;
   line-height: 1.2;
 }
@@ -2200,7 +2200,7 @@ h1 {
 .overview-section .compact-input-suffix {
   font-size: 1.1rem;
   font-weight: 700;
-  color: #999;
+  color: var(--mo-text-muted);
   font-family: 'Courier New', monospace;
   margin-left: 0.3rem;
   flex-shrink: 0;
@@ -2209,8 +2209,8 @@ h1 {
 .samples-tab {
   padding: 0;
   overflow: visible;
-  /* Lifted from pure black, but still darker than the audio pool pane (#1A1A1A) */
-  background: #121212;
+  /* Lifted from pure black, but still darker than the audio pool pane (var(--mo-surface-1)) */
+  background: var(--mo-surface-raised);
 }
 
 /* Without the sidebar, bound the tab like the with-sidebar case so the table scrolls
@@ -2257,8 +2257,8 @@ h1 {
   min-width: 0; /* Allow flex shrink */
   display: flex;
   flex-direction: column;
-  /* Slightly lifted from pure black, but still darker than the audio pool pane (#1A1A1A) */
-  background: #121212;
+  /* Slightly lifted from pure black, but still darker than the audio pool pane (var(--mo-surface-1)) */
+  background: var(--mo-surface-raised);
 }
 
 .samples-tab.with-sidebar .samples-section > .filter-results-info {
@@ -2419,7 +2419,7 @@ h1 {
 
 /* Drop target highlight on slot rows */
 .samples-table tbody tr.drop-target-highlight {
-  outline: 2px dashed #f59e0b;
+  outline: 2px dashed var(--mo-warning);
   outline-offset: -2px;
   background: rgba(245, 158, 11, 0.1) !important;
 }
@@ -2430,7 +2430,7 @@ h1 {
 }
 
 .sidebar-os-drop-zone.os-drag-over .audio-pool-sidebar {
-  outline: 2px dashed #f59e0b;
+  outline: 2px dashed var(--mo-warning);
   outline-offset: -2px;
   background: rgba(245, 158, 11, 0.05);
 }
@@ -2462,8 +2462,8 @@ h1 {
   font-size: 1rem;
   min-height: 40px;
   box-sizing: border-box;
-  background: #222;
-  border-bottom: 1px solid #333;
+  background: var(--mo-surface-inset);
+  border-bottom: 1px solid var(--mo-border);
 }
 
 .filter-badge {
@@ -2477,7 +2477,7 @@ h1 {
 
 .ram-info {
   font-size: 1rem;
-  color: #4caf50;
+  color: var(--mo-success);
   letter-spacing: 0.03em;
 }
 
@@ -2536,8 +2536,8 @@ h1 {
 
 .copy-table-btn.copied {
   background-color: rgba(76, 175, 80, 0.2);
-  border-color: #4caf50;
-  color: #4caf50;
+  border-color: var(--mo-success);
+  color: var(--mo-success);
 }
 
 /* Column Visibility Controls */
@@ -2768,7 +2768,7 @@ h1 {
   text-align: left;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  color: #bbb;
+  color: var(--mo-text-subtle);
   text-transform: uppercase;
   font-size: 0.8rem;
   letter-spacing: 0.5px;
@@ -2984,7 +2984,7 @@ h1 {
 
 .file-status-badge.file-exists {
   background-color: rgba(46, 204, 113, 0.15);
-  color: #2ecc71;
+  color: var(--mo-success-strong);
   border: 1px solid rgba(46, 204, 113, 0.5);
 }
 
@@ -3153,7 +3153,7 @@ h1 {
 }
 
 .indicator-plock {
-  color: #4a9eff;
+  color: var(--mo-info);
   font-size: 0.95rem;
 }
 
@@ -3188,7 +3188,7 @@ h1 {
 
 /* Red, so it stays distinguishable from the yellow one-shot recorder R */
 .indicator-recorder {
-  color: #f44336;
+  color: var(--mo-danger-bright);
   font-size: 0.95rem;
 }
 
@@ -3244,7 +3244,7 @@ h1 {
 }
 
 .indicator-plock-count {
-  color: #4a9eff;
+  color: var(--mo-info);
   font-size: 0.7rem;
   font-weight: 700;
 }
@@ -3259,8 +3259,8 @@ h1 {
    as the neighboring toggle switches */
 .tri-toggle {
   display: inline-flex;
-  background: #1a1a1a;
-  border: 2px solid #333;
+  background: var(--mo-surface-1);
+  border: 2px solid var(--mo-border);
   border-radius: 10px;
   overflow: hidden;
 }
@@ -3279,12 +3279,12 @@ h1 {
 }
 
 .tri-toggle-option + .tri-toggle-option {
-  border-left: 1px solid #333;
+  border-left: 1px solid var(--mo-border);
 }
 
 .tri-toggle-option.active {
   background: var(--mo-accent);
-  color: #fff;
+  color: var(--mo-text);
 }
 
 /* Recorder trig grid: red accent matching the recorder R. The separator
@@ -3296,13 +3296,13 @@ h1 {
 }
 
 .rec-grid .pattern-step.selected {
-  outline-color: #f44336;
+  outline-color: var(--mo-danger-bright);
   box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
 }
 
 .rec-grid .pattern-step.has-trig {
   background-color: rgba(244, 67, 54, 0.12);
-  border-color: #f44336;
+  border-color: var(--mo-danger-bright);
 }
 
 /* Grid legend */
@@ -3462,7 +3462,7 @@ th.col-usage .header-content .sort-indicator {
   padding: 0.2rem 0.6rem;
   font-size: 0.9rem;
   font-family: inherit;
-  color: #4a9eff;
+  color: var(--mo-info);
   background-color: rgba(74, 158, 255, 0.12);
   border: 1px solid rgba(74, 158, 255, 0.4);
   border-radius: 12px;
@@ -3470,7 +3470,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .usage-badge:hover {
-  border-color: #4a9eff;
+  border-color: var(--mo-info);
 }
 
 /* Referenced but never trigged: same badge, gray */
@@ -3530,7 +3530,7 @@ th.col-usage .header-content .sort-indicator {
   width: 0.8rem;
   height: 0.8rem;
   border-color: rgba(74, 158, 255, 0.3);
-  border-top-color: #4a9eff;
+  border-top-color: var(--mo-info);
 }
 
 .usage-popover {
@@ -3560,7 +3560,7 @@ th.col-usage .header-content .sort-indicator {
 .usage-popover-entry {
   padding: 0.3rem 1rem;
   font-size: 0.9rem;
-  color: #cccccc; /* between secondary (#999) and primary (#fff) */
+  color: #cccccc; /* between secondary (var(--mo-text-muted)) and primary (var(--mo-text)) */
   white-space: nowrap;
 }
 
@@ -3652,12 +3652,12 @@ th.col-usage .header-content .sort-indicator {
   background-color: var(--mo-surface-1);
   border-radius: 4px;
   font-size: 1.1rem;
-  color: #ffffff;
+  color: var(--mo-text);
   font-weight: 400;
 }
 
 .parameter-panel-content .param-item span {
-  color: #ffffff;
+  color: var(--mo-text);
   font-weight: 500;
 }
 
@@ -3713,7 +3713,7 @@ th.col-usage .header-content .sort-indicator {
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  background: #121212;
+  background: var(--mo-surface-raised);
   flex: 1;
 }
 
@@ -3829,14 +3829,14 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .tools-action-separator {
-  color: #666;
+  color: var(--mo-text-dim);
 }
 
 .tools-attribute-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  border: 1px solid #333;
+  border: 1px solid var(--mo-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -3847,7 +3847,7 @@ th.col-usage .header-content .sort-indicator {
   gap: 0.4rem;
   padding: 0.35rem 0.5rem;
   font-size: 0.88rem;
-  background: #1a1a1a;
+  background: var(--mo-surface-1);
   border: none;
   color: #777;
   cursor: pointer;
@@ -3856,11 +3856,11 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .tools-attr-row:hover {
-  background: #222;
+  background: var(--mo-surface-inset);
 }
 
 .tools-attr-row.selected {
-  color: #ddd;
+  color: var(--mo-text-soft);
 }
 
 .tools-attr-check {
@@ -3869,7 +3869,7 @@ th.col-usage .header-content .sort-indicator {
   justify-content: center;
   width: 16px;
   font-size: 0.75rem;
-  color: #4caf50;
+  color: var(--mo-success);
   flex-shrink: 0;
 }
 
@@ -4159,7 +4159,7 @@ th.col-usage .header-content .sort-indicator {
   padding: 0.4rem 0.6rem;
   font-size: 0.85rem;
   font-weight: 500;
-  background-color: #222222;
+  background-color: var(--mo-surface-inset);
   border: 1px solid var(--mo-surface-2);
   border-radius: 4px;
   color: var(--mo-text);
@@ -4289,7 +4289,7 @@ th.col-usage .header-content .sort-indicator {
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
   font-weight: 500;
-  background-color: #222222;
+  background-color: var(--mo-surface-inset);
   border: 1px solid var(--mo-surface-2);
   border-radius: 4px;
   color: var(--mo-text);
@@ -4639,15 +4639,15 @@ th.col-usage .header-content .sort-indicator {
 }
 
 /* Destructive variant (Purge "delete" mode's Apply Changes button) - same
-   #dc3545 red used by .modal-button.danger and DeleteProjectDialog. */
+   var(--mo-danger) red used by .modal-button.danger and DeleteProjectDialog. */
 .tools-execute-btn.tools-execute-btn-danger {
-  border-color: #dc3545;
-  color: #dc3545;
+  border-color: var(--mo-danger);
+  color: var(--mo-danger);
 }
 
 .tools-execute-btn.tools-execute-btn-danger:hover:not(:disabled) {
-  background-color: #dc3545;
-  color: #fff;
+  background-color: var(--mo-danger);
+  color: var(--mo-text);
   box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
 }
 
@@ -4698,7 +4698,7 @@ th.col-usage .header-content .sort-indicator {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #4caf50;
+  color: var(--mo-success);
   font-size: 1.15rem;
 }
 
@@ -4971,11 +4971,11 @@ th.col-usage .header-content .sort-indicator {
 
 .tools-fix-status.all-good {
   background: rgba(76, 175, 80, 0.08);
-  border-color: #4caf50;
+  border-color: var(--mo-success);
 }
 
 .tools-fix-status.all-good .tools-fix-status-count {
-  color: #4caf50;
+  color: var(--mo-success);
 }
 
 .tools-fix-status-count {
@@ -5031,7 +5031,7 @@ th.col-usage .header-content .sort-indicator {
      where a solid one looks like a divider separating the two. */
   height: 0;
   /* A step lighter than the solid version used: dotted lays down less ink,
-     so the same #333 would have all but vanished on the panel. */
+     so the same var(--mo-border) would have all but vanished on the panel. */
   border-top: 1px dotted #4a4a4a;
   align-self: center;
 }
@@ -5146,7 +5146,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .tools-validation-status.valid {
-  color: var(--success-color, #4caf50);
+  color: var(--success-color, var(--mo-success));
 }
 
 .tools-validation-status.valid i {
@@ -5476,7 +5476,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .fix-search-step.done .fix-step-icon {
-  color: #4caf50;
+  color: var(--mo-success);
 }
 
 .fix-search-step.skipped,
@@ -5501,7 +5501,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .fix-search-step.done .fix-step-count {
-  color: #4caf50;
+  color: var(--mo-success);
   opacity: 1;
 }
 
@@ -5535,7 +5535,7 @@ th.col-usage .header-content .sort-indicator {
 
 .fix-search-summary.all-resolved,
 .fix-search-summary.all-resolved strong {
-  color: #2ecc71;
+  color: var(--mo-success-strong);
 }
 
 .fix-search-summary-remaining {
@@ -5614,7 +5614,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .purge-confirm-banner-danger {
-  border-color: #dc3545;
+  border-color: var(--mo-danger);
   background: rgba(220, 53, 69, 0.09);
 }
 
@@ -5665,7 +5665,7 @@ th.col-usage .header-content .sort-indicator {
 
 .fix-confirm-status.all-resolved,
 .fix-confirm-status.all-resolved strong {
-  color: #2ecc71;
+  color: var(--mo-success-strong);
 }
 
 .fix-confirm-table-wrapper {
