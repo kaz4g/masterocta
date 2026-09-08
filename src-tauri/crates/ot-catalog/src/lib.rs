@@ -21,7 +21,7 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 7;
+const LATEST_SCHEMA_VERSION: u64 = 9;
 const MIGRATIONS: &[(u64, &str)] = &[
     // Entries are applied in ascending version order.
     (1, include_str!("../migrations/0001_catalog_foundation.sql")),
@@ -43,6 +43,14 @@ const MIGRATIONS: &[(u64, &str)] = &[
         include_str!("../migrations/0006_project_compatibility_evidence.sql"),
     ),
     (7, include_str!("../migrations/0007_slice_drafts.sql")),
+    (
+        8,
+        include_str!("../migrations/0008_reference_ambiguous.sql"),
+    ),
+    (
+        9,
+        include_str!("../migrations/0009_has_saved_checkpoint.sql"),
+    ),
 ];
 
 type StateProjection = (
@@ -589,7 +597,7 @@ impl SqliteCatalog {
     ) -> Result<Vec<LibraryProject>, CatalogError> {
         let (sql, standalone) = if parent_set.is_some() {
             (
-                "SELECT relative_path, display_name, has_project_file, has_banks \
+                "SELECT relative_path, display_name, has_project_file, has_saved_checkpoint, has_banks \
                  FROM projects \
                  WHERE root_id = ?1 AND scan_session_id = ?2 \
                    AND is_standalone = 0 AND parent_set_relative_path = ?3 \
@@ -598,7 +606,7 @@ impl SqliteCatalog {
             )
         } else {
             (
-                "SELECT relative_path, display_name, has_project_file, has_banks \
+                "SELECT relative_path, display_name, has_project_file, has_saved_checkpoint, has_banks \
                  FROM projects \
                  WHERE root_id = ?1 AND scan_session_id = ?2 \
                    AND is_standalone = 1 AND parent_set_relative_path IS NULL \
@@ -613,6 +621,7 @@ impl SqliteCatalog {
                 row.get::<_, String>(1)?,
                 row.get::<_, bool>(2)?,
                 row.get::<_, bool>(3)?,
+                row.get::<_, bool>(4)?,
             ))
         };
         let mut projects = Vec::new();
@@ -1071,8 +1080,8 @@ fn insert_project(
     transaction.execute(
         "INSERT INTO projects \
          (root_id, scan_session_id, relative_path, display_name, is_standalone, \
-          parent_set_relative_path, has_project_file, has_banks, sort_order) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+          parent_set_relative_path, has_project_file, has_saved_checkpoint, has_banks, sort_order) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             root_row_id,
             scan_id,
@@ -1081,6 +1090,7 @@ fn insert_project(
             parent_set.is_none(),
             parent_set,
             project.has_project_file,
+            project.has_saved_checkpoint,
             project.has_banks,
             sort_order as i64,
         ],
@@ -1440,7 +1450,7 @@ fn validate_snapshot(snapshot: &LibrarySnapshot) -> Result<(), CatalogError> {
             SampleReferenceStatus::Resolved => {
                 assignment.referenced_file_relative_path.is_some() && target_exists
             }
-            SampleReferenceStatus::Missing => {
+            SampleReferenceStatus::Missing | SampleReferenceStatus::Ambiguous => {
                 assignment.referenced_file_relative_path.is_some() && !target_exists
             }
             SampleReferenceStatus::InvalidPath => {
@@ -1686,13 +1696,14 @@ fn validate_unique_path(
 }
 
 fn project_from_database(
-    row: (String, String, bool, bool),
+    row: (String, String, bool, bool, bool),
 ) -> Result<LibraryProject, CatalogError> {
     Ok(LibraryProject {
         relative_path: stored_path(row.0)?,
         display_name: row.1,
         has_project_file: row.2,
-        has_banks: row.3,
+        has_saved_checkpoint: row.3,
+        has_banks: row.4,
     })
 }
 
@@ -1937,6 +1948,7 @@ fn reference_status_to_database(status: SampleReferenceStatus) -> &'static str {
         SampleReferenceStatus::Resolved => "resolved",
         SampleReferenceStatus::Missing => "missing",
         SampleReferenceStatus::InvalidPath => "invalid_path",
+        SampleReferenceStatus::Ambiguous => "ambiguous",
         SampleReferenceStatus::UnassignedSlot => "unassigned_slot",
     }
 }
@@ -1946,6 +1958,7 @@ fn reference_status_from_database(value: &str) -> Result<SampleReferenceStatus, 
         "resolved" => Ok(SampleReferenceStatus::Resolved),
         "missing" => Ok(SampleReferenceStatus::Missing),
         "invalid_path" => Ok(SampleReferenceStatus::InvalidPath),
+        "ambiguous" => Ok(SampleReferenceStatus::Ambiguous),
         "unassigned_slot" => Ok(SampleReferenceStatus::UnassignedSlot),
         _ => Err(CatalogError::InvalidStoredData {
             field: "reference_status",
@@ -2157,6 +2170,7 @@ mod tests {
             display_name: name.into(),
             relative_path: RootRelativePath::parse(path).unwrap(),
             has_project_file: true,
+            has_saved_checkpoint: false,
             has_banks: true,
         }
     }
@@ -2412,8 +2426,8 @@ mod tests {
                  VALUES (1, 1, 'SET', 'Existing Set', 1, 0); \
                  INSERT INTO projects \
                    (root_id, scan_session_id, relative_path, display_name, is_standalone, \
-                    parent_set_relative_path, has_project_file, has_banks, sort_order) \
-                 VALUES (1, 1, 'SET/PROJECT', 'Existing Project', 0, 'SET', 1, 1, 0);",
+                    parent_set_relative_path, has_project_file, has_saved_checkpoint, has_banks, sort_order) \
+                 VALUES (1, 1, 'SET/PROJECT', 'Existing Project', 0, 'SET', 1, 0, 1, 0);",
             )
             .unwrap();
         drop(connection);

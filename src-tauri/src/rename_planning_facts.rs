@@ -1,8 +1,8 @@
 use crate::root_registry::{ResolvedRoot, RootRegistryError};
 use ot_domain::{
-    ContentHash, ContentHashFreshness, FileInstance, LibrarySnapshot, RootRelativePath,
-    SampleSettings, SampleSettingsOwner, SampleSettingsParseStatus, SampleUsageEdge,
-    SlotAssignment, StateDocument, StateDocumentKind, StateDocumentRole,
+    ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySnapshot,
+    RootRelativePath, SampleSettings, SampleSettingsOwner, SampleSettingsParseStatus,
+    SampleUsageEdge, SlotAssignment, StateDocument, StateDocumentKind, StateDocumentRole,
 };
 use ot_plan::{
     classify_destination_state, derive_file_instance_id, PathComparisonMode,
@@ -287,18 +287,40 @@ fn derive_set_project_coverage_complete(snapshot: &LibrarySnapshot) -> bool {
         .iter()
         .flat_map(|set| set.projects.iter())
         .chain(snapshot.standalone_projects.iter())
-        .filter(|project| project.has_project_file)
-        .all(|project| {
-            snapshot.state_documents.iter().any(|document| {
-                document.kind == StateDocumentKind::Project
-                    && document.role == StateDocumentRole::Working
-                    && document.project_relative_path == project.relative_path
-            })
-        })
+        .all(|project| project_coverage_complete(snapshot, project))
 }
 
 fn derive_usage_graph_complete(snapshot: &LibrarySnapshot) -> bool {
     derive_set_project_coverage_complete(snapshot)
+}
+
+fn project_coverage_complete(snapshot: &LibrarySnapshot, project: &LibraryProject) -> bool {
+    if project.has_banks && !project.has_project_file {
+        return false;
+    }
+    if project.has_project_file
+        && !has_indexed_project_state(snapshot, project, StateDocumentRole::Working)
+    {
+        return false;
+    }
+    if project.has_saved_checkpoint
+        && !has_indexed_project_state(snapshot, project, StateDocumentRole::SavedCheckpoint)
+    {
+        return false;
+    }
+    true
+}
+
+fn has_indexed_project_state(
+    snapshot: &LibrarySnapshot,
+    project: &LibraryProject,
+    role: StateDocumentRole,
+) -> bool {
+    snapshot.state_documents.iter().any(|document| {
+        document.kind == StateDocumentKind::Project
+            && document.role == role
+            && document.project_relative_path == project.relative_path
+    })
 }
 
 fn map_state_document(

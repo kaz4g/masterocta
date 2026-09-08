@@ -3,6 +3,7 @@
 
 mod audio_pool;
 mod audio_runtime;
+mod bank_validation;
 mod catalog_runtime;
 mod clone_runtime;
 mod device_detection;

@@ -197,7 +197,9 @@ The following remain `pending verification` and must not be inferred from the
 2016 secondary source alone:
 
 - whether `.work`/`.strd` filename behavior differs on later OS revisions;
-- slice-count limits and recorder-buffer behavior beyond the indexed slot assignment scope;
+- slice-count limits and recorder-buffer behavior beyond regular slot assignments;
+  recorder buffers (FLEX 129–136) are preserved in Project bytes and excluded from
+  catalog assignments regardless of PATH emptiness (`docs/planning/GATE_C_SHARED_PROJECT_CONTRACT.md`);
 - binary field layout, checksums, and version markers;
 - filename rules beyond the indexed state-document patterns and the observed
   same-stem `.ot` sidecar convention;

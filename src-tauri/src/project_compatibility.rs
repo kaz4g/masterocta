@@ -1,3 +1,7 @@
+//! Legacy compatibility helpers retained for fixture regression tests.
+//! Production catalog parsing uses `ot_codec::parse_project_document`.
+#![allow(dead_code)]
+
 use ot_domain::ProjectCompatibilityEvidence;
 use ot_tools_io::ProjectFile;
 

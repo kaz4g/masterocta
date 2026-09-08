@@ -6,6 +6,18 @@ use ot_codec_ports::{
 
 pub use ot_codec_ports::rewrite_same_directory_path;
 use ot_domain::{RootPathComponent, SampleSlotId, SampleSlotKind};
+
+pub use project_document::{
+    parse_project_document, ProjectDocumentCompatibility, ProjectDocumentParseResult,
+    RecorderBufferObservation, RegularSampleAssignment, PROJECT_PARSER_NAME,
+    PROJECT_PARSER_REVISION,
+};
+pub use reference_resolution::{
+    resolve_against_inventory, resolve_project_reference_syntax, ProjectReferenceSyntaxError,
+};
+
+mod project_document;
+mod reference_resolution;
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -873,4 +885,5 @@ mod tests {
     }
 
     mod contract_tests;
+    mod project_document_tests;
 }

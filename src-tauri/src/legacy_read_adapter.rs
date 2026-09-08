@@ -1,7 +1,9 @@
 use crate::device_detection::{scan_directory_strict, DeviceScanError, OctatrackProject};
 use crate::host_metadata_policy::is_ignored_host_metadata;
-use crate::project_compatibility::{evaluate_project_compatibility, ProjectCompatibility};
 use crate::project_reader::{compute_sample_usage_for_documents, read_raw_sample_fields};
+use ot_codec::{
+    parse_project_document, resolve_against_inventory, PROJECT_PARSER_NAME, PROJECT_PARSER_REVISION,
+};
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
     LibrarySnapshot, ParserProvenance, ProjectCompatibilityEvidence, RootId, RootRelativePath,
@@ -11,10 +13,9 @@ use ot_domain::{
     StateDocumentParseStatus, StateDocumentRole,
 };
 use ot_storage_ports::{ReadOnlyLibrary, StorageError};
-use ot_tools_io::banks::BANK_FILE_VERSION;
 use ot_tools_io::{
     BankFile, HasChecksumField, HasFileVersionField, HasHeaderField, MarkersFile, OctatrackFileIO,
-    ProjectFile, SampleSettingsFile,
+    SampleSettingsFile,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -405,8 +406,8 @@ fn classify_storage_scope(
     SampleStorageScope::Unclassified
 }
 
-const STATE_PARSER_NAME: &str = "masterocta/ot-tools-io";
-const STATE_PARSER_REVISION: &str = "cd246d8a595647364eb4cc78211033b2d1302526";
+const STATE_PARSER_NAME: &str = PROJECT_PARSER_NAME;
+const STATE_PARSER_REVISION: &str = PROJECT_PARSER_REVISION;
 
 type StateInventory = (
     Vec<StateDocument>,
@@ -912,8 +913,8 @@ fn parse_project_state(
     ParserProvenance,
     Vec<SlotAssignment>,
 ) {
-    let parsed = match ProjectFile::from_data_file(source_file) {
-        Ok(parsed) => parsed,
+    let bytes = match fs::read(source_file) {
+        Ok(bytes) => bytes,
         Err(_) => {
             return (
                 StateDocumentParseStatus::Malformed,
@@ -922,78 +923,36 @@ fn parse_project_state(
             )
         }
     };
-    let source_version = Some(parsed.metadata.os_version.clone());
-    let decision = evaluate_project_compatibility(&parsed);
-    let compatibility_evidence = match decision.compatibility {
-        ProjectCompatibility::Supported { evidence } => Some(evidence),
-        ProjectCompatibility::UnsupportedVersion | ProjectCompatibility::Malformed => None,
-    };
-    match decision.compatibility {
-        ProjectCompatibility::Supported { .. } => {}
-        ProjectCompatibility::UnsupportedVersion => {
-            return (
-                StateDocumentParseStatus::UnsupportedVersion,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
-        ProjectCompatibility::Malformed => {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
+    let parsed = parse_project_document(&bytes);
+    let source_version = parsed.source_version.clone();
+    let compatibility_evidence = parsed.compatibility_evidence;
+    let parse_status = parsed.parse_status;
+    if parse_status != StateDocumentParseStatus::Parsed {
+        return (
+            parse_status,
+            parser_provenance(source_version, compatibility_evidence),
+            Vec::new(),
+        );
     }
-    let raw_fields = match read_raw_sample_fields(source_file) {
-        Ok(fields) => fields,
-        Err(_) => {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
-    };
-    let mut fields = raw_fields.into_iter().collect::<Vec<_>>();
-    fields.sort_by(|left, right| left.0.cmp(&right.0));
-    let mut assignments = Vec::new();
-    for ((slot_type, slot_number), fields) in fields {
-        let Some(path) = fields.get("PATH").filter(|path| !path.is_empty()) else {
-            continue;
-        };
-        let Some(slot_kind) = parse_slot_kind(&slot_type) else {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
+
+    let assignments = parsed
+        .regular_assignments
+        .into_iter()
+        .map(|assignment| {
+            let (referenced_file_relative_path, reference_status) = resolve_against_inventory(
+                project_relative_path,
+                &assignment.raw_path,
+                inventory_paths,
             );
-        };
-        let slot = match SampleSlotId::new(slot_kind, slot_number) {
-            Ok(slot) => slot,
-            Err(_) => {
-                return (
-                    StateDocumentParseStatus::Malformed,
-                    parser_provenance(source_version, compatibility_evidence),
-                    Vec::new(),
-                )
+            SlotAssignment {
+                project_document_relative_path: source_relative_path.clone(),
+                slot: assignment.slot,
+                referenced_file_relative_path,
+                reference_status,
             }
-        };
-        let (referenced_file_relative_path, reference_status) =
-            match resolve_project_reference(project_relative_path, path) {
-                Ok(target) if inventory_paths.contains(target.as_str()) => {
-                    (Some(target), SampleReferenceStatus::Resolved)
-                }
-                Ok(target) => (Some(target), SampleReferenceStatus::Missing),
-                Err(()) => (None, SampleReferenceStatus::InvalidPath),
-            };
-        assignments.push(SlotAssignment {
-            project_document_relative_path: source_relative_path.clone(),
-            slot,
-            referenced_file_relative_path,
-            reference_status,
-        });
-    }
+        })
+        .collect();
+
     (
         StateDocumentParseStatus::Parsed,
         parser_provenance(source_version, compatibility_evidence),
@@ -1005,10 +964,12 @@ fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProv
     match BankFile::from_data_file(source_file) {
         Ok(bank) => {
             let source_version = Some(format!("bank:{}", bank.datatype_version));
-            let status = if bank.datatype_version == BANK_FILE_VERSION {
-                StateDocumentParseStatus::Parsed
-            } else {
-                StateDocumentParseStatus::UnsupportedVersion
+            let status = match crate::bank_validation::validate_bank_file(&bank) {
+                Ok(()) => StateDocumentParseStatus::Parsed,
+                Err(crate::bank_validation::BankValidationError::UnsupportedVersion) => {
+                    StateDocumentParseStatus::UnsupportedVersion
+                }
+                Err(_) => StateDocumentParseStatus::Malformed,
             };
             (status, parser_provenance(source_version, None))
         }
@@ -1028,14 +989,6 @@ fn parser_provenance(
         parser_revision: STATE_PARSER_REVISION.into(),
         source_version,
         compatibility_evidence,
-    }
-}
-
-fn parse_slot_kind(value: &str) -> Option<SampleSlotKind> {
-    match value.to_ascii_uppercase().as_str() {
-        "STATIC" => Some(SampleSlotKind::Static),
-        "FLEX" => Some(SampleSlotKind::Flex),
-        _ => None,
     }
 }
 
@@ -1087,37 +1040,6 @@ fn append_usage_edges(
     }
 }
 
-fn resolve_project_reference(
-    project_relative_path: &RootRelativePath,
-    raw_reference: &str,
-) -> Result<RootRelativePath, ()> {
-    let bytes = raw_reference.as_bytes();
-    if raw_reference.starts_with(['/', '\\'])
-        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-        || raw_reference.contains('\0')
-    {
-        return Err(());
-    }
-    let mut components = project_relative_path
-        .as_str()
-        .split('/')
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    for component in raw_reference.split(['/', '\\']) {
-        match component {
-            "" => return Err(()),
-            "." => {}
-            ".." => {
-                if components.pop().is_none() {
-                    return Err(());
-                }
-            }
-            component => components.push(component.to_owned()),
-        }
-    }
-    RootRelativePath::from_components(components).map_err(|_| ())
-}
-
 fn join_relative(parent: &RootRelativePath, child: &str) -> Result<RootRelativePath, StorageError> {
     RootRelativePath::from_components(parent.as_str().split('/').chain([child]))
         .map_err(|error| StorageError::new(format!("PATH_ESCAPE: {error}")))
@@ -1158,6 +1080,7 @@ fn map_project(
         display_name: project.name,
         relative_path: checked_relative_path(canonical_root, Path::new(&project.path))?,
         has_project_file: project.has_project_file,
+        has_saved_checkpoint: project.has_saved_checkpoint,
         has_banks: project.has_banks,
     })
 }
@@ -1218,6 +1141,7 @@ pub(crate) fn resolve_relative_for_read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ot_codec::resolve_project_reference_syntax;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
 
@@ -1325,6 +1249,7 @@ mod tests {
                     display_name: "PROJECT".into(),
                     relative_path: RootRelativePath::parse("SET/PROJECT").unwrap(),
                     has_project_file: true,
+                    has_saved_checkpoint: false,
                     has_banks: true,
                 }],
             }],
@@ -1332,6 +1257,7 @@ mod tests {
                 display_name: "STANDALONE".into(),
                 relative_path: RootRelativePath::parse("STANDALONE").unwrap(),
                 has_project_file: true,
+                has_saved_checkpoint: false,
                 has_banks: true,
             }],
             ..LibrarySnapshot::default()
@@ -1701,7 +1627,7 @@ mod tests {
     fn project_reference_resolution_rejects_absolute_and_root_escape_paths() {
         let project = RootRelativePath::parse("SET/PROJECT").unwrap();
         assert_eq!(
-            resolve_project_reference(&project, "../AUDIO/kick.wav")
+            resolve_project_reference_syntax(&project, "../AUDIO/kick.wav")
                 .unwrap()
                 .as_str(),
             "SET/AUDIO/kick.wav"
@@ -1713,7 +1639,7 @@ mod tests {
             r"..\\..\\..\\outside.wav",
             "nested//sample.wav",
         ] {
-            assert!(resolve_project_reference(&project, invalid).is_err());
+            assert!(resolve_project_reference_syntax(&project, invalid).is_err());
         }
     }
 

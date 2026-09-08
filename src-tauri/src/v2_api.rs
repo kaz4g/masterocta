@@ -368,6 +368,7 @@ fn reference_status_name(status: SampleReferenceStatus) -> &'static str {
         SampleReferenceStatus::Resolved => "resolved",
         SampleReferenceStatus::Missing => "missing",
         SampleReferenceStatus::InvalidPath => "invalid_path",
+        SampleReferenceStatus::Ambiguous => "ambiguous",
         SampleReferenceStatus::UnassignedSlot => "unassigned_slot",
     }
 }
@@ -6388,6 +6389,7 @@ mod tests {
                     display_name: "PROJECT_A".into(),
                     relative_path: RootRelativePath::parse("SET_A/PROJECT_A").unwrap(),
                     has_project_file: true,
+                    has_saved_checkpoint: false,
                     has_banks: true,
                 }],
             }],

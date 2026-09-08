@@ -444,6 +444,7 @@ fn reference_counts(
         match assignment.reference_status {
             SampleReferenceStatus::Missing => counts.missing += 1,
             SampleReferenceStatus::InvalidPath => counts.invalid_path += 1,
+            SampleReferenceStatus::Ambiguous => counts.blocking += 1,
             SampleReferenceStatus::UnassignedSlot => {}
             SampleReferenceStatus::Resolved => {
                 if assignment.referenced_file_relative_path.as_ref() == Some(&source_path) {
@@ -465,6 +466,7 @@ fn reference_counts(
         match edge.reference_status {
             SampleReferenceStatus::Missing => counts.missing += 1,
             SampleReferenceStatus::InvalidPath => counts.invalid_path += 1,
+            SampleReferenceStatus::Ambiguous => counts.blocking += 1,
             SampleReferenceStatus::UnassignedSlot => {}
             SampleReferenceStatus::Resolved => {
                 if edge.referenced_file_relative_path.as_ref() == Some(&source_path) {

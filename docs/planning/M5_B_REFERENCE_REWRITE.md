@@ -21,7 +21,7 @@ codec never calls that serializer.
 | Project documents are Windows-1258 text with `[SAMPLE]` / `PATH=` | tracked `real_device/project.work`; existing raw reader | fixture and current reader only |
 | Working / SavedCheckpoint filenames are `.work` / `.strd` | M3-C2 domain contract; not in the official OS 1.40A manual | filename mapping is repository evidence |
 | `ot-tools-io` Project serialize is not byte-stable | `src-tauri/tests/real_device_roundtrip.rs` | 1.40B fixture |
-| FLEX slots 129–136 appear as recorder buffers with `PATH=` | `real_device` and `real_device_os_1_40` fixtures | not promoted to `SampleSlotId` (1–128) |
+| FLEX slots 129–136 appear as recorder buffers | tracked `real_device`, `real_device_os_1_40`, and Human Gate C user observation (non-empty PATH on slot 133) | empty and non-empty PATH both preserved; not `SampleSlotId` (1–128); see `docs/planning/GATE_C_SHARED_PROJECT_CONTRACT.md` |
 | R0173 / 1.40 empty-PATH BaseProject is read-only | `tests/fixtures/real_device_os_1_40/README.md` | do not write the tracked file |
 
 ## API

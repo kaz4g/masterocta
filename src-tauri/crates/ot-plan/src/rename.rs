@@ -1,9 +1,9 @@
 #![forbid(unsafe_code)]
 
 use ot_domain::{
-    ContentHash, ContentHashFreshness, FileInstanceId, ParserProvenance, RenameSampleIntent,
-    RootId, RootRelativePath, SampleReferenceStatus, SampleSettingsParseStatus, SampleSlotId,
-    SampleUsageKind, StateDocumentKind, StateDocumentParseStatus, StateDocumentRole,
+    slot_kind_rank, ContentHash, ContentHashFreshness, FileInstanceId, ParserProvenance,
+    RenameSampleIntent, RootId, RootRelativePath, SampleReferenceStatus, SampleSettingsParseStatus,
+    SampleSlotId, SampleUsageKind, StateDocumentKind, StateDocumentParseStatus, StateDocumentRole,
 };
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
@@ -11,8 +11,10 @@ use std::fmt;
 
 use crate::{encode_field, validate_prefixed_sha256, PlanError, PlanId, ROOT_FINGERPRINT_PREFIX};
 
-const RENAME_PLAN_CANONICAL_PREFIX: &[u8] = b"masterocta:rename-impact-plan:v1";
-const RENAME_PLAN_SCHEMA_VERSION: u8 = 1;
+const RENAME_PLAN_CANONICAL_PREFIX: &[u8] = b"masterocta:rename-impact-plan:v2";
+const RENAME_PLAN_SCHEMA_VERSION: u8 = 2;
+const LEGACY_RENAME_PLAN_CANONICAL_PREFIX: &[u8] = b"masterocta:rename-impact-plan:v1";
+const LEGACY_RENAME_PLAN_SCHEMA_VERSION: u8 = 1;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum PathComparisonMode {
@@ -439,13 +441,29 @@ pub fn plan_rename_sample(
 }
 
 pub fn derive_rename_plan_id(plan: &RenameImpactPlan) -> PlanId {
+    derive_rename_plan_id_with_schema(
+        plan,
+        RENAME_PLAN_CANONICAL_PREFIX,
+        RENAME_PLAN_SCHEMA_VERSION,
+    )
+}
+
+pub fn matches_legacy_rename_plan_id(plan: &RenameImpactPlan) -> bool {
+    derive_rename_plan_id_with_schema(
+        plan,
+        LEGACY_RENAME_PLAN_CANONICAL_PREFIX,
+        LEGACY_RENAME_PLAN_SCHEMA_VERSION,
+    ) == plan.id
+}
+
+fn derive_rename_plan_id_with_schema(
+    plan: &RenameImpactPlan,
+    prefix: &[u8],
+    schema_version: u8,
+) -> PlanId {
     let mut hasher = Sha256::new();
-    hasher.update(RENAME_PLAN_CANONICAL_PREFIX);
-    encode_field(
-        &mut hasher,
-        1,
-        std::slice::from_ref(&RENAME_PLAN_SCHEMA_VERSION),
-    );
+    hasher.update(prefix);
+    encode_field(&mut hasher, 1, std::slice::from_ref(&schema_version));
     encode_field(&mut hasher, 2, plan.root_id.as_str().as_bytes());
     encode_field(&mut hasher, 3, plan.device_fingerprint.as_bytes());
     encode_field(&mut hasher, 4, &plan.base_observed_revision.to_be_bytes());
@@ -479,14 +497,22 @@ pub fn derive_rename_plan_id(plan: &RenameImpactPlan) -> PlanId {
         encode_field(&mut hasher, 11, document.content_hash.as_str().as_bytes());
         encode_field(&mut hasher, 12, &document.byte_size.to_be_bytes());
         let mut updates = document.reference_updates.clone();
-        updates.sort_by(compare_reference_updates);
+        if schema_version >= 2 {
+            updates.sort_by(compare_reference_updates);
+        } else {
+            updates.sort_by(legacy_compare_reference_updates);
+        }
         for update in updates {
             encode_field(
                 &mut hasher,
                 13,
                 update.project_document_relative_path.as_str().as_bytes(),
             );
-            encode_field(&mut hasher, 14, &update.slot.number().to_be_bytes());
+            if schema_version >= 2 {
+                encode_field(&mut hasher, 14, &encoded_slot_key(update.slot));
+            } else {
+                encode_field(&mut hasher, 14, &update.slot.number().to_be_bytes());
+            }
             encode_field(
                 &mut hasher,
                 15,
@@ -523,6 +549,13 @@ pub fn derive_rename_plan_id(plan: &RenameImpactPlan) -> PlanId {
 
     let digest = hasher.finalize();
     PlanId(format!("plan:v1:{digest:x}"))
+}
+
+fn encoded_slot_key(slot: SampleSlotId) -> [u8; 3] {
+    let mut key = [0_u8; 3];
+    key[0] = slot_kind_rank(slot.kind());
+    key[1..3].copy_from_slice(&slot.number().to_be_bytes());
+    key
 }
 
 pub fn validate_rename_plan_freshness(
@@ -936,7 +969,11 @@ fn collect_unresolved_references(
     let mut unresolved = facts
         .slot_assignments
         .iter()
-        .filter(|assignment| references_rename_source(assignment, facts))
+        .filter(|assignment| {
+            references_rename_source(assignment, facts)
+                || (assignment.reference_status == SampleReferenceStatus::Missing
+                    && references_rename_source_case_insensitive(assignment, facts))
+        })
         .filter(|assignment| {
             assignment.reference_status != SampleReferenceStatus::Resolved
                 && assignment.reference_status != SampleReferenceStatus::UnassignedSlot
@@ -987,8 +1024,24 @@ fn path_refers_to_rename_destination(
 fn is_unresolved_reference_status(status: SampleReferenceStatus) -> bool {
     matches!(
         status,
-        SampleReferenceStatus::Missing | SampleReferenceStatus::InvalidPath
+        SampleReferenceStatus::Missing
+            | SampleReferenceStatus::InvalidPath
+            | SampleReferenceStatus::Ambiguous
     )
+}
+
+fn references_rename_source_case_insensitive(
+    assignment: &RenameSlotAssignmentObservation,
+    facts: &RenameSamplePlanningFacts,
+) -> bool {
+    match assignment.referenced_file_relative_path.as_ref() {
+        Some(path) => paths_case_insensitive_equal(path, &facts.source.live_relative_path),
+        None => false,
+    }
+}
+
+fn paths_case_insensitive_equal(left: &RootRelativePath, right: &RootRelativePath) -> bool {
+    left == right || left.as_str().eq_ignore_ascii_case(right.as_str())
 }
 
 fn has_destination_unresolved_slot_or_edge(facts: &RenameSamplePlanningFacts) -> bool {
@@ -1174,6 +1227,21 @@ fn audio_stem(path: &RootRelativePath) -> Option<&str> {
     file_name.rsplit_once('.').map(|(stem, _)| stem)
 }
 
+fn legacy_compare_reference_updates(
+    left: &RenameReferenceUpdate,
+    right: &RenameReferenceUpdate,
+) -> Ordering {
+    left.project_document_relative_path
+        .as_str()
+        .cmp(right.project_document_relative_path.as_str())
+        .then_with(|| left.slot.number().cmp(&right.slot.number()))
+        .then_with(|| {
+            left.from_relative_path
+                .as_str()
+                .cmp(right.from_relative_path.as_str())
+        })
+}
+
 fn compare_reference_updates(
     left: &RenameReferenceUpdate,
     right: &RenameReferenceUpdate,
@@ -1181,6 +1249,7 @@ fn compare_reference_updates(
     left.project_document_relative_path
         .as_str()
         .cmp(right.project_document_relative_path.as_str())
+        .then_with(|| slot_kind_rank(left.slot.kind()).cmp(&slot_kind_rank(right.slot.kind())))
         .then_with(|| left.slot.number().cmp(&right.slot.number()))
         .then_with(|| {
             left.from_relative_path
@@ -2347,5 +2416,124 @@ mod tests {
             intent,
             RenameBlockReason::DestinationAlreadyReferenced,
         );
+    }
+
+    #[test]
+    fn static_and_flex_slot_one_produce_distinct_plan_ids() {
+        let source_path = "SET/AUDIO/kick.wav";
+        let destination_path = "SET/AUDIO/new-kick.wav";
+        let facts = base_facts(
+            source_path,
+            destination_path,
+            vec![
+                RenameSlotAssignmentObservation {
+                    project_document_relative_path: RootRelativePath::parse(
+                        "SET/PROJECT/project.work",
+                    )
+                    .unwrap(),
+                    slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
+                    referenced_file_relative_path: Some(
+                        RootRelativePath::parse(source_path).unwrap(),
+                    ),
+                    reference_status: SampleReferenceStatus::Resolved,
+                },
+                RenameSlotAssignmentObservation {
+                    project_document_relative_path: RootRelativePath::parse(
+                        "SET/PROJECT/project.work",
+                    )
+                    .unwrap(),
+                    slot: SampleSlotId::new(SampleSlotKind::Flex, 1).unwrap(),
+                    referenced_file_relative_path: Some(
+                        RootRelativePath::parse(source_path).unwrap(),
+                    ),
+                    reference_status: SampleReferenceStatus::Resolved,
+                },
+            ],
+        );
+        let intent = base_intent(&facts.source, destination_path);
+        let RenamePlanningOutcome::Planned(static_plan) = plan_rename_sample(&intent, &facts)
+        else {
+            panic!("expected planned rename");
+        };
+        let mut flex_only = facts.clone();
+        flex_only.slot_assignments.remove(0);
+        let RenamePlanningOutcome::Planned(flex_plan) = plan_rename_sample(&intent, &flex_only)
+        else {
+            panic!("expected planned rename");
+        };
+        assert_ne!(static_plan.id, flex_plan.id);
+    }
+
+    #[test]
+    fn reference_update_order_is_independent_of_input_order() {
+        let source_path = "SET/AUDIO/kick.wav";
+        let destination_path = "SET/AUDIO/new-kick.wav";
+        let assignments = vec![
+            RenameSlotAssignmentObservation {
+                project_document_relative_path: RootRelativePath::parse("SET/PROJECT/project.work")
+                    .unwrap(),
+                slot: SampleSlotId::new(SampleSlotKind::Flex, 2).unwrap(),
+                referenced_file_relative_path: Some(RootRelativePath::parse(source_path).unwrap()),
+                reference_status: SampleReferenceStatus::Resolved,
+            },
+            RenameSlotAssignmentObservation {
+                project_document_relative_path: RootRelativePath::parse("SET/PROJECT/project.work")
+                    .unwrap(),
+                slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
+                referenced_file_relative_path: Some(RootRelativePath::parse(source_path).unwrap()),
+                reference_status: SampleReferenceStatus::Resolved,
+            },
+        ];
+        let facts = base_facts(source_path, destination_path, assignments);
+        let intent = base_intent(&facts.source, destination_path);
+        let RenamePlanningOutcome::Planned(first) = plan_rename_sample(&intent, &facts) else {
+            panic!("expected planned rename");
+        };
+        let mut reversed = facts.clone();
+        reversed.slot_assignments.reverse();
+        let RenamePlanningOutcome::Planned(second) = plan_rename_sample(&intent, &reversed) else {
+            panic!("expected planned rename");
+        };
+        assert_eq!(first.id, second.id);
+    }
+
+    #[test]
+    fn ambiguous_reference_status_blocks_rename() {
+        let source_path = "SET/AUDIO/kick.wav";
+        let destination_path = "SET/AUDIO/new-kick.wav";
+        let facts = base_facts(
+            source_path,
+            destination_path,
+            vec![RenameSlotAssignmentObservation {
+                project_document_relative_path: RootRelativePath::parse("SET/PROJECT/project.work")
+                    .unwrap(),
+                slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
+                referenced_file_relative_path: Some(RootRelativePath::parse(source_path).unwrap()),
+                reference_status: SampleReferenceStatus::Ambiguous,
+            }],
+        );
+        let intent = base_intent(&facts.source, destination_path);
+        assert_blocked(facts, intent, RenameBlockReason::UnresolvedReference);
+    }
+
+    #[test]
+    fn case_insensitive_missing_source_assignment_blocks_rename() {
+        let source_path = "SET/AUDIO/kick.wav";
+        let destination_path = "SET/AUDIO/new-kick.wav";
+        let facts = base_facts(
+            source_path,
+            destination_path,
+            vec![RenameSlotAssignmentObservation {
+                project_document_relative_path: RootRelativePath::parse("SET/PROJECT/project.work")
+                    .unwrap(),
+                slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
+                referenced_file_relative_path: Some(
+                    RootRelativePath::parse("SET/AUDIO/KICK.WAV").unwrap(),
+                ),
+                reference_status: SampleReferenceStatus::Missing,
+            }],
+        );
+        let intent = base_intent(&facts.source, destination_path);
+        assert_blocked(facts, intent, RenameBlockReason::UnresolvedReference);
     }
 }
