@@ -63,3 +63,15 @@
   color: var(--color-status-danger, #ff7a7a);
   font-size: 0.8rem;
 }
+
+.waveform-container { min-width: 0; width: 100%; }
+.waveform-interactive { position: relative; min-height: 240px; touch-action: none; user-select: none; overflow: hidden; border: 1px solid var(--color-border-subtle, #353b45); border-radius: .4rem; background: #11151b; }
+.waveform-interactive:focus-visible, .waveform-overview:focus-visible { outline: 2px solid var(--color-accent, #f2a33c); outline-offset: 2px; }
+.waveform-interactive canvas, .waveform-overview canvas { display: block; }
+.waveform-selection, .waveform-viewport { position: absolute; top: 24px; bottom: 0; pointer-events: none; background: #72a9ff33; border: 1px solid #8cbbff; }
+.waveform-playhead, .waveform-marker { position: absolute; top: 24px; bottom: 0; width: 1px; background: #fff; pointer-events: none; }
+.waveform-marker { background: #7be1b7; }
+.waveform-overview { position: relative; margin-top: .5rem; background: #11151b; cursor: pointer; }
+.waveform-viewport { top: 0; }
+.waveform-preview-actions { flex-wrap: wrap; gap: .5rem; }
+.waveform-readout { margin: 0; font-size: .75rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

@@ -1,3 +1,4 @@
+use crate::audio_runtime::WaveformPreparation;
 use crate::audio_runtime::{AudioRuntimeError, SharedAudioRuntime};
 use crate::catalog_runtime::SharedCatalog;
 use crate::legacy_read_adapter::RegisteredLegacyLibrary;
@@ -9,7 +10,7 @@ use ot_application::{
     ListLibrary, LoadLibrarySnapshot, LoadManualAssetMetadata, ReplaceManualAssetMetadata,
     StoreLibrarySnapshot,
 };
-use ot_audio::AudioError;
+use ot_audio::{AudioError, FrameRange, WaveformQuery, WaveformResponseV2};
 use ot_domain::{
     ContentHash, FileInstance, InvalidManualMetadata, LibraryProject, LibrarySet, LibrarySnapshot,
     ManualAssetMetadata, ManualNote, ManualTag, RootId, RootRelativePath, SampleReferenceStatus,
@@ -595,6 +596,12 @@ pub struct AudioPreviewTokenDto {
     byte_length: usize,
     duration_millis: u64,
     truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<FrameRange>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sample_rate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    truncation_reason: Option<&'static str>,
 }
 
 fn get_audio_waveform_sync(
@@ -653,6 +660,9 @@ fn create_audio_preview_sync(
         byte_length: ticket.byte_length,
         duration_millis: ticket.duration_millis,
         truncated: ticket.truncated,
+        range: ticket.range,
+        sample_rate: ticket.sample_rate,
+        truncation_reason: ticket.truncation_reason,
     })
 }
 
@@ -663,9 +673,10 @@ fn read_audio_preview_sync(
     preview_token: &str,
 ) -> Result<Vec<u8>, ApiError> {
     registry.resolve(root_id)?;
-    audio
-        .read_preview(root_id, preview_token)
-        .map_err(Into::into)
+    let bytes = audio.read_preview(root_id, preview_token)?;
+    // Source revalidation may take time; authority must still be live at delivery.
+    registry.resolve(root_id)?;
+    Ok(bytes)
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1543,6 +1554,98 @@ pub async fn v2_asset_metadata_replace(
     let catalog = Arc::clone(catalog.inner());
     tauri::async_runtime::spawn_blocking(move || {
         replace_manual_asset_metadata_sync(&registry, &catalog, &root_id, &asset_id, metadata)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_waveform_prepare(
+    root_id: String,
+    asset_id: String,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<WaveformPreparation, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = with_live_audio_source(&registry, &catalog, &root_id, &asset_id, |source| {
+            audio.prepare_waveform(&asset_id, &source.content_hash, &source.absolute_path)
+        })?;
+        registry.resolve(&root_id)?;
+        Ok(result)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_waveform_query(
+    root_id: String,
+    asset_id: String,
+    query: WaveformQuery,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<WaveformResponseV2, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = with_live_audio_source(&registry, &catalog, &root_id, &asset_id, |source| {
+            audio.query_waveform(
+                &asset_id,
+                &source.content_hash,
+                &source.absolute_path,
+                &query,
+            )
+        })?;
+        registry.resolve(&root_id)?;
+        Ok(result)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_preview_range_create(
+    root_id: String,
+    asset_id: String,
+    range: FrameRange,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<AudioPreviewTokenDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let ticket = with_live_audio_source(&registry, &catalog, &root_id, &asset_id, |source| {
+            audio.create_ranged_preview_token(
+                &root_id,
+                &asset_id,
+                &source.content_hash,
+                &source.absolute_path,
+                range,
+            )
+        })?;
+        registry.resolve(&root_id)?;
+        Ok(AudioPreviewTokenDto {
+            preview_token: ticket.token,
+            expires_in_seconds: ticket.expires_in_seconds,
+            mime_type: "audio/wav",
+            byte_length: ticket.byte_length,
+            duration_millis: ticket.duration_millis,
+            truncated: ticket.truncated,
+            range: ticket.range,
+            sample_rate: ticket.sample_rate,
+            truncation_reason: ticket.truncation_reason,
+        })
     })
     .await
     .map_err(ApiError::task_failed)?
@@ -2718,6 +2821,94 @@ mod tests {
         assert!(!response_json.contains(&asset_id));
         assert!(!response_json.contains(root.path().to_str().unwrap()));
         assert!(!ticket.preview_token.contains("kick"));
+    }
+
+    #[test]
+    fn waveform_v2_and_ranged_preview_keep_root_binding_and_source_bytes() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        let audio_path = root.path().join("SET_A/AUDIO/generated.wav");
+        write_test_wav(&audio_path);
+        let before = fs::read(&audio_path).unwrap();
+        let registry = registry();
+        let data = TempDir::new().unwrap();
+        let catalog = open_shared_catalog(data.path()).unwrap();
+        let audio = open_shared_audio_runtime(data.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset = snapshot.audio_files[0].asset_id.clone();
+        let query = WaveformQuery {
+            start_frame: 17,
+            end_frame_exclusive: 1003,
+            target_points: 317,
+            channel_mode: ot_audio::ChannelMode::Separate,
+        };
+        let result = with_live_audio_source(&registry, &catalog, &root_id, &asset, |source| {
+            audio.query_waveform(&asset, &source.content_hash, &source.absolute_path, &query)
+        })
+        .unwrap();
+        assert_eq!(result.channels[0].peaks.len(), 317);
+        assert_eq!(result.bucket_boundaries[0], 17);
+        assert_eq!(result.bucket_boundaries[317], 1003);
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(!json.contains("sha256:"));
+        assert!(!json.contains(root.path().to_str().unwrap()));
+        let range = FrameRange {
+            start_frame: 103,
+            end_frame_exclusive: 1003,
+        };
+        let ticket = with_live_audio_source(&registry, &catalog, &root_id, &asset, |source| {
+            audio.create_ranged_preview_token(
+                &root_id,
+                &asset,
+                &source.content_hash,
+                &source.absolute_path,
+                range,
+            )
+        })
+        .unwrap();
+        assert_eq!(ticket.range, Some(range));
+        assert_eq!(ticket.byte_length, 44 + 900 * 2);
+        assert!(audio
+            .read_preview(&RootId::new("wrong-root").unwrap(), &ticket.token)
+            .is_err());
+        assert_eq!(
+            read_audio_preview_sync(&registry, &audio, &root_id, &ticket.token)
+                .unwrap()
+                .len(),
+            ticket.byte_length
+        );
+        assert!(read_audio_preview_sync(&registry, &audio, &root_id, &ticket.token).is_err());
+        let changed_ticket =
+            with_live_audio_source(&registry, &catalog, &root_id, &asset, |source| {
+                audio.create_ranged_preview_token(
+                    &root_id,
+                    &asset,
+                    &source.content_hash,
+                    &source.absolute_path,
+                    range,
+                )
+            })
+            .unwrap();
+        assert_eq!(fs::read(&audio_path).unwrap(), before);
+        let mut changed = before.clone();
+        changed[50] ^= 1;
+        fs::write(&audio_path, &changed).unwrap();
+        assert_eq!(
+            read_audio_preview_sync(&registry, &audio, &root_id, &changed_ticket.token)
+                .unwrap_err()
+                .code,
+            "AUDIO_SOURCE_CHANGED"
+        );
+        registry.close(&root_id).unwrap();
+        assert!(
+            with_live_audio_source(&registry, &catalog, &root_id, &asset, |source| audio
+                .query_waveform(&asset, &source.content_hash, &source.absolute_path, &query))
+            .is_err()
+        );
+        assert_eq!(fs::read(&audio_path).unwrap(), changed);
     }
 
     #[test]

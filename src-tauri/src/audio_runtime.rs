@@ -1,9 +1,14 @@
-use ot_audio::{create_preview, AudioError, WaveformCache, WaveformSlice};
+use ot_audio::{
+    create_preview, AudioError, FrameRange, WaveformCache, WaveformEngine, WaveformMetadata,
+    WaveformQuery, WaveformResponseV2, WaveformSlice,
+};
 use ot_domain::{ContentHash, RootId};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -15,6 +20,14 @@ const MAX_PREVIEW_TOKENS: usize = 8;
 
 pub type SharedAudioRuntime = Arc<AudioRuntime>;
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WaveformPreparation {
+    pub state: &'static str,
+    pub metadata: Option<WaveformMetadata>,
+    pub error_code: Option<&'static str>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewTicket {
     pub token: String,
@@ -22,12 +35,17 @@ pub struct PreviewTicket {
     pub byte_length: usize,
     pub duration_millis: u64,
     pub truncated: bool,
+    pub range: Option<FrameRange>,
+    pub sample_rate: Option<u32>,
+    pub truncation_reason: Option<&'static str>,
 }
 
+#[derive(Clone)]
 struct PreviewRecord {
     root_id: RootId,
     bytes: Vec<u8>,
     expires_at: Instant,
+    source: Option<(PathBuf, ContentHash)>,
 }
 
 #[derive(Default)]
@@ -37,6 +55,9 @@ struct PreviewState {
 
 pub struct AudioRuntime {
     waveform_cache: WaveformCache,
+    engine: WaveformEngine,
+    jobs: Mutex<HashMap<String, WaveformPreparation>>,
+    job_generation: Mutex<()>,
     previews: Mutex<PreviewState>,
     preview_generation: Mutex<()>,
     preview_ttl: Duration,
@@ -58,12 +79,15 @@ impl AudioRuntime {
             .map_err(|error| runtime_io("resolve product data directory", error))?;
         let waveform_directory = canonical_product_directory.join(WAVEFORM_CACHE_DIRECTORY);
         let waveform_cache =
-            WaveformCache::open(waveform_directory).map_err(AudioRuntimeError::Audio)?;
+            WaveformCache::open(waveform_directory.clone()).map_err(AudioRuntimeError::Audio)?;
         let mut nonce = [0_u8; 32];
         getrandom::fill(&mut nonce)
             .map_err(|error| AudioRuntimeError::Entropy(error.to_string()))?;
         Ok(Self {
             waveform_cache,
+            engine: WaveformEngine::open(waveform_directory).map_err(AudioRuntimeError::Audio)?,
+            jobs: Mutex::new(HashMap::new()),
+            job_generation: Mutex::new(()),
             previews: Mutex::new(PreviewState::default()),
             preview_generation: Mutex::new(()),
             preview_ttl,
@@ -106,6 +130,9 @@ impl AudioRuntime {
             byte_length: preview.bytes.len(),
             duration_millis: preview.duration_millis,
             truncated: preview.truncated,
+            range: None,
+            sample_rate: None,
+            truncation_reason: None,
         };
         let mut state = self.lock_previews()?;
         state.records.retain(|_, record| record.expires_at > now);
@@ -125,6 +152,7 @@ impl AudioRuntime {
                 root_id: root_id.clone(),
                 bytes: preview.bytes,
                 expires_at,
+                source: None,
             },
         );
         Ok(ticket)
@@ -152,11 +180,197 @@ impl AudioRuntime {
         {
             return Err(AudioRuntimeError::InvalidPreviewToken);
         }
+        let source = record.source.clone();
+        drop(state);
+        if let Some((path, hash)) = source {
+            self.engine
+                .verify_source(&hash, &path)
+                .map_err(AudioRuntimeError::Audio)?;
+        }
+        let mut state = self.lock_previews()?;
+        if state
+            .records
+            .get(token)
+            .is_none_or(|r| r.expires_at <= Instant::now() || &r.root_id != root_id)
+        {
+            return Err(AudioRuntimeError::InvalidPreviewToken);
+        }
         let record = state
             .records
             .remove(token)
             .expect("preview record was checked");
         Ok(record.bytes)
+    }
+
+    pub fn prepare_waveform(
+        self: &Arc<Self>,
+        asset_id: &str,
+        hash: &ContentHash,
+        path: &Path,
+    ) -> Result<WaveformPreparation, AudioRuntimeError> {
+        let key = hash.as_str().to_owned();
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|_| AudioRuntimeError::Unavailable)?;
+        if let Some(job) = jobs.get(&key) {
+            let result = job.clone();
+            // Deliver a terminal failure once. A new consumer may retry after the
+            // source/cache becomes available again instead of retaining a sticky failure.
+            if !["READY", "QUEUED", "GENERATING"].contains(&result.state) {
+                jobs.remove(&key);
+            }
+            drop(jobs);
+            if result.state == "READY" {
+                if let Err(error) = self.engine.verify_source(hash, path) {
+                    self.jobs
+                        .lock()
+                        .map_err(|_| AudioRuntimeError::Unavailable)?
+                        .remove(&key);
+                    return Err(AudioRuntimeError::Audio(error));
+                }
+            }
+            return Ok(result);
+        }
+        if jobs
+            .values()
+            .filter(|job| job.state == "QUEUED" || job.state == "GENERATING")
+            .count()
+            >= 8
+        {
+            return Err(AudioRuntimeError::Audio(AudioError::InvalidRequest(
+                "waveform queue is full; retry shortly",
+            )));
+        }
+        if jobs.len() >= 32 {
+            let old = jobs
+                .iter()
+                .find(|(_, j)| j.state != "QUEUED" && j.state != "GENERATING")
+                .map(|(key, _)| key.clone());
+            if let Some(old) = old {
+                jobs.remove(&old);
+            }
+        }
+        let queued = WaveformPreparation {
+            state: "QUEUED",
+            metadata: None,
+            error_code: None,
+        };
+        jobs.insert(key.clone(), queued.clone());
+        drop(jobs);
+        let runtime = Arc::clone(self);
+        let asset = asset_id.to_owned();
+        let hash = hash.clone();
+        let path = path.to_owned();
+        std::thread::spawn(move || {
+            let Ok(_generation) = runtime.job_generation.lock() else {
+                if let Ok(mut jobs) = runtime.jobs.lock() {
+                    jobs.insert(
+                        key,
+                        WaveformPreparation {
+                            state: "CANCELLED",
+                            metadata: None,
+                            error_code: Some("AUDIO_RUNTIME_UNAVAILABLE"),
+                        },
+                    );
+                }
+                return;
+            };
+            if let Ok(mut jobs) = runtime.jobs.lock() {
+                if let Some(job) = jobs.get_mut(&key) {
+                    job.state = "GENERATING";
+                }
+            }
+            let outcome = runtime.engine.prepare(&asset, &hash, &path);
+            let job = match outcome {
+                Ok(metadata) => WaveformPreparation {
+                    state: "READY",
+                    metadata: Some(metadata),
+                    error_code: None,
+                },
+                Err(error) => WaveformPreparation {
+                    state: match error {
+                        AudioError::UnsupportedFormat | AudioError::UnsupportedChannelLayout => {
+                            "UNSUPPORTED"
+                        }
+                        AudioError::SourceChanged => "SOURCE_CHANGED",
+                        AudioError::UnsafeCachePath(_) => "CACHE_UNSAFE",
+                        _ => "DECODE_FAILED",
+                    },
+                    metadata: None,
+                    error_code: Some(error.code()),
+                },
+            };
+            if let Ok(mut jobs) = runtime.jobs.lock() {
+                jobs.insert(key, job);
+            }
+        });
+        Ok(queued)
+    }
+
+    pub fn query_waveform(
+        &self,
+        asset: &str,
+        hash: &ContentHash,
+        path: &Path,
+        query: &WaveformQuery,
+    ) -> Result<WaveformResponseV2, AudioRuntimeError> {
+        self.engine
+            .query(asset, hash, path, query)
+            .map_err(AudioRuntimeError::Audio)
+    }
+
+    pub fn create_ranged_preview_token(
+        &self,
+        root: &RootId,
+        asset: &str,
+        hash: &ContentHash,
+        path: &Path,
+        range: FrameRange,
+    ) -> Result<PreviewTicket, AudioRuntimeError> {
+        let _generation = self
+            .preview_generation
+            .lock()
+            .map_err(|_| AudioRuntimeError::Unavailable)?;
+        let preview = self
+            .engine
+            .preview(hash, path, range)
+            .map_err(AudioRuntimeError::Audio)?;
+        let now = Instant::now();
+        let token = self.new_token(root, asset);
+        let ticket = PreviewTicket {
+            token: token.clone(),
+            expires_in_seconds: self.preview_ttl.as_secs(),
+            byte_length: preview.bytes.len(),
+            duration_millis: (preview.range.end_frame_exclusive - preview.range.start_frame) * 1000
+                / u64::from(preview.sample_rate),
+            truncated: preview.truncated,
+            range: Some(preview.range),
+            sample_rate: Some(preview.sample_rate),
+            truncation_reason: preview.truncation_reason,
+        };
+        let mut state = self.lock_previews()?;
+        state.records.retain(|_, record| record.expires_at > now);
+        if state.records.len() >= MAX_PREVIEW_TOKENS {
+            if let Some(oldest) = state
+                .records
+                .iter()
+                .min_by_key(|(_, r)| r.expires_at)
+                .map(|(key, _)| key.clone())
+            {
+                state.records.remove(&oldest);
+            }
+        }
+        state.records.insert(
+            token,
+            PreviewRecord {
+                root_id: root.clone(),
+                bytes: preview.bytes,
+                expires_at: now + self.preview_ttl,
+                source: Some((path.to_owned(), hash.clone())),
+            },
+        );
+        Ok(ticket)
     }
 
     fn new_token(&self, root_id: &RootId, asset_id: &str) -> String {
@@ -307,6 +521,86 @@ mod tests {
         (data, runtime)
     }
 
+    fn synthetic_source(directory: &Path, variant: i16) -> (PathBuf, ContentHash, String) {
+        let source = directory.join(format!("synthetic-{variant}.wav"));
+        let mut wav = Vec::new();
+        wav.extend(b"RIFF");
+        wav.extend(2036_u32.to_le_bytes());
+        wav.extend(b"WAVEfmt ");
+        wav.extend(16_u32.to_le_bytes());
+        wav.extend(1_u16.to_le_bytes());
+        wav.extend(1_u16.to_le_bytes());
+        wav.extend(8000_u32.to_le_bytes());
+        wav.extend(16000_u32.to_le_bytes());
+        wav.extend(2_u16.to_le_bytes());
+        wav.extend(16_u16.to_le_bytes());
+        wav.extend(b"data");
+        wav.extend(2000_u32.to_le_bytes());
+        for _ in 0..1000 {
+            wav.extend(variant.to_le_bytes());
+        }
+        fs::write(&source, &wav).unwrap();
+        let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&wav))).unwrap();
+        let mut digest = Sha256::new();
+        digest.update(b"asset:v1");
+        digest.update((hash.as_str().len() as u64).to_be_bytes());
+        digest.update(hash.as_str().as_bytes());
+        let asset = format!("asset:v1:{:x}", digest.finalize());
+        (source, hash, asset)
+    }
+
+    #[test]
+    fn waveform_jobs_share_content_and_bound_the_background_queue() {
+        let data = TempDir::new().unwrap();
+        let source_root = TempDir::new().unwrap();
+        let source_directory = source_root.path().canonicalize().unwrap();
+        let runtime = open_shared_audio_runtime(data.path()).unwrap();
+        let generation = runtime.job_generation.lock().unwrap();
+        let sources: Vec<_> = (0..9)
+            .map(|i| synthetic_source(&source_directory, i))
+            .collect();
+        for (source, hash, asset) in sources.iter().take(8) {
+            assert_eq!(
+                runtime.prepare_waveform(asset, hash, source).unwrap().state,
+                "QUEUED"
+            );
+        }
+        let (source, hash, asset) = &sources[0];
+        assert_eq!(
+            runtime.prepare_waveform(asset, hash, source).unwrap().state,
+            "QUEUED"
+        );
+        assert_eq!(runtime.jobs.lock().unwrap().len(), 8);
+        let (source, hash, asset) = &sources[8];
+        assert!(runtime.prepare_waveform(asset, hash, source).is_err());
+        // Browsing and preview bookkeeping are never locked by waveform generation.
+        assert!(runtime.previews.try_lock().is_ok());
+        drop(generation);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let complete = runtime
+                .jobs
+                .lock()
+                .unwrap()
+                .values()
+                .all(|job| job.state == "READY");
+            if complete {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "background generation did not complete"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        for (source, hash, _) in sources.iter().take(8) {
+            assert_eq!(
+                format!("sha256:{:x}", Sha256::digest(fs::read(source).unwrap())),
+                hash.as_str()
+            );
+        }
+    }
+
     #[test]
     fn creates_product_directory_when_missing() {
         let data = TempDir::new().unwrap();
@@ -328,6 +622,7 @@ mod tests {
                 root_id: root.clone(),
                 bytes: b"preview".to_vec(),
                 expires_at: Instant::now() + Duration::from_secs(60),
+                source: None,
             },
         );
 
@@ -355,6 +650,7 @@ mod tests {
                 root_id: root.clone(),
                 bytes: b"preview".to_vec(),
                 expires_at: Instant::now(),
+                source: None,
             },
         );
 

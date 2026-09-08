@@ -1,6 +1,6 @@
 # Codex引継ぎ — MasterOCTa
 
-更新日: 2026-08-30
+更新日: 2026-09-08
 
 ## 1. 目的
 
@@ -39,6 +39,18 @@ MasterOCTaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - parser/codecは実filesystemへ直接writeしない
 - SQLite catalogとAI用MarkdownはMac側へ保存し、Octatrack媒体を汚さない
 - cloudは一方向backupから始め、remote direct writeを実装しない
+
+## 1.2 Waveform 2.0 のローカル実装（2026-09-08）
+
+M6はWorkspace／Waveform 1.5の表示領域・実幅・Preview接続、M7は独立したWaveform 2.0とする。
+従来M6〜M9のPortable Project／SliceとSample Chain／AI／cloudはM8〜M11へ移動した。
+M4/M5のwrite gateや実clone smokeの完了状態を、このread-only機能追加で変更しない。
+
+今回のローカル実装は、厳密な要求点数・frame境界、channel独立min/max/RMS、WFM2 cache、
+Canvas操作、ranged preview、Workspace共通Preview Controllerまでを含む。既存v1 API/cacheは共存する。
+仕様は[WAVEFORM_2.md](WAVEFORM_2.md)、テスト・環境・未完了の実Sample acceptanceは
+[WAVEFORM_2_IMPLEMENTATION_STATUS.md](WAVEFORM_2_IMPLEMENTATION_STATUS.md)に記録する。
+これはローカル実装の検証記録であり、以下のマージ済み履歴へ追加済みという意味ではない。
 
 ## 2. 正本と現在地
 

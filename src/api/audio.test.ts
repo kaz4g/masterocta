@@ -55,3 +55,27 @@ describe("audioApi", () => {
     expect(JSON.stringify(calls)).not.toContain("sha256:");
   });
 });
+
+
+describe("waveform v2 requests", () => {
+  it("keeps range queries path-free and cancels queued work before IPC", async () => {
+    const calls: Array<[string, IpcCommandArgs | undefined]> = [];
+    const finish: Array<(value: unknown) => void> = [];
+    const client = createAudioApi(createIpcClient(<Response>(command: string, args?: IpcCommandArgs) => {
+      calls.push([command, args]);
+      return new Promise<Response>(resolve => finish.push(value => resolve(value as Response)));
+    }));
+    const query = { rootId: "root", assetId: "asset", startFrame: 17, endFrameExclusive: 1003, targetPoints: 317, channelMode: "separate" as const };
+    const first = client.queryWaveform(query);
+    const second = client.queryWaveform(query);
+    const abort = new AbortController();
+    const cancelled = client.queryWaveform({ ...query, startFrame: 20 }, abort.signal).catch(error => error.name);
+    abort.abort();
+    expect(await cancelled).toBe("AbortError");
+    expect(calls.length).toBe(2);
+    finish[0]({}); finish[1]({}); await Promise.all([first, second]);
+    await Promise.resolve();
+    expect(calls.length).toBe(2);
+    expect(calls[0]).toEqual(["v2_audio_waveform_query", { rootId: "root", assetId: "asset", query: { startFrame: 17, endFrameExclusive: 1003, targetPoints: 317, channelMode: "separate" } }]);
+  });
+});

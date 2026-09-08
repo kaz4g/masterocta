@@ -2672,6 +2672,7 @@ name = "ot-audio"
 version = "0.1.0"
 dependencies = [
  "ot-domain",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

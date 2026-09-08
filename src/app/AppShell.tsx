@@ -58,8 +58,8 @@ export function AppShell({
           {showInspector ? (
             <SplitPane
               className="mo-app-shell__body"
-              defaultPrimarySize={72}
-              minPrimary={55}
+              defaultPrimarySize={58}
+              minPrimary={40}
               maxPrimary={85}
             >
               <SplitPane.Primary className="mo-app-shell__main">

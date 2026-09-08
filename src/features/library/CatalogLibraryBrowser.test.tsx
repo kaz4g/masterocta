@@ -128,6 +128,9 @@ describe("CatalogLibraryBrowser", () => {
 
   it("clears the selected file when switching locations", async () => {
     const audioClient: AudioApi = {
+      prepareWaveform: vi.fn().mockResolvedValue({ state: "READY", metadata: { sampleRate: 44100, channelCount: 2, totalFrames: 44100 }, errorCode: null }),
+      queryWaveform: vi.fn(),
+      createRangedPreviewToken: vi.fn(),
       getWaveform: vi.fn().mockResolvedValue({
         analyzerVersion: "waveform:v1",
         sampleRate: 44100,
@@ -168,6 +171,9 @@ describe("CatalogLibraryBrowser", () => {
 
   it("opens manual metadata for the selected opaque AssetId", async () => {
     const audioClient: AudioApi = {
+      prepareWaveform: vi.fn().mockResolvedValue({ state: "READY", metadata: { sampleRate: 44100, channelCount: 2, totalFrames: 44100 }, errorCode: null }),
+      queryWaveform: vi.fn(),
+      createRangedPreviewToken: vi.fn(),
       getWaveform: vi.fn().mockResolvedValue({
         analyzerVersion: "waveform:v1",
         sampleRate: 44100,
@@ -204,10 +210,10 @@ describe("CatalogLibraryBrowser", () => {
       "root-opaque",
       "asset:v1:pool",
     );
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    expect(audioClient.prepareWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:pool",
-      640,
+      expect.any(AbortSignal),
     );
     expect(screen.getByLabelText("Asset inspector")).not.toHaveTextContent("sha256:");
   });

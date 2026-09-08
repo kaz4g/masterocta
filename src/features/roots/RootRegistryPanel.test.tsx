@@ -135,6 +135,9 @@ describe("RootRegistryPanel", () => {
   it("loads shell Inspector waveform and metadata for the selected asset", async () => {
     const api = fakeApi();
     const audioClient: AudioApi = {
+      prepareWaveform: vi.fn().mockResolvedValue({ state: "READY", metadata: { sampleRate: 44100, channelCount: 2, totalFrames: 44100 }, errorCode: null }),
+      queryWaveform: vi.fn(),
+      createRangedPreviewToken: vi.fn(),
       getWaveform: vi.fn().mockResolvedValue({
         durationSeconds: 1,
         sampleRate: 44100,
@@ -179,10 +182,10 @@ describe("RootRegistryPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Usage graph")).toBeInTheDocument();
     expect(screen.getByLabelText("Usage summary")).toHaveTextContent("1 used");
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    expect(audioClient.prepareWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:opaque",
-      640,
+      expect.any(AbortSignal),
     );
     expect(metadataClient.loadManualAssetMetadata).toHaveBeenCalledWith(
       "root-opaque",
@@ -274,6 +277,9 @@ describe("RootRegistryPanel", () => {
     const api = fakeApi();
     const changeClient = fakeChangeApi();
     const audioClient: AudioApi = {
+      prepareWaveform: vi.fn().mockResolvedValue({ state: "READY", metadata: { sampleRate: 44100, channelCount: 2, totalFrames: 44100 }, errorCode: null }),
+      queryWaveform: vi.fn(),
+      createRangedPreviewToken: vi.fn(),
       getWaveform: vi.fn().mockResolvedValue({
         durationSeconds: 1,
         sampleRate: 44100,

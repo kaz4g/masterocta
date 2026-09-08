@@ -25,6 +25,7 @@ import { SourcesPane } from "../sources";
 import { UsageGraphPanel } from "../usage";
 import { WaveformPreview } from "../waveform/WaveformPreview";
 import "./RootRegistryPanel.css";
+import { PreviewProvider } from "../waveform/PreviewController";
 
 export type RootDirectoryPicker = () => Promise<string | null>;
 
@@ -182,7 +183,7 @@ export function RootRegistryPanel({
   const catalogReady = session !== null && library !== null;
 
   return (
-    <AppShell
+    <PreviewProvider><AppShell
       sources={
         <SourcesPane
           session={session}
@@ -258,6 +259,6 @@ export function RootRegistryPanel({
           />
         ) : undefined
       }
-    />
+    /></PreviewProvider>
   );
 }

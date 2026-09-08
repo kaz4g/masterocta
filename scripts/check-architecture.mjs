@@ -33,7 +33,7 @@ const dependencyRules = new Map([
   ],
   [
     "ot-audio",
-    ["ot-domain", "serde", "serde_json", "sha2", "symphonia"],
+    ["ot-domain", "rustix", "serde", "serde_json", "sha2", "symphonia"],
   ],
   ["ot-plan", ["ot-domain", "sha2"]],
   [
@@ -162,8 +162,11 @@ const expectedV2Commands = [
   "v2_asset_metadata_get",
   "v2_asset_metadata_replace",
   "v2_audio_preview_create",
+  "v2_audio_preview_range_create",
   "v2_audio_preview_read",
   "v2_audio_waveform_get",
+  "v2_audio_waveform_prepare",
+  "v2_audio_waveform_query",
   "v2_change_apply",
   "v2_change_get_plan",
   "v2_change_plan",

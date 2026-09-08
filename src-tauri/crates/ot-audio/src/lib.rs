@@ -1,5 +1,11 @@
 #![forbid(unsafe_code)]
 
+mod query;
+pub use query::{
+    ChannelMode, FrameRange, RangedPreview, WaveformEngine, WaveformMetadata, WaveformQuery,
+    WaveformResponseV2,
+};
+
 use ot_domain::ContentHash;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -62,6 +68,7 @@ pub enum AudioError {
     SourceUnavailable(String),
     SourceChanged,
     UnsupportedFormat,
+    UnsupportedChannelLayout,
     DecodeFailed(String),
     UnsafeCachePath(&'static str),
     CacheUnavailable(String),
@@ -74,6 +81,7 @@ impl AudioError {
             Self::SourceUnavailable(_) => "AUDIO_SOURCE_UNAVAILABLE",
             Self::SourceChanged => "AUDIO_SOURCE_CHANGED",
             Self::UnsupportedFormat => "UNSUPPORTED_FORMAT",
+            Self::UnsupportedChannelLayout => "UNSUPPORTED_CHANNEL_LAYOUT",
             Self::DecodeFailed(_) => "CORRUPT_SOURCE",
             Self::UnsafeCachePath(_) => "AUDIO_CACHE_UNSAFE",
             Self::CacheUnavailable(_) => "AUDIO_CACHE_UNAVAILABLE",
@@ -96,6 +104,9 @@ impl std::fmt::Display for AudioError {
                 formatter.write_str("audio source content no longer matches the catalog snapshot")
             }
             Self::UnsupportedFormat => formatter.write_str("audio format is not supported"),
+            Self::UnsupportedChannelLayout => {
+                formatter.write_str("only mono and stereo audio are supported")
+            }
             Self::DecodeFailed(message) => write!(formatter, "audio decode failed: {message}"),
             Self::UnsafeCachePath(message) => write!(formatter, "unsafe waveform cache: {message}"),
             Self::CacheUnavailable(message) => {
@@ -725,7 +736,7 @@ mod tests {
         fs::write(path, encode_pcm_wav(&pcm, sample_rate, channels).unwrap()).unwrap();
     }
 
-    fn write_aiff(path: &Path, frames: usize) {
+    pub(super) fn write_aiff(path: &Path, frames: usize) {
         let channels = 1_u16;
         let mut pcm = Vec::with_capacity(frames * 2);
         for frame in 0..frames {
@@ -755,12 +766,12 @@ mod tests {
         fs::write(path, aiff).unwrap();
     }
 
-    fn content_hash(path: &Path) -> ContentHash {
+    pub(super) fn content_hash(path: &Path) -> ContentHash {
         let bytes = fs::read(path).unwrap();
         ContentHash::parse(format!("sha256:{:x}", Sha256::digest(bytes))).unwrap()
     }
 
-    fn asset_id(hash: &ContentHash) -> String {
+    pub(super) fn asset_id(hash: &ContentHash) -> String {
         let mut hasher = Sha256::new();
         hasher.update(b"asset:v1");
         hasher.update((hash.as_str().len() as u64).to_be_bytes());

@@ -2,6 +2,12 @@ export { createIpcClient, ipcClient } from "./client";
 export type { IpcClient, IpcCommandArgs, IpcTransport } from "./client";
 export { audioApi, createAudioApi } from "./audio";
 export type {
+  FrameRange,
+  WaveformMetadata,
+  WaveformQuery,
+  WaveformResponseV2,
+  WaveformPreparation,
+  RangedPreviewToken,
   AudioApi,
   AudioPreviewBytes,
   AudioPreviewToken,

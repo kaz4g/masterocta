@@ -1012,7 +1012,36 @@ legacy terminal journalは履歴として読み、recovery replayを拒否する
 
 完了条件: rename後にmissing sampleがなく、rollbackでbyte-level復元できる。
 
-### M6 — Portable Project
+### M6 — Workspace / Waveform 1.5
+
+- Inspectorの波形表示領域を拡張
+- ResizeObserverとDPRによる実幅計測、640点固定の解除
+- frontend request consumerのcancelとselection変更時の安全な再読込
+- Workspace共通Preview Controller
+
+M6は表示領域と接続準備を担当し、query engine本体はM7へ分離する。
+
+### M7 — Waveform 2.0
+
+- waveform:v2、channel独立min/max/RMS、64 framesから4倍刻みのpyramid
+- frame範囲と厳密な要求点数によるrange query、共有整数bucket境界
+- 部分bucketのPCM読取り、sumSquaresとframeCountによるRMS集約
+- content hashに結び付いたversioned binary cache、範囲chunk検証とatomic生成
+- Canvas、zoom/pan/overview、frame selection、playhead、read-only marker contract
+- 最大60秒／32 MiBのranged preview、one-shot tokenとsource hash再確認
+- Library browsingを止めない非同期生成、古いconsumer結果の破棄
+
+正本契約は[WAVEFORM_2.md](WAVEFORM_2.md)、検証状態は
+[WAVEFORM_2_IMPLEMENTATION_STATUS.md](WAVEFORM_2_IMPLEMENTATION_STATUS.md)を参照。
+初期channelModeはseparateのみ。Monoは1lane、StereoはL/R独立、3ch以上は拒否する。
+完了条件は、任意範囲・要求点数・frame selection・再生同期の決定性と、cache破損／source変更時の
+fail-closed、Original Sample bytes不変、承認済み複製Sampleによるvisual acceptance。
+transient解析、slice自動生成、trim/fade/normalize、raw PCM editorは含めない。
+
+2026-09の境界変更により、従来M6以降の機能を以下M8〜M11へ順送りする。
+既存M4/M5のwrite gateおよびIntent → Plan → Apply境界は変更しない。
+
+### M8 — Portable Project
 
 - collect all referenced samples
 - portable bundle manifest
@@ -1021,7 +1050,7 @@ legacy terminal journalは履歴として読み、recovery replayを拒否する
 
 完了条件: 二つ目の複製媒体でProjectを開き、参照欠落がゼロになる。
 
-### M7 — SliceとSample Chain
+### M9 — SliceとSample Chain
 
 - `.ot` lossless read/write
 - waveform draft markers
@@ -1031,7 +1060,7 @@ legacy terminal journalは履歴として読み、recovery replayを拒否する
 
 完了条件: chain、`.ot`、Project slotの三者が一致し、実機cloneで読み込める。
 
-### M8 — AI context
+### M10 — AI context
 
 - Markdown export
 - read-only query tools
@@ -1040,7 +1069,7 @@ legacy terminal journalは履歴として読み、recovery replayを拒否する
 
 完了条件: AIなしでも同じ変更計画をUIから作れ、AIが直接applyできない。
 
-### M9 — optional cloud/MCP
+### M11 — optional cloud/MCP
 
 - one-way backup export
 - read-only remote MCP
