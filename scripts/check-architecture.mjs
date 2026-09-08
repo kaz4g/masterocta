@@ -190,6 +190,9 @@ const expectedV2Commands = [
   "v2_audio_preview_create",
   "v2_audio_preview_read",
   "v2_audio_waveform_get",
+  // Waveform 2.0: root/asset-scoped read-only queries; no new write authority.
+  "v2_audio_waveform_query",
+  "v2_audio_preview_range_create",
   "v2_change_apply",
   "v2_change_get_plan",
   "v2_change_plan",
