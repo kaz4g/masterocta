@@ -512,13 +512,13 @@ h1 {
 .status-audio-pool {
   background-color: transparent;
   color: var(--mo-info);
-  border-color: rgba(74, 158, 255, 0.7);
+  border-color: color-mix(in srgb, var(--mo-info) 70%, transparent);
 }
 
 .status-audio-pool-empty {
   background-color: transparent;
-  color: rgba(74, 158, 255, 0.5);
-  border-color: rgba(74, 158, 255, 0.4);
+  color: color-mix(in srgb, var(--mo-info) 50%, transparent);
+  border-color: color-mix(in srgb, var(--mo-info) 40%, transparent);
 }
 
 .status-no {
@@ -565,7 +565,7 @@ h1 {
 
 .project-card.clickable-project:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(255, 102, 0, 0.2);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--mo-accent) 20%, transparent);
 }
 
 .project-card.clickable-project:active {
@@ -580,7 +580,7 @@ h1 {
 
 .project-card.clickable-project:focus {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(255, 102, 0, 0.2);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--mo-accent) 20%, transparent);
 }
 
 .project-card.new-project-card:focus {
@@ -605,7 +605,7 @@ h1 {
 
 .project-card.new-project-card:hover {
   border-color: var(--mo-accent);
-  background-color: rgba(255, 102, 0, 0.05);
+  background-color: color-mix(in srgb, var(--mo-accent) 5%, transparent);
 }
 
 .new-project-icon {
@@ -717,7 +717,7 @@ h1 {
 }
 
 .context-menu-item.danger:hover {
-  background-color: rgba(220, 53, 69, 0.15);
+  background-color: color-mix(in srgb, var(--mo-danger) 15%, transparent);
 }
 
 /* "Convert to Octatrack format" reads as a fix action: green when available */
@@ -726,7 +726,7 @@ h1 {
 }
 
 .context-menu-item.convert:not(:disabled):not(.disabled):hover {
-  background-color: rgba(76, 175, 80, 0.15);
+  background-color: color-mix(in srgb, var(--mo-success) 15%, transparent);
 }
 
 .context-menu-item.disabled,
@@ -756,7 +756,7 @@ h1 {
 /* Audio Pool Card */
 .audio-pool-card {
   background-color: var(--mo-canvas);
-  border: 1px solid rgba(74, 158, 255, 0.7);
+  border: 1px solid color-mix(in srgb, var(--mo-info) 70%, transparent);
   padding: 0.75rem;
   transition: all 0.15s ease;
   cursor: pointer;
@@ -777,7 +777,7 @@ h1 {
   border-color: #6bb3ff;
   background-color: #151515;
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(74, 158, 255, 0.35);
+  box-shadow: 0 4px 8px color-mix(in srgb, var(--mo-info) 35%, transparent);
 }
 
 .audio-pool-card:active {
@@ -805,12 +805,12 @@ h1 {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  border: 1px solid rgba(74, 158, 255, 0.7);
+  border: 1px solid color-mix(in srgb, var(--mo-info) 70%, transparent);
   color: var(--mo-info);
 }
 
 .audio-pool-card.audio-pool-empty .audio-pool-info span {
-  border-color: rgba(74, 158, 255, 0.4);
+  border-color: color-mix(in srgb, var(--mo-info) 40%, transparent);
 }
 
 .project-name {
@@ -1095,7 +1095,7 @@ h1 {
 }
 
 .modal-content.error-modal {
-  border-color: rgba(220, 53, 69, 0.5);
+  border-color: color-mix(in srgb, var(--mo-danger) 50%, transparent);
 }
 
 .modal-content.error-modal .modal-header h3 {
@@ -1207,8 +1207,8 @@ h1 {
 }
 
 .modal-button.primary:hover {
-  background-color: rgba(255, 102, 0, 0.8);
-  border-color: rgba(255, 102, 0, 0.8);
+  background-color: color-mix(in srgb, var(--mo-accent) 80%, transparent);
+  border-color: color-mix(in srgb, var(--mo-accent) 80%, transparent);
 }
 
 .modal-button.primary:disabled {
@@ -1217,14 +1217,14 @@ h1 {
 }
 
 .modal-button.danger {
-  background-color: rgba(220, 53, 69, 0.15);
-  border-color: rgba(220, 53, 69, 0.5);
+  background-color: color-mix(in srgb, var(--mo-danger) 15%, transparent);
+  border-color: color-mix(in srgb, var(--mo-danger) 50%, transparent);
   color: var(--mo-danger);
 }
 
 .modal-button.danger:hover {
-  background-color: rgba(220, 53, 69, 0.25);
-  border-color: rgba(220, 53, 69, 0.7);
+  background-color: color-mix(in srgb, var(--mo-danger) 25%, transparent);
+  border-color: color-mix(in srgb, var(--mo-danger) 70%, transparent);
 }
 
 .modal-button.focused {
@@ -1446,7 +1446,7 @@ h1 {
 
 .header-tab.active {
   color: var(--mo-accent);
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
 }
 
 /* Path info displayed inline in header, to the right of h1 */
@@ -1632,8 +1632,8 @@ h1 {
 
 .pattern-track-indicator.audio {
   color: var(--mo-info);
-  background-color: rgba(74, 158, 255, 0.15);
-  border: 1px solid rgba(74, 158, 255, 0.4);
+  background-color: color-mix(in srgb, var(--mo-info) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mo-info) 40%, transparent);
 }
 
 .pattern-track-indicator.midi {
@@ -1951,7 +1951,7 @@ h1 {
 .bank-selector:focus {
   outline: none;
   border-color: var(--mo-accent);
-  box-shadow: 0 0 0 3px rgba(255, 102, 0, 0.2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mo-accent) 20%, transparent);
 }
 
 .bank-selector option {
@@ -1992,7 +1992,7 @@ h1 {
 
 .tab:hover {
   color: var(--mo-text);
-  background-color: rgba(255, 102, 0, 0.1);
+  background-color: color-mix(in srgb, var(--mo-accent) 10%, transparent);
 }
 
 .tab.active {
@@ -2046,8 +2046,8 @@ h1 {
   letter-spacing: 1px;
   color: var(--mo-accent);
   padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(255, 102, 0, 0.3);
-  text-shadow: 0 0 20px rgba(255, 102, 0, 0.3);
+  border-bottom: 1px solid color-mix(in srgb, var(--mo-accent) 30%, transparent);
+  text-shadow: 0 0 20px color-mix(in srgb, var(--mo-accent) 30%, transparent);
 }
 
 .overview-section .compact-grid {
@@ -2068,8 +2068,8 @@ h1 {
 }
 
 .overview-section .compact-item:hover {
-  background: rgba(255, 102, 0, 0.08);
-  border-color: rgba(255, 102, 0, 0.2);
+  background: color-mix(in srgb, var(--mo-accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--mo-accent) 20%, transparent);
 }
 
 .overview-section .compact-label {
@@ -2109,7 +2109,7 @@ h1 {
   outline: none;
   width: 100%;
   box-sizing: border-box;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mo-warning) 20%, transparent);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   -webkit-appearance: none;
   appearance: none;
@@ -2126,7 +2126,7 @@ h1 {
 .overview-section .compact-select:focus,
 .overview-section .compact-input:focus {
   border-color: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mo-warning) 30%, transparent);
 }
 
 .overview-section .compact-select option {
@@ -2142,7 +2142,7 @@ h1 {
 .overview-section .compact-input.shake {
   animation: inputShake 0.4s ease;
   border-color: var(--mo-danger) !important;
-  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.3) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mo-danger) 30%, transparent) !important;
 }
 
 .overview-section .compact-input[type="number"] {
@@ -2167,13 +2167,13 @@ h1 {
   padding: 0.3rem 0.4rem;
   box-sizing: border-box;
   line-height: 1.2;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mo-warning) 20%, transparent);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .overview-section .compact-input-with-suffix:focus-within {
   border-color: #fbbf24;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mo-warning) 30%, transparent);
 }
 
 .overview-section .compact-input-with-suffix .compact-input {
@@ -2355,10 +2355,10 @@ h1 {
 
 /* Selectable sample-slot rows — identical to the Audio Pool table selection */
 .slots-table tbody tr.selected {
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
 }
 .slots-table tbody tr.selected:hover {
-  background-color: rgba(255, 102, 0, 0.2);
+  background-color: color-mix(in srgb, var(--mo-accent) 20%, transparent);
 }
 .slots-table tbody tr.cursor {
   outline: 2px solid var(--mo-accent);
@@ -2421,7 +2421,7 @@ h1 {
 .samples-table tbody tr.drop-target-highlight {
   outline: 2px dashed var(--mo-warning);
   outline-offset: -2px;
-  background: rgba(245, 158, 11, 0.1) !important;
+  background: color-mix(in srgb, var(--mo-warning) 10%, transparent) !important;
 }
 
 /* OS drag-drop sidebar drop zone wrapper */
@@ -2432,7 +2432,7 @@ h1 {
 .sidebar-os-drop-zone.os-drag-over .audio-pool-sidebar {
   outline: 2px dashed var(--mo-warning);
   outline-offset: -2px;
-  background: rgba(245, 158, 11, 0.05);
+  background: color-mix(in srgb, var(--mo-warning) 5%, transparent);
 }
 
 .banks-tab {
@@ -2529,13 +2529,13 @@ h1 {
 
 /* Active toggle (e.g. transfers pane open) — same orange accent as hover */
 .copy-table-btn.active:not(:disabled) {
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
   border-color: var(--mo-accent);
   color: var(--mo-accent);
 }
 
 .copy-table-btn.copied {
-  background-color: rgba(76, 175, 80, 0.2);
+  background-color: color-mix(in srgb, var(--mo-success) 20%, transparent);
   border-color: var(--mo-success);
   color: var(--mo-success);
 }
@@ -2692,7 +2692,7 @@ h1 {
 /* Active filter: the kebab glyph itself turns orange, no box around it */
 .filter-icon.active {
   color: var(--mo-accent);
-  text-shadow: 0 0 6px rgba(255, 102, 0, 0.5);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--mo-accent) 50%, transparent);
 }
 
 /* Filter Dropdown */
@@ -2983,9 +2983,9 @@ h1 {
 }
 
 .file-status-badge.file-exists {
-  background-color: rgba(46, 204, 113, 0.15);
+  background-color: color-mix(in srgb, var(--mo-success-strong) 15%, transparent);
   color: var(--mo-success-strong);
-  border: 1px solid rgba(46, 204, 113, 0.5);
+  border: 1px solid color-mix(in srgb, var(--mo-success-strong) 50%, transparent);
 }
 
 .file-status-badge.file-missing {
@@ -3297,11 +3297,11 @@ h1 {
 
 .rec-grid .pattern-step.selected {
   outline-color: var(--mo-danger-bright);
-  box-shadow: 0 0 8px rgba(244, 67, 54, 0.6);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--mo-danger-bright) 60%, transparent);
 }
 
 .rec-grid .pattern-step.has-trig {
-  background-color: rgba(244, 67, 54, 0.12);
+  background-color: color-mix(in srgb, var(--mo-danger-bright) 12%, transparent);
   border-color: var(--mo-danger-bright);
 }
 
@@ -3463,8 +3463,8 @@ th.col-usage .header-content .sort-indicator {
   font-size: 0.9rem;
   font-family: inherit;
   color: var(--mo-info);
-  background-color: rgba(74, 158, 255, 0.12);
-  border: 1px solid rgba(74, 158, 255, 0.4);
+  background-color: color-mix(in srgb, var(--mo-info) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mo-info) 40%, transparent);
   border-radius: 12px;
   cursor: pointer;
 }
@@ -3529,7 +3529,7 @@ th.col-usage .header-content .sort-indicator {
 .usage-header-spinner .loading-spinner-small {
   width: 0.8rem;
   height: 0.8rem;
-  border-color: rgba(74, 158, 255, 0.3);
+  border-color: color-mix(in srgb, var(--mo-info) 30%, transparent);
   border-top-color: var(--mo-info);
 }
 
@@ -4369,7 +4369,7 @@ th.col-usage .header-content .sort-indicator {
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
   padding: 0.15rem 0.4rem;
   border-radius: 3px;
 }
@@ -4377,7 +4377,7 @@ th.col-usage .header-content .sort-indicator {
 .tools-project-selector-set {
   font-size: 0.75rem;
   color: var(--mo-accent);
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
   padding: 0.15rem 0.4rem;
   border-radius: 3px;
 }
@@ -4573,7 +4573,7 @@ th.col-usage .header-content .sort-indicator {
 
 .project-selector-card.selected {
   border-color: var(--mo-accent);
-  background-color: rgba(255, 102, 0, 0.15);
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent);
 }
 
 .tools-actions {
@@ -4648,7 +4648,7 @@ th.col-usage .header-content .sort-indicator {
 .tools-execute-btn.tools-execute-btn-danger:hover:not(:disabled) {
   background-color: var(--mo-danger);
   color: var(--mo-text);
-  box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--mo-danger) 30%, transparent);
 }
 
 .loading-spinner-small {
@@ -4970,7 +4970,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .tools-fix-status.all-good {
-  background: rgba(76, 175, 80, 0.08);
+  background: color-mix(in srgb, var(--mo-success) 8%, transparent);
   border-color: var(--mo-success);
 }
 
@@ -5108,7 +5108,7 @@ th.col-usage .header-content .sort-indicator {
   padding: 1rem 0.75rem;
   border-radius: 4px;
   border: 1px solid var(--mo-accent);
-  background: rgba(255, 102, 0, 0.08);
+  background: color-mix(in srgb, var(--mo-accent) 8%, transparent);
   color: var(--mo-text);
   font-size: 0.9rem;
   font-weight: 500;
@@ -5120,7 +5120,7 @@ th.col-usage .header-content .sort-indicator {
 }
 
 .tools-missing-files-summary:hover {
-  background: rgba(255, 102, 0, 0.22);
+  background: color-mix(in srgb, var(--mo-accent) 22%, transparent);
   border-color: var(--mo-accent-hover);
 }
 
@@ -5615,7 +5615,7 @@ th.col-usage .header-content .sort-indicator {
 
 .purge-confirm-banner-danger {
   border-color: var(--mo-danger);
-  background: rgba(220, 53, 69, 0.09);
+  background: color-mix(in srgb, var(--mo-danger) 9%, transparent);
 }
 
 .purge-confirm-headline {
@@ -5720,7 +5720,7 @@ th.col-usage .header-content .sort-indicator {
 
 /* Column reorder drag-over highlight */
 th.col-drag-over {
-  background-color: rgba(255, 102, 0, 0.15) !important;
+  background-color: color-mix(in srgb, var(--mo-accent) 15%, transparent) !important;
   outline: 1px dashed var(--mo-accent);
 }
 

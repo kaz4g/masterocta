@@ -1,6 +1,6 @@
 # Design System Migration
 
-Status: Phase A–D complete on main (DS1–DS7, UI1–UI6); App.css exact tokenize follow-up
+Status: Phase A–D complete; App.css / PartsPanel exact + palette rgba tokenize follow-up
 Updated: 2026-09-08
 
 ## Purpose
@@ -231,16 +231,24 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
   `App.css` with `var(--mo-*)` (no new tokens; no near-color collapses).
 - Leaves intentional non-exact residuals: `#000` on-accent text, soft status
   tints, domain/rainbow badges, near-surface grays (`#252525`, etc.).
-- **Next:** `PartsPanel.css` exact pass; then near-color / rgba passes.
+
+### PartsPanel exact hex + palette rgba (done)
+
+- `PartsPanel.css`: exact hex → `var(--mo-*)` (same map as App.css). Leaves
+  PartsPanel domain cyan/MIDI (`#4ac8ff`, `#7b68ee`, …) and near-grays.
+- Palette `rgba()` whose RGB equals an existing token (accent / info / warning /
+  danger / success / success-strong / danger-bright) in `App.css`,
+  `PartsPanel.css`, and `AudioPoolPage.css` →
+  `color-mix(in srgb, var(--mo-*) N%, transparent)`.
+- Pure black/white overlays and near-palette rgba remain for later.
 
 ### Later (documented only until started)
 
 | PR | Focus |
 |----|--------|
 | — | Further unused `App.css` deletion as call sites reach zero |
-| — | `PartsPanel.css` exact hex → `--mo-*` |
 | — | Near-color collapses + soft status / domain tokens as needed |
-| — | Palette `rgba()` → `color-mix` / soft tokens so themes cover overlays |
+| — | B/W and near-palette `rgba()` overlays; SliceWorkbench / Waveform cool packs |
 
 ## Success criteria
 
@@ -285,6 +293,10 @@ immediately; leftover hardcoded `App.css` colors remain classic until tokenized.
 definitions in `App.css` use tokens, so themed surfaces/borders/status colors
 follow `data-mo-theme`. Non-exact residuals (on-accent `#000`, soft tints,
 domain badges, near-grays) and other CSS files remain for later passes.
+
+**After PartsPanel + palette rgba:** Exact PartsPanel hex and token-matched
+palette overlays (`color-mix`) follow themes. Domain FX colors, near-grays,
+and B/W overlays remain classic until later passes.
 
 ## Verification (each DS PR)
 
