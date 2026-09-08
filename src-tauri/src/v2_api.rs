@@ -1,4 +1,4 @@
-use crate::audio_runtime::{AudioRuntimeError, SharedAudioRuntime};
+use crate::audio_runtime::{AudioRuntimeError, SharedAudioRuntime, WaveformRequestGeneration};
 use crate::catalog_runtime::SharedCatalog;
 use crate::clone_runtime::{
     CloneAuthorityRecord, CloneProvenance, CloneRuntimeError, CloneSourceEvidenceRecord,
@@ -4309,10 +4309,17 @@ fn query_audio_waveform_sync(
     root_id: &RootId,
     asset_id: &str,
     query: &WaveformQuery,
+    generation: WaveformRequestGeneration,
 ) -> Result<WaveformWindow, ApiError> {
     query.validate().map_err(AudioRuntimeError::Audio)?;
     let result = with_live_audio_source(registry, catalog, root_id, asset_id, |source| {
-        audio.query_waveform(asset_id, &source.content_hash, &source.absolute_path, query)
+        audio.query_waveform(
+            asset_id,
+            &source.content_hash,
+            &source.absolute_path,
+            query,
+            generation,
+        )
     })?;
     registry.resolve(root_id)?;
     Ok(result)
@@ -4331,8 +4338,18 @@ pub async fn v2_audio_waveform_query(
     let registry = Arc::clone(registry.inner());
     let catalog = Arc::clone(catalog.inner());
     let audio = Arc::clone(audio.inner());
+    query.validate().map_err(AudioRuntimeError::Audio)?;
+    let generation = audio.begin_waveform_request();
     tauri::async_runtime::spawn_blocking(move || {
-        query_audio_waveform_sync(&registry, &catalog, &audio, &root_id, &asset_id, &query)
+        query_audio_waveform_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            &query,
+            generation,
+        )
     })
     .await
     .map_err(ApiError::task_failed)?
@@ -6724,6 +6741,7 @@ mod tests {
                 }),
                 target_points: 32,
             },
+            audio.begin_waveform_request(),
         )
         .unwrap();
         assert_eq!(detail.frames_per_peak, 1);

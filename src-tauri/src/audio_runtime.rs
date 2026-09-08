@@ -16,6 +16,9 @@ const MAX_PREVIEW_TOKENS: usize = 8;
 
 pub type SharedAudioRuntime = Arc<AudioRuntime>;
 
+#[derive(Clone, Copy)]
+pub struct WaveformRequestGeneration(u64);
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PreviewTicket {
     pub token: String,
@@ -87,17 +90,22 @@ impl AudioRuntime {
             .map_err(AudioRuntimeError::Audio)
     }
 
+    /// Reserve ordering at command admission, before dispatching blocking work.
+    pub fn begin_waveform_request(&self) -> WaveformRequestGeneration {
+        WaveformRequestGeneration(self.waveform_generation.fetch_add(1, Ordering::SeqCst) + 1)
+    }
+
     pub fn query_waveform(
         &self,
         asset_id: &str,
         expected_hash: &ContentHash,
         source_path: &Path,
         query: &WaveformQuery,
+        generation: WaveformRequestGeneration,
     ) -> Result<WaveformWindow, AudioRuntimeError> {
-        let generation = self.waveform_generation.fetch_add(1, Ordering::SeqCst) + 1;
         self.waveform_cache
             .query(asset_id, expected_hash, source_path, query, || {
-                self.waveform_generation.load(Ordering::SeqCst) == generation
+                self.waveform_generation.load(Ordering::SeqCst) == generation.0
             })
             .map_err(AudioRuntimeError::Audio)
     }
@@ -360,6 +368,58 @@ mod tests {
         assert!(!product.exists());
         AudioRuntime::open(data.path(), Duration::from_secs(60)).unwrap();
         assert!(product.is_dir());
+    }
+
+    #[test]
+    fn delayed_old_worker_cannot_supersede_a_newer_waveform_request() {
+        let (data, runtime) = runtime(Duration::from_secs(60));
+        let path = data.path().join("synthetic.wav");
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&292_u32.to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&8000_u32.to_le_bytes());
+        bytes.extend_from_slice(&16000_u32.to_le_bytes());
+        bytes.extend_from_slice(&2_u16.to_le_bytes());
+        bytes.extend_from_slice(&16_u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&256_u32.to_le_bytes());
+        bytes.extend_from_slice(&[0; 256]);
+        fs::write(&path, &bytes).unwrap();
+        let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&bytes))).unwrap();
+        let mut hasher = Sha256::new();
+        hasher.update(b"asset:v1");
+        hasher.update((hash.as_str().len() as u64).to_be_bytes());
+        hasher.update(hash.as_str().as_bytes());
+        let asset = format!("asset:v1:{:x}", hasher.finalize());
+        let query = WaveformQuery {
+            range: None,
+            target_points: 32,
+        };
+        // Admit A then B, but deterministically execute B before delayed A.
+        let older = runtime.begin_waveform_request();
+        let newer = runtime.begin_waveform_request();
+        let result = runtime
+            .query_waveform(&asset, &hash, &path, &query, newer)
+            .unwrap();
+        assert_eq!(result.frame_count, 128);
+        assert!(matches!(
+            runtime.query_waveform(&asset, &hash, &path, &query, older),
+            Err(AudioRuntimeError::Audio(AudioError::Cancelled))
+        ));
+        // Starting A did not invalidate B, including its subsequent cache read.
+        assert!(runtime
+            .query_waveform(&asset, &hash, &path, &query, newer)
+            .is_ok());
+        let _latest = runtime.begin_waveform_request();
+        assert!(matches!(
+            runtime.query_waveform(&asset, &hash, &path, &query, newer),
+            Err(AudioRuntimeError::Audio(AudioError::Cancelled))
+        ));
+        assert_eq!(fs::read(path).unwrap(), bytes);
     }
 
     #[test]
