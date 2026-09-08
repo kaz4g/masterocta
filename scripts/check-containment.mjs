@@ -383,6 +383,10 @@ const expectedV2Commands = [
   "v2_audio_preview_create",
   "v2_audio_preview_read",
   "v2_audio_waveform_get",
+  // Waveform 2.0: root/asset-scoped read-only peaks and tokenized range audio.
+  // No path argument, write grant, or legacy command is introduced.
+  "v2_audio_waveform_query",
+  "v2_audio_preview_range_create",
   "v2_change_apply",
   "v2_change_get_plan",
   "v2_change_plan",

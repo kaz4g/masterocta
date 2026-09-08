@@ -1,3 +1,4 @@
+use ot_audio::waveform_v2::{FrameRange, WaveformQuery, WaveformWindow};
 use ot_audio::{create_preview, AudioError, WaveformCache, WaveformSlice};
 use ot_domain::{ContentHash, RootId};
 use sha2::{Digest, Sha256};
@@ -42,6 +43,7 @@ pub struct AudioRuntime {
     preview_ttl: Duration,
     nonce: [u8; 32],
     next_token: AtomicU64,
+    waveform_generation: AtomicU64,
 }
 
 impl AudioRuntime {
@@ -69,6 +71,7 @@ impl AudioRuntime {
             preview_ttl,
             nonce,
             next_token: AtomicU64::new(1),
+            waveform_generation: AtomicU64::new(0),
         })
     }
 
@@ -84,6 +87,34 @@ impl AudioRuntime {
             .map_err(AudioRuntimeError::Audio)
     }
 
+    pub fn query_waveform(
+        &self,
+        asset_id: &str,
+        expected_hash: &ContentHash,
+        source_path: &Path,
+        query: &WaveformQuery,
+    ) -> Result<WaveformWindow, AudioRuntimeError> {
+        let generation = self.waveform_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.waveform_cache.query(asset_id, expected_hash, source_path, query, || {
+            self.waveform_generation.load(Ordering::SeqCst) == generation
+        }).map_err(AudioRuntimeError::Audio)
+    }
+
+    pub fn create_range_preview_token(
+        &self,
+        root_id: &RootId,
+        asset_id: &str,
+        expected_hash: &ContentHash,
+        source_path: &Path,
+        range: FrameRange,
+    ) -> Result<PreviewTicket, AudioRuntimeError> {
+        let _generation = self.preview_generation.lock()
+            .map_err(|_| AudioRuntimeError::Unavailable)?;
+        let preview = self.waveform_cache.preview_range(expected_hash, source_path, range)
+            .map_err(AudioRuntimeError::Audio)?;
+        self.store_preview(root_id, asset_id, preview)
+    }
+
     pub fn create_preview_token(
         &self,
         root_id: &RootId,
@@ -97,6 +128,15 @@ impl AudioRuntime {
             .map_err(|_| AudioRuntimeError::Unavailable)?;
         let preview =
             create_preview(expected_hash, source_path).map_err(AudioRuntimeError::Audio)?;
+        self.store_preview(root_id, asset_id, preview)
+    }
+
+    fn store_preview(
+        &self,
+        root_id: &RootId,
+        asset_id: &str,
+        preview: ot_audio::PreviewAudio,
+    ) -> Result<PreviewTicket, AudioRuntimeError> {
         let now = Instant::now();
         let expires_at = now + self.preview_ttl;
         let token = self.new_token(root_id, asset_id);

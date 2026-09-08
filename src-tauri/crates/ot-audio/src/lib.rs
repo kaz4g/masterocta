@@ -16,6 +16,8 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
+pub mod waveform_v2;
+
 pub const WAVEFORM_ANALYZER_VERSION: &str = "waveform:v1";
 pub const MIN_TARGET_POINTS: usize = 32;
 pub const MAX_TARGET_POINTS: usize = 4096;
@@ -58,6 +60,7 @@ pub struct PreviewAudio {
 
 #[derive(Debug)]
 pub enum AudioError {
+    Cancelled,
     InvalidRequest(&'static str),
     SourceUnavailable(String),
     SourceChanged,
@@ -70,6 +73,7 @@ pub enum AudioError {
 impl AudioError {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::Cancelled => "AUDIO_REQUEST_CANCELLED",
             Self::InvalidRequest(_) => "INVALID_AUDIO_REQUEST",
             Self::SourceUnavailable(_) => "AUDIO_SOURCE_UNAVAILABLE",
             Self::SourceChanged => "AUDIO_SOURCE_CHANGED",
@@ -88,6 +92,7 @@ impl AudioError {
 impl std::fmt::Display for AudioError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Cancelled => formatter.write_str("audio request was superseded"),
             Self::InvalidRequest(message) => formatter.write_str(message),
             Self::SourceUnavailable(message) => {
                 write!(formatter, "audio source is unavailable: {message}")
@@ -548,7 +553,7 @@ fn validate_cached_waveform(cached: &CachedWaveform) -> Result<(), AudioError> {
     Ok(())
 }
 
-fn write_cache(path: &Path, cached: &CachedWaveform) -> Result<(), AudioError> {
+fn write_cache(path: &Path, cached: &impl Serialize) -> Result<(), AudioError> {
     let encoded = serde_json::to_vec(cached).map_err(|error| {
         AudioError::CacheUnavailable(format!("could not encode cache: {error}"))
     })?;

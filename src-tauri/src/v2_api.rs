@@ -25,6 +25,7 @@ use ot_application::{
     StoreLibrarySnapshot,
 };
 use ot_audio::AudioError;
+use ot_audio::waveform_v2::{FrameRange, WaveformQuery, WaveformWindow};
 use ot_domain::{
     ContentHash, FileInstance, InvalidManualMetadata, LibraryProject, LibrarySet, LibrarySnapshot,
     ManualAssetMetadata, ManualNote, ManualTag, RenameSampleIntent, RootId, RootRelativePath,
@@ -4087,6 +4088,69 @@ pub async fn v2_audio_waveform_get(
     .map_err(ApiError::task_failed)?
 }
 
+fn query_audio_waveform_sync(
+    registry: &RootRegistry,
+    catalog: &SharedCatalog,
+    audio: &SharedAudioRuntime,
+    root_id: &RootId,
+    asset_id: &str,
+    query: &WaveformQuery,
+) -> Result<WaveformWindow, ApiError> {
+    query.validate().map_err(AudioRuntimeError::Audio)?;
+    let result = with_live_audio_source(registry, catalog, root_id, asset_id, |source| {
+        audio.query_waveform(asset_id, &source.content_hash, &source.absolute_path, query)
+    })?;
+    registry.resolve(root_id)?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn v2_audio_waveform_query(
+    root_id: String,
+    asset_id: String,
+    query: WaveformQuery,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<WaveformWindow, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        query_audio_waveform_sync(&registry, &catalog, &audio, &root_id, &asset_id, &query)
+    }).await.map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_preview_range_create(
+    root_id: String,
+    asset_id: String,
+    range: FrameRange,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<AudioPreviewTokenDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        let ticket = with_live_audio_source(&registry, &catalog, &root_id, &asset_id, |source| {
+            audio.create_range_preview_token(&root_id, &asset_id, &source.content_hash, &source.absolute_path, range)
+        })?;
+        registry.resolve(&root_id)?;
+        Ok(AudioPreviewTokenDto {
+            preview_token: ticket.token,
+            expires_in_seconds: ticket.expires_in_seconds,
+            mime_type: "audio/wav",
+            byte_length: ticket.byte_length,
+            duration_millis: ticket.duration_millis,
+            truncated: ticket.truncated,
+        })
+    }).await.map_err(ApiError::task_failed)?
+}
+
 #[tauri::command]
 pub async fn v2_audio_preview_create(
     root_id: String,
@@ -6423,6 +6487,16 @@ mod tests {
         let preview =
             read_audio_preview_sync(&registry, &audio, &root_id, &ticket.preview_token).unwrap();
 
+        let detail = query_audio_waveform_sync(
+            &registry, &catalog, &audio, &root_id, &asset_id,
+            &WaveformQuery { range: Some(FrameRange { start_frame: 1, end_frame: 33 }), target_points: 32 },
+        ).unwrap();
+        assert_eq!(detail.frames_per_peak, 1);
+        assert_eq!(detail.channel_peaks[0].len(), 32);
+        let detail_json = serde_json::to_string(&detail).unwrap();
+        assert!(!detail_json.contains("sha256:"));
+        assert!(!detail_json.contains(root.path().to_str().unwrap()));
+        assert!(detail_json.contains("\"startFrame\":\"1\""));
         assert_eq!(waveform.analyzer_version, "waveform:v1");
         assert_eq!(waveform.sample_rate, 8_000);
         assert_eq!(waveform.channels, 1);
