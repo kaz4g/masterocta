@@ -2,6 +2,10 @@
 
 use std::fmt;
 
+pub mod onsets;
+pub mod slice_draft;
+pub mod slicing;
+
 const FILE_INSTANCE_ID_PREFIX: &str = "fileinst:v1:";
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
