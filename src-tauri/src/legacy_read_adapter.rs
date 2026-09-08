@@ -406,6 +406,9 @@ fn classify_storage_scope(
     SampleStorageScope::Unclassified
 }
 
+const BANK_PARSER_NAME: &str = crate::bank_validation::BANK_VALIDATOR_NAME;
+const BANK_PARSER_REVISION: &str = crate::bank_validation::BANK_VALIDATOR_REVISION;
+
 const STATE_PARSER_NAME: &str = PROJECT_PARSER_NAME;
 const STATE_PARSER_REVISION: &str = PROJECT_PARSER_REVISION;
 
@@ -971,12 +974,21 @@ fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProv
                 }
                 Err(_) => StateDocumentParseStatus::Malformed,
             };
-            (status, parser_provenance(source_version, None))
+            (status, bank_parser_provenance(source_version))
         }
         Err(_) => (
             StateDocumentParseStatus::Malformed,
             parser_provenance(None, None),
         ),
+    }
+}
+
+fn bank_parser_provenance(source_version: Option<String>) -> ParserProvenance {
+    ParserProvenance {
+        parser_name: BANK_PARSER_NAME.into(),
+        parser_revision: BANK_PARSER_REVISION.into(),
+        source_version,
+        compatibility_evidence: None,
     }
 }
 
@@ -1369,7 +1381,12 @@ mod tests {
         assert_eq!(documents.len(), 4);
         assert!(documents.iter().all(|document| {
             document.parse_status == StateDocumentParseStatus::Parsed
-                && document.parser_provenance.parser_revision == STATE_PARSER_REVISION
+                && document.parser_provenance.parser_revision
+                    == if document.kind == StateDocumentKind::Bank {
+                        BANK_PARSER_REVISION
+                    } else {
+                        STATE_PARSER_REVISION
+                    }
         }));
         assert!(documents.iter().any(|document| {
             document.kind == StateDocumentKind::Project
