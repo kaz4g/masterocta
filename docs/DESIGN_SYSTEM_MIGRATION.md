@@ -240,6 +240,10 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
   danger / success / success-strong / danger-bright) in `App.css`,
   `PartsPanel.css`, and `AudioPoolPage.css` →
   `color-mix(in srgb, var(--mo-*) N%, transparent)`.
+- Keep the original `rgba(...)` declaration immediately **before** each
+  `color-mix(...)` overlay so Safari 11 / macOS 10.13 WKWebView (build target
+  `safari11`) still paints status borders and selection chrome when `color-mix`
+  is unsupported.
 - Pure black/white overlays and near-palette rgba remain for later.
 
 ### Later (documented only until started)
