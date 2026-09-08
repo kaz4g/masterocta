@@ -75,6 +75,16 @@ function WaveformSession({ rootId, assetId, displayName, api = audioApi }: Wavef
     && rangeLength(audition) * BigInt(waveform.channels * 2) <= 16n * 1024n * 1024n;
   const fullView = view && waveform && view.startFrame === '0' && view.endFrame === waveform.frameCount;
 
+  useEffect(() => {
+    // A completed preview must still belong to the range currently being auditioned.
+    previewRequest.current += 1;
+    setPreviewUrl(null);
+    setPreviewRange(null);
+    setPlayhead(null);
+    setPreviewing(false);
+    setPreviewError(null);
+  }, [audition?.startFrame, audition?.endFrame]);
+
   function selectRange(next: AudioFrameRange | null) {
     setSelection(next);
     setStartInput(next?.startFrame ?? '0');
@@ -129,7 +139,7 @@ function WaveformSession({ rootId, assetId, displayName, api = audioApi }: Wavef
         <Button variant="secondary" disabled={!view || loading || !!fullView} onClick={() => setViewport(zoomRange(view!, waveform!.frameCount, 'out', selection))}>Zoom out</Button>
         <Button variant="secondary" disabled={!view || loading || !!fullView} onClick={() => setViewport(null)}>Fit</Button>
         <Button variant="secondary" disabled={!selection || loading} onClick={() => setViewport(selection)}>Zoom selection</Button>
-        <label>Channels<select aria-label="Waveform channels" value={channelView} onChange={event => setChannelView(event.target.value as ChannelView)}>
+        <label>Display channels<select aria-label="Waveform channels" value={channelView} onChange={event => setChannelView(event.target.value as ChannelView)}>
           <option value="split">{waveform?.channels === 1 ? 'Mono' : 'Stereo · split'}</option>
           {waveform?.channels === 2 && <><option value="overlay">Stereo · overlay</option><option value="left">Left</option><option value="right">Right</option></>}
         </select></label>
@@ -142,7 +152,7 @@ function WaveformSession({ rootId, assetId, displayName, api = audioApi }: Wavef
           {channels.map((channel, index) => <g key={channel} transform={`translate(0,${channelView === 'split' ? index * 100 : 0})`}>
             <line x1="0" x2="1000" y1="50" y2="50" className="waveform-center" />
             <path data-channel={channel} className={`waveform-channel waveform-channel-${channel}`} d={peakPath(waveform.channelPeaks[channel], view, waveform.framesPerPeak)} />
-            <text x="8" y="16" className="waveform-channel-label">{waveform.channels === 1 ? 'MONO' : channel === 0 ? 'L' : 'R'}</text>
+            <text x={channelView === 'overlay' ? 8 + index * 50 : 8} y="16" className="waveform-channel-label">{waveform.channels === 1 ? 'MONO' : channel === 0 ? 'L' : 'R'}</text>
           </g>)}
           {selectionEnd > selectionStart && <rect className="waveform-selection" x={selectionStart * 1000} y="0" width={(selectionEnd - selectionStart) * 1000} height={plotHeight} />}
           {cursor >= 0 && cursor <= 1 && <line className="waveform-playhead" x1={cursor * 1000} x2={cursor * 1000} y1="0" y2={plotHeight} />}

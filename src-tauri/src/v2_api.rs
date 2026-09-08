@@ -24,8 +24,8 @@ use ot_application::{
     ListLibrary, LoadLibrarySnapshot, LoadManualAssetMetadata, ReplaceManualAssetMetadata,
     StoreLibrarySnapshot,
 };
-use ot_audio::AudioError;
 use ot_audio::waveform_v2::{FrameRange, WaveformQuery, WaveformWindow};
+use ot_audio::AudioError;
 use ot_domain::{
     ContentHash, FileInstance, InvalidManualMetadata, LibraryProject, LibrarySet, LibrarySnapshot,
     ManualAssetMetadata, ManualNote, ManualTag, RenameSampleIntent, RootId, RootRelativePath,
@@ -4119,7 +4119,9 @@ pub async fn v2_audio_waveform_query(
     let audio = Arc::clone(audio.inner());
     tauri::async_runtime::spawn_blocking(move || {
         query_audio_waveform_sync(&registry, &catalog, &audio, &root_id, &asset_id, &query)
-    }).await.map_err(ApiError::task_failed)?
+    })
+    .await
+    .map_err(ApiError::task_failed)?
 }
 
 #[tauri::command]
@@ -4137,7 +4139,13 @@ pub async fn v2_audio_preview_range_create(
     let audio = Arc::clone(audio.inner());
     tauri::async_runtime::spawn_blocking(move || {
         let ticket = with_live_audio_source(&registry, &catalog, &root_id, &asset_id, |source| {
-            audio.create_range_preview_token(&root_id, &asset_id, &source.content_hash, &source.absolute_path, range)
+            audio.create_range_preview_token(
+                &root_id,
+                &asset_id,
+                &source.content_hash,
+                &source.absolute_path,
+                range,
+            )
         })?;
         registry.resolve(&root_id)?;
         Ok(AudioPreviewTokenDto {
@@ -4148,7 +4156,9 @@ pub async fn v2_audio_preview_range_create(
             duration_millis: ticket.duration_millis,
             truncated: ticket.truncated,
         })
-    }).await.map_err(ApiError::task_failed)?
+    })
+    .await
+    .map_err(ApiError::task_failed)?
 }
 
 #[tauri::command]
@@ -6488,9 +6498,20 @@ mod tests {
             read_audio_preview_sync(&registry, &audio, &root_id, &ticket.preview_token).unwrap();
 
         let detail = query_audio_waveform_sync(
-            &registry, &catalog, &audio, &root_id, &asset_id,
-            &WaveformQuery { range: Some(FrameRange { start_frame: 1, end_frame: 33 }), target_points: 32 },
-        ).unwrap();
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            &WaveformQuery {
+                range: Some(FrameRange {
+                    start_frame: 1,
+                    end_frame: 33,
+                }),
+                target_points: 32,
+            },
+        )
+        .unwrap();
         assert_eq!(detail.frames_per_peak, 1);
         assert_eq!(detail.channel_peaks[0].len(), 32);
         let detail_json = serde_json::to_string(&detail).unwrap();

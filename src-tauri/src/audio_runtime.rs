@@ -95,9 +95,11 @@ impl AudioRuntime {
         query: &WaveformQuery,
     ) -> Result<WaveformWindow, AudioRuntimeError> {
         let generation = self.waveform_generation.fetch_add(1, Ordering::SeqCst) + 1;
-        self.waveform_cache.query(asset_id, expected_hash, source_path, query, || {
-            self.waveform_generation.load(Ordering::SeqCst) == generation
-        }).map_err(AudioRuntimeError::Audio)
+        self.waveform_cache
+            .query(asset_id, expected_hash, source_path, query, || {
+                self.waveform_generation.load(Ordering::SeqCst) == generation
+            })
+            .map_err(AudioRuntimeError::Audio)
     }
 
     pub fn create_range_preview_token(
@@ -108,9 +110,13 @@ impl AudioRuntime {
         source_path: &Path,
         range: FrameRange,
     ) -> Result<PreviewTicket, AudioRuntimeError> {
-        let _generation = self.preview_generation.lock()
+        let _generation = self
+            .preview_generation
+            .lock()
             .map_err(|_| AudioRuntimeError::Unavailable)?;
-        let preview = self.waveform_cache.preview_range(expected_hash, source_path, range)
+        let preview = self
+            .waveform_cache
+            .preview_range(expected_hash, source_path, range)
             .map_err(AudioRuntimeError::Audio)?;
         self.store_preview(root_id, asset_id, preview)
     }

@@ -23,6 +23,7 @@ interface AdditiveCopyChangeDrawerProps {
   onCommitted: () => Promise<void> | void;
   onRecovered: () => Promise<void> | void;
   onBusyChange?: (busy: boolean) => void;
+  onPlanPresenceChange?: (present: boolean) => void;
   onRecoveryChange?: (recovery: ChangeRecoveryStatus) => void;
 }
 
@@ -65,6 +66,7 @@ export function AdditiveCopyChangeDrawer({
   onCommitted,
   onRecovered,
   onBusyChange,
+  onPlanPresenceChange,
   onRecoveryChange,
 }: AdditiveCopyChangeDrawerProps) {
   const [destination, setDestination] = useState("");
@@ -83,6 +85,10 @@ export function AdditiveCopyChangeDrawer({
     setApprovedRecoveryOperationId(null);
     setError(null);
   }, [session.rootId, selectedAsset?.fileInstanceId]);
+
+  useEffect(() => {
+    onPlanPresenceChange?.(plan !== null);
+  }, [plan, onPlanPresenceChange]);
 
   const additiveRecoveryRequired = (recovery?.recoveryRequired ?? true)
     || status?.recoveryRequired === true;

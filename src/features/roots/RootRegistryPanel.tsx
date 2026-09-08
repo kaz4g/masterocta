@@ -98,6 +98,7 @@ export function RootRegistryPanel({
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameModalAsset, setRenameModalAsset] = useState<CatalogAssetSelection | null>(null);
   const [cloneVerification, setCloneVerification] = useState<CloneVerification | null>(null);
+  const [copyPlanReady, setCopyPlanReady] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [sourceEvidenceId, setSourceEvidenceId] = useState<string | null>(null);
 
@@ -183,6 +184,7 @@ export function RootRegistryPanel({
       setRenameModalOpen(false);
       setRenameModalAsset(null);
       setOperationsOpen(false);
+      setCopyPlanReady(false);
       setCloneVerification(null);
       setChangeBusy(false);
     } catch (reason) {
@@ -402,6 +404,15 @@ export function RootRegistryPanel({
     || renameRecovery === null
     || renameRecovery.recoveryRequired;
   const renameBlocked = writeBlocked;
+  const operationNotice = recovery?.recoveryRequired || renameRecovery?.recoveryRequired
+    ? "Recovery required"
+    : recovery === null || renameRecovery === null
+      ? "Operation status unavailable"
+      : copyPlanReady
+        ? "Copy plan ready for review"
+        : renameRecovery.operations.length + recovery.operations.length > 0
+          ? "Saved operations available"
+          : "No pending operations";
 
   function openRenameModal() {
     if (selectedAsset === null || renameBlocked) return;
@@ -426,7 +437,7 @@ export function RootRegistryPanel({
         >
           {catalogReady && <div className="mo-workspace-operation-status">
             <Button variant="secondary" onClick={() => setOperationsOpen(true)}>Operations</Button>
-            <span role="status">{writeBlocked ? "Check operation safety status" : renameRecovery.operations.length + (recovery?.operations.length ?? 0) > 0 ? "Saved operations available" : "No pending operations"}</span>
+            <span role="status">{operationNotice}</span>
           </div>}
         </SourcesPane>
       }
@@ -537,6 +548,7 @@ export function RootRegistryPanel({
               api={changeClient}
               disabled={busy}
               refreshSession={refreshSessionBeforeApply}
+              onPlanPresenceChange={setCopyPlanReady}
               onCommitted={refreshAfterCommit}
               onRecovered={refreshAfterRecovery}
               onBusyChange={setChangeBusy}

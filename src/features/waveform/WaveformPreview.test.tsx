@@ -43,6 +43,7 @@ describe('Waveform 2.0', () => {
     const client = api(); vi.mocked(client.queryWaveform).mockImplementation((_root, _asset, query) => Promise.resolve(waveformFixture(query, '62000', 1000)));
     render(<WaveformPreview {...props} api={client} />);
     await selectRange('61000', '62000');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
     expect(await screen.findByLabelText('Preview kick.wav')).toHaveAttribute('src', 'blob:preview');
     expect(client.createRangePreviewToken).toHaveBeenCalledWith(props.rootId, props.assetId, { startFrame: '61000', endFrame: '62000' });
@@ -59,9 +60,11 @@ describe('Waveform 2.0', () => {
   it('rejects mismatched preview bytes and releases the previous object URL', async () => {
     const client = api(); render(<WaveformPreview {...props} api={client} />);
     await screen.findByRole('img', { name: 'Audio waveform' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
     await screen.findByLabelText('Preview kick.wav');
     vi.mocked(client.readPreview).mockResolvedValue(new Uint8Array([1]).buffer);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Preview response failed validation');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
@@ -72,6 +75,7 @@ describe('Waveform 2.0', () => {
     vi.mocked(client.readPreview).mockReturnValue(new Promise(resolve => { finish = resolve; }));
     const view = render(<WaveformPreview {...props} api={client} />);
     await screen.findByRole('img', { name: 'Audio waveform' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
     await waitFor(() => expect(client.readPreview).toHaveBeenCalled());
     view.rerender(<WaveformPreview {...props} assetId="asset:new" displayName="new.wav" api={client} />);
@@ -79,6 +83,19 @@ describe('Waveform 2.0', () => {
     await act(async () => finish?.(new Uint8Array([82, 73, 70, 70]).buffer));
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     await screen.findByRole('img', { name: 'Audio waveform' });
+    expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled();
+  });
+  it('discards a pending preview when its selected range changes', async () => {
+    const client = api(); let finish: ((bytes: ArrayBuffer) => void) | undefined;
+    vi.mocked(client.readPreview).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    render(<WaveformPreview {...props} api={client} />);
+    await selectRange('100', '132');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Load preview' }));
+    await waitFor(() => expect(client.readPreview).toHaveBeenCalled());
+    await selectRange('200', '232');
+    await act(async () => finish?.(new Uint8Array([82, 73, 70, 70]).buffer));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Load preview' })).toBeEnabled();
   });
   it('discards stale waveform responses when an asset changes', async () => {
