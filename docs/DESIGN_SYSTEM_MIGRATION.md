@@ -69,6 +69,7 @@ Semantic `--mo-*` tokens are canonical for new code:
 | `--mo-accent-hover` / `--mo-accent-pressed` | Accent states |
 | `--mo-success` / `--mo-warning` / `--mo-danger` | Status |
 | `--mo-info` | Informational highlights |
+| `--mo-info-soft` | Soft info / folder icons |
 
 Legacy `--elektron-*` names were removed in PR-DS7. New code must use `--mo-*`
 only.

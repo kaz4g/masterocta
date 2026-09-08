@@ -508,7 +508,7 @@ td.col-size {
 .folder-icon {
   margin-right: 0.5rem;
   flex-shrink: 0;
-  color: #64b5f6;
+  color: var(--mo-info-soft);
 }
 
 .audio-files-table td.col-name {

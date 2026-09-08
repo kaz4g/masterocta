@@ -28,4 +28,6 @@
   --mo-danger: #dc3545;
   --mo-danger-bright: #f44336;
   --mo-info: #4a9eff;
+  /* Audio Pool folder icons (material light-blue; distinct from --mo-info). */
+  --mo-info-soft: #64b5f6;
 }
