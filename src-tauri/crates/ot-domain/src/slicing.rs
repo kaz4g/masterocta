@@ -115,7 +115,10 @@ pub fn consecutive_slices(
         .map(|(index, start)| {
             FrameRange::new(
                 *start,
-                starts.get(index + 1).copied().unwrap_or(region.end_exclusive),
+                starts
+                    .get(index + 1)
+                    .copied()
+                    .unwrap_or(region.end_exclusive),
             )
         })
         .collect()
@@ -161,7 +164,17 @@ mod tests {
             );
         }
         for invalid in [
-            "", "00", "01", "-1", "+1", " 1", "1 ", "1e3", "1.0", "１", "18446744073709551616",
+            "",
+            "00",
+            "01",
+            "-1",
+            "+1",
+            " 1",
+            "1 ",
+            "1e3",
+            "1.0",
+            "１",
+            "18446744073709551616",
         ] {
             assert_eq!(
                 PcmFrame::parse_decimal(invalid),
@@ -173,14 +186,21 @@ mod tests {
     #[test]
     fn time_conversion_uses_source_rate_and_rounds_half_up() {
         assert_eq!(
-            PcmFrame::from_microseconds(1_000_000, 44_100).unwrap().get(),
+            PcmFrame::from_microseconds(1_000_000, 44_100)
+                .unwrap()
+                .get(),
             44_100
         );
         assert_eq!(
-            PcmFrame::from_microseconds(1_000_000, 48_000).unwrap().get(),
+            PcmFrame::from_microseconds(1_000_000, 48_000)
+                .unwrap()
+                .get(),
             48_000
         );
-        assert_eq!(PcmFrame::from_microseconds(1_000, 44_100).unwrap().get(), 44);
+        assert_eq!(
+            PcmFrame::from_microseconds(1_000, 44_100).unwrap().get(),
+            44
+        );
         assert_eq!(PcmFrame::from_microseconds(500, 1_000).unwrap().get(), 1);
         assert_eq!(
             PcmFrame::from_microseconds(1, 0),

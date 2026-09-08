@@ -226,7 +226,7 @@ threshold(sensitivity) = 5.0 - 0.035*sensitivity
 
 1. `S[m] >= threshold`。
 2. 前後8ms内のlocal maximum。plateauは最も早いframeを採用。
-3. 周辺10msの最大channel RMSがsilence floor以上。初期floor=-72dBFS、詳細設定で-90〜-40dBFS。
+3. PCM補正後の `estimatedAttackFrame` 周辺10msの最大channel RMSがsilence floor以上。FFT中心は立ち上がりより前に出るため、補正前の中心ではgateしない。初期floor=-72dBFS、詳細設定で-90〜-40dBFS。
 
 RMS gateは帯域の意味を持たず、完全無音・量子化ノイズ排除の補助。背景が大きい素材の誤検出はこのgateだけで解決できない。
 
@@ -242,7 +242,7 @@ STFT中心は切り口ではない。窓の影響で特徴量の山が実アタ�
 2. channelごとに0.5ms長の移動RMS envelopeを求め、その最大値 `E[n]` を使う。RMS窓は `[n-W+1,n]` の因果窓、`W=max(1,round(Fs*0.0005))` と明記する。
 3. `G[n]=max(0,E[n+W]-E[n-W])` の局所最大を立ち上がり候補とする。候補に対して `G[n]*exp(-0.5*((n-t_m)/(N_short/2))^2)` を評価する。
 4. 最も高い評価のriseを選ぶ。同点は早い位置。複数のSTFT候補が同じriseに割り当たった場合は、score優先で1件にまとめ、消した候補IDを診断に残す。
-5. riseの直前、最大20msまで戻る。局所minimumを基点に、そのminimumとriseのE差の10%を初めて上回り、以後0.5ms以上上回る位置を `estimatedAttackFrame` とする。0.5ms RMSの平滑化誤差は評価対象に含める。
+5. riseの直前、最大20msまで戻る。局所minimumを基点に、そのminimumとrise後方の `E[rise+W]` の差の10%を初めて上回り、以後0.5ms以上上回る位置を `estimatedAttackFrame` とする。0.5ms RMSの平滑化誤差は評価対象に含める。
 6. 有効なrise/minimumがない、最良と次点の評価比が1.25未満、近接打音の対応が曖昧な場合は `BOUNDARY_UNCERTAIN`。位置を捏造せず、暫定境界と推定範囲を表示する。
 
 この局所RMS法は、低音の持続中にハットが乗る場合には弱い。該当subsetで失敗が多ければ、優勢bandのFIR envelopeを使うrefinerを追加評価する。FIRを入れる際は群遅延と端paddingを座標契約に追加する。初版から「band検出を入れたので境界精度も保証できる」とはしない。

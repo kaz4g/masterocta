@@ -12,6 +12,7 @@ import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor
 import { ProjectWorkspace } from "../project-workspace";
 import { UsageGraphPanel } from "../usage";
 import { WaveformPreview } from "../waveform/WaveformPreview";
+import { SliceWorkbench } from "../slicing/SliceWorkbench";
 import { AudioLibrary } from "./AudioLibrary";
 import "./CatalogLibraryBrowser.css";
 
@@ -236,6 +237,11 @@ export function CatalogLibraryBrowser({
                 api={audioClient}
                 rootId={rootId}
                 assetId={selectedFile.assetId}
+                displayName={selectedFile.displayName}
+              />
+              <SliceWorkbench
+                rootId={rootId}
+                fileInstanceId={selectedFile.fileInstanceId}
                 displayName={selectedFile.displayName}
               />
               <UsageGraphPanel

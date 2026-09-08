@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+mod slice_drafts;
+
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
     LibrarySnapshot, ManualAssetMetadata, ManualNote, ManualTag, ParserProvenance,
@@ -19,8 +21,9 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 6;
+const LATEST_SCHEMA_VERSION: u64 = 7;
 const MIGRATIONS: &[(u64, &str)] = &[
+    // Entries are applied in ascending version order.
     (1, include_str!("../migrations/0001_catalog_foundation.sql")),
     (2, include_str!("../migrations/0002_file_inventory.sql")),
     (
@@ -39,6 +42,7 @@ const MIGRATIONS: &[(u64, &str)] = &[
         6,
         include_str!("../migrations/0006_project_compatibility_evidence.sql"),
     ),
+    (7, include_str!("../migrations/0007_slice_drafts.sql")),
 ];
 
 type StateProjection = (
@@ -2371,7 +2375,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 6);
+        assert_eq!(count, 7);
         drop(catalog);
 
         let reopened = SqliteCatalog::open(&path).unwrap();
@@ -2381,13 +2385,13 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 6);
+        assert_eq!(count, 7);
         drop(reopened);
         drop(directory);
     }
 
     #[test]
-    fn schema_v1_database_migrates_to_v6_without_losing_existing_projection() {
+    fn schema_v1_database_migrates_to_v7_without_losing_existing_projection() {
         let directory = TempDir::new().unwrap();
         let path = database_path(&directory, "v1.sqlite3");
         let mut connection = Connection::open(&path).unwrap();
@@ -2426,7 +2430,7 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(versions, 6);
+        assert_eq!(versions, 7);
         assert_eq!(snapshot.sets[0].display_name, "Existing Set");
         assert_eq!(
             snapshot.sets[0].projects[0].display_name,
@@ -2442,7 +2446,7 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); \
-                 INSERT INTO schema_migrations VALUES (7, 'future');",
+                 INSERT INTO schema_migrations VALUES (8, 'future');",
             )
             .unwrap();
         drop(connection);
@@ -2451,8 +2455,8 @@ mod tests {
         assert_eq!(
             error,
             CatalogError::UnsupportedSchema {
-                found: 7,
-                supported: 6,
+                found: 8,
+                supported: 7,
             }
         );
     }

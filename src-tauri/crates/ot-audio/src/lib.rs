@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod onsets;
 pub mod pcm;
 
 use ot_domain::ContentHash;

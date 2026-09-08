@@ -534,7 +534,10 @@ fn reject_local_target_inside_root(path: &Path, source_root: &Path) -> Result<()
     Ok(())
 }
 
-pub(crate) fn open_root_regular_file(
+/// Open a read-only regular file relative to an already-authorized root.
+/// Walk each child using directory descriptors and reject symlinks and FIFOs.
+/// Callers must validate the root session before and after reading.
+pub fn open_root_regular_file(
     root: &Path,
     relative_path: &RootRelativePath,
 ) -> Result<File, BackupError> {

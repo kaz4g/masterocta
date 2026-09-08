@@ -20,6 +20,7 @@ use symphonia::core::io::MediaSourceStream;
 pub const MAX_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_REGION_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_REGION_SECONDS: u64 = 30;
+const MAX_ANALYSIS_BYTES: usize = 256 * 1024 * 1024;
 
 #[derive(Debug)]
 pub enum PcmError {
@@ -114,9 +115,45 @@ impl PcmSnapshot {
     /// Decode from frame zero for exact coordinates, retaining only the requested
     /// half-open range. Validate the entire stream before publishing any result.
     /// A later indexed backend may optimize this without changing the contract.
-    pub fn region(
+    pub fn region(&self, range: FrameRange, cancelled: &AtomicBool) -> Result<PcmRegion, PcmError> {
+        if range.frame_count() > MAX_REGION_SECONDS * u64::from(self.info.sample_rate) {
+            return Err(PcmError::LimitExceeded);
+        }
+        self.decode_range(range, MAX_REGION_BYTES, cancelled)
+    }
+
+    /// Selected analysis ROI plus real half-second context at both ends.
+    /// The allocation ceiling rejects oversized requests, never truncates them.
+    pub fn analysis_region(
+        &self,
+        region: FrameRange,
+        cancelled: &AtomicBool,
+    ) -> Result<PcmRegion, PcmError> {
+        use ot_domain::slicing::PcmFrame;
+        if region.within(self.info.frame_count).is_err()
+            || region.frame_count() > 600 * u64::from(self.info.sample_rate)
+        {
+            return Err(AudioError::InvalidRequest("invalid analysis range").into());
+        }
+        let context = u64::from(self.info.sample_rate) / 2;
+        let range = FrameRange::new(
+            PcmFrame::new(region.start().get().saturating_sub(context)),
+            PcmFrame::new(
+                region
+                    .end_exclusive()
+                    .get()
+                    .saturating_add(context)
+                    .min(self.info.frame_count),
+            ),
+        )
+        .map_err(|_| AudioError::InvalidRequest("invalid analysis context"))?;
+        self.decode_range(range, MAX_ANALYSIS_BYTES, cancelled)
+    }
+
+    fn decode_range(
         &self,
         range: FrameRange,
+        max_bytes: usize,
         cancelled: &AtomicBool,
     ) -> Result<PcmRegion, PcmError> {
         check_cancel(cancelled)?;
@@ -125,9 +162,7 @@ impl PcmSnapshot {
             .map_err(|_| AudioError::InvalidRequest("PCM range is outside the source"))?;
         let channels = usize::from(self.info.channels);
         let sample_count = range.frame_count() * channels as u64;
-        if range.frame_count() > MAX_REGION_SECONDS * u64::from(self.info.sample_rate)
-            || sample_count > (MAX_REGION_BYTES / size_of::<f32>()) as u64
-        {
+        if sample_count > (max_bytes / size_of::<f32>()) as u64 {
             return Err(PcmError::LimitExceeded);
         }
         let stream = MediaSourceStream::new(
@@ -295,10 +330,7 @@ fn inspect_container(
             data.len() - 8 - offset,
         )
     };
-    if !matches!(channels, 1 | 2)
-        || !matches!(bits, 16 | 24)
-        || !matches!(rate, 44_100 | 48_000)
-    {
+    if !matches!(channels, 1 | 2) || !matches!(bits, 16 | 24) || !matches!(rate, 44_100 | 48_000) {
         return Err(AudioError::UnsupportedFormat.into());
     }
     let alignment = u64::from(channels) * u64::from(bits / 8);

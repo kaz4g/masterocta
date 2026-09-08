@@ -19,6 +19,7 @@ mod rename_planning_facts;
 mod rename_recovery_runtime;
 mod rename_write_runtime;
 mod root_registry;
+mod slice_workbench;
 mod v2_api;
 mod write_runtime;
 
@@ -1368,6 +1369,7 @@ pub fn run() {
             app.manage(catalog);
             let audio_runtime = audio_runtime::open_shared_audio_runtime(&data_directory)?;
             app.manage(audio_runtime);
+            app.manage(Arc::new(slice_workbench::SliceWorkbench::new()?));
             let write_runtime = write_runtime::open_shared_write_runtime(&data_directory)?;
             app.manage(write_runtime);
             let executor_local_paths =
@@ -1404,6 +1406,15 @@ pub fn run() {
             v2_api::v2_library_list,
             v2_api::v2_asset_metadata_get,
             v2_api::v2_asset_metadata_replace,
+            v2_api::v2_audio_onsets_start,
+            v2_api::v2_audio_onsets_status,
+            v2_api::v2_audio_onsets_cancel,
+            v2_api::v2_slice_draft_get,
+            v2_api::v2_slice_proposal_create,
+            v2_api::v2_slice_draft_update,
+            v2_api::v2_audio_waveform_range_get,
+            v2_api::v2_audio_preview_region_create,
+            v2_api::v2_audio_preview_region_read,
             v2_api::v2_audio_waveform_get,
             v2_api::v2_audio_preview_create,
             v2_api::v2_audio_preview_read,

@@ -37,6 +37,7 @@ import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor
 import { SourcesPane } from "../sources";
 import { UsageGraphPanel } from "../usage";
 import { WaveformPreview } from "../waveform/WaveformPreview";
+import { SliceWorkbench } from "../slicing/SliceWorkbench";
 import "./RootRegistryPanel.css";
 
 export type RootDirectoryPicker = () => Promise<string | null>;
@@ -486,6 +487,11 @@ export function RootRegistryPanel({
                   api={audioClient}
                   rootId={session.rootId}
                   assetId={selectedAsset.assetId}
+                  displayName={selectedAsset.displayName}
+                />
+                <SliceWorkbench
+                  rootId={session.rootId}
+                  fileInstanceId={selectedAsset.fileInstanceId}
                   displayName={selectedAsset.displayName}
                 />
                 <UsageGraphPanel

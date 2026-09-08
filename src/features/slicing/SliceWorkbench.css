@@ -1,0 +1,32 @@
+.slice-workbench { border: 1px solid var(--color-border-subtle, #343941); border-radius: 8px; padding: 14px; background: #11151b; color: #e5e7eb; font-size: 12px; }
+.slice-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.slice-heading h4 { margin: 0; font-size: 14px; }
+.slice-heading span, .slice-hint { color: #a5aebb; }
+.slice-workbench p { line-height: 1.55; margin: 10px 0; }
+.slice-workbench summary { cursor: pointer; color: #c3cbd6; }
+.slice-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.slice-workbench button { border: 1px solid #454e5c; background: #202833; color: #e5e7eb; border-radius: 4px; padding: 6px 8px; cursor: pointer; font: inherit; }
+.slice-workbench button:hover:not(:disabled) { border-color: #f2a33c; }
+.slice-workbench button:disabled { opacity: 0.45; cursor: default; }
+.slice-workbench input:not([type="checkbox"]):not([type="range"]) { box-sizing: border-box; width: 100%; min-width: 70px; background: #161c24; color: #eef2f8; border: 1px solid #454e5c; border-radius: 3px; padding: 5px; font: inherit; }
+.slice-workbench input[type="range"] { width: 100%; accent-color: #f2a33c; }
+.slice-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; padding: 10px 0; border: 0; }
+.slice-fields label, .slice-actions label { display: grid; gap: 5px; }
+.slice-fields legend { padding-top: 10px; font-weight: 600; }
+.slice-coordinate { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.slice-waveform { display: block; width: 100%; min-height: 130px; background: #090d12; border: 1px solid #343941; touch-action: none; }
+.slice-peaks { fill: none; stroke: #7a8e9e; stroke-width: 1; }
+.slice-candidate { stroke: #d5d9de; stroke-dasharray: 3 4; opacity: 0.65; pointer-events: none; }
+.slice-marker { stroke: #f2a33c; stroke-width: 1.5; cursor: ew-resize; }
+.slice-marker.is-locked { stroke: #71bfff; }
+.slice-marker.is-selected { stroke-width: 3; }
+.slice-marker:focus { outline: none; stroke: #fff; }
+.slice-hit-target { fill: transparent; stroke: none; }
+.slice-error { color: #ff9c9c; }
+.slice-notice { color: #e8bf7e; }
+.slice-table { overflow-x: auto; margin: 10px 0; }
+.slice-table table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.slice-table th, .slice-table td { text-align: left; padding: 5px 3px; border-bottom: 1px solid #2b3440; }
+.slice-table tr.is-selected { background: #28333f; }
+.slice-table td:last-child { white-space: nowrap; }
+.slice-workbench :focus-visible { outline: 2px solid #71bfff; outline-offset: 2px; }

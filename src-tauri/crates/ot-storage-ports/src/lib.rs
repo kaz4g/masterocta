@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod slice_drafts;
+
 use ot_domain::{ContentHash, LibrarySnapshot, ManualAssetMetadata, RootId, RootRelativePath};
 use std::fmt;
 
