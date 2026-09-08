@@ -4342,13 +4342,7 @@ pub async fn v2_audio_waveform_query(
     let generation = audio.begin_waveform_request();
     tauri::async_runtime::spawn_blocking(move || {
         query_audio_waveform_sync(
-            &registry,
-            &catalog,
-            &audio,
-            &root_id,
-            &asset_id,
-            &query,
-            generation,
+            &registry, &catalog, &audio, &root_id, &asset_id, &query, generation,
         )
     })
     .await
