@@ -419,9 +419,10 @@ Later-RC freeze evidence conditions satisfied by RC5:
 
 Phase 3 workflow merge (#96 / #97) did **not** clear these blockers by itself.
 Runs `34016038137`, `34061897324`, and `34068535069` failed before a complete
-freeze tuple existed. RC5 run `34077117176` and local re-verification proved
-the later-RC candidate workflow, provenance, storage, and access-boundary
-mechanics. A current-main freeze tuple does not exist until RC6 is frozen.
+freeze tuple existed. RC5 run `34077117176` proved the later-RC candidate
+workflow, provenance, storage, and access-boundary mechanics. The current-main
+freeze tuple is RC6 run `34182724485`. It becomes formally `FROZEN` when this
+ledger merges to `main`.
 
 Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
 (`.github/workflows/gate-c-candidate.yml`). Do not use
@@ -478,30 +479,36 @@ Phase 3 merge
 → local SHA256 re-verification PASS
 → provenance / access boundary confirmation PASS
 → docs-only freeze ledger PR merged (#106 / 87a46b9)
-→ P2 correction PR (this branch)
+→ P2 correction PR merged
 → review + CI
-→ merge
 → merge SHA main CI success
 → open PR を 0 件にする
-  (#103 / #104 は branch を残して一時 close。M5 完了後に reopen/rebase)
-→ RC6 source commit/tree を新しい main tip で固定（まだ UNSET）
-→ Gate C Candidate Build を 1 回 dispatch
-→ artifact / provenance / access boundary を再検証
-→ RC6 freeze ledger PR
-→ Human Gate C on frozen RC6
+  (#103 / #104 / #105 は branch を残して一時 close。M5 完了後に reopen/rebase)
+→ RC6 source commit/tree fixed by operator preflight on main
+  3485118e9a19413eae9a3203338d0b361660a902 /
+  498da55fa04aead01ed13161379d84d8e734beac
+→ Gate C Candidate Build dispatched once as gate-c-rc6-3485118e9a19
+→ RC6 dispatch attempt 34182724485 SUCCESS recorded
+→ draft candidate retrieved
+→ local SHA256 re-verification PASS
+→ provenance / access boundary confirmation PASS
+→ docs-only freeze ledger PR (this branch)
+→ ledger merge
+→ Human Gate C on the frozen RC6 candidate
 → M5 closure PR
 ```
 
 A successful workflow run alone does **not** freeze an RC. A docs-only ledger
 PR must record the run evidence before that RC may be treated as `FROZEN`.
+Until this ledger merges to `main`, RC6 is not formally frozen on `main`.
 RC5 is frozen as a historical candidate only. Current-main Human Gate C on RC5
 is **FORBIDDEN**. Do not reuse RC2 run `34016038137`, RC3 run `34061897324`,
-RC4 run `34068535069`, or any in-progress DMG from those attempts as later
-candidate evidence. RC5 dispatch is one-shot. Do not rerun run `34077117176`,
-redispatch `gate-c-rc5-7b5b740d1db1`, or create RC6 without a new operator
-sequence.
+RC4 run `34068535069`, RC5 run `34077117176`, or any in-progress DMG from those
+attempts as later candidate evidence. RC5 and RC6 dispatch are one-shot. Do
+not rerun run `34182724485`, redispatch `gate-c-rc6-3485118e9a19`, or create
+RC7 without a new operator sequence.
 
-After RC5 ledger merge (#106) and before RC6 freeze:
+After this RC6 ledger merge and before Human Gate C:
 
 ```text
 RC1 = FROZEN_FAILED
@@ -509,11 +516,11 @@ RC2 = NOT_CREATED / identity UNSET
 RC3 = NOT_CREATED / historical pre-freeze failure
 RC4 = NOT_CREATED / historical pre-freeze failure
 RC5 = FROZEN (historical). current-main Human Gate C = FORBIDDEN
-RC6 = NOT_CREATED / identity UNSET / RC6_REQUIRED
+RC6 = FROZEN
 Human Gate C = NOT_RUN
 Gate C = NOT_PASS
 M5 = INCOMPLETE
-remaining M5 blockers = RC6 freeze + Human Gate C
+remaining M5 blocker = Human Gate C
 public distribution = NOT AUTHORIZED
 ```
 
@@ -521,9 +528,8 @@ RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. RC3 official identity fields remain `UNSET`. RC4 official
 identity fields remain `UNSET`. RC5 official identity is recorded as a
-historical freeze only. RC6 official identity fields remain `UNSET`.
-Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains
-`INCOMPLETE`. The remaining M5 blockers are RC6 freeze and Human Gate C.
+historical freeze only. Human Gate C remains `NOT_RUN`; Gate C remains
+`NOT_PASS`; M5 remains `INCOMPLETE`. The remaining M5 blocker is Human Gate C.
 Signing, notarization, and public distribution remain separate gates.
 
 ## RC3
@@ -869,9 +875,8 @@ complementary evidence:
 - local access-verdict SHA256 recorded above
 
 Do not rerun run `34077117176` or redispatch `gate-c-rc5-7b5b740d1db1`. Do
-not use RC5 for current-main Human Gate C. RC6 is required from a fresh
-operator preflight on post-P2 `main`. Do not create RC6 without that operator
-sequence. Do not rebuild the RC5 artifact from source for Human Gate C. RC5 is
+not use RC5 for current-main Human Gate C. RC6 is the current-main Human Gate C
+candidate. Do not rebuild the RC5 artifact from source for Human Gate C. RC5 is
 a personal/local evaluation candidate and a historical freeze record, not a
 public release and not the current-main Gate C target. Human Gate C remains
 `NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
@@ -880,33 +885,120 @@ public release and not the current-main Gate C target. Human Gate C remains
 
 | Field | Value |
 |---|---|
-| status | `NOT_CREATED` |
-| requirement | `RC6_REQUIRED` |
-| source commit | `UNSET` |
-| source tree | `UNSET` |
-| artifact | `UNSET` |
-| artifact SHA256 | `UNSET` |
-| app binary SHA256 | `UNSET` |
-| workflow name | `UNSET` |
-| workflow run ID | `UNSET` |
-| workflow run attempt | `UNSET` |
-| workflow run URL | `UNSET` |
-| workflow checkout SHA | `UNSET` |
-| build environment | `UNSET` |
-| codesign verification | `UNSET` |
-| DMG verification | `UNSET` |
-| in-run checksum manifest identity | `UNSET` |
-| in-run checksum manifest storage | `UNSET` |
-| in-run checksum manifest retrieval | `UNSET` |
-| candidate storage | `UNSET` |
-| candidate access boundary | `UNSET` |
+| status | `FROZEN` after this ledger merges to `main`; not formally frozen on `main` until then |
+| requirement | `SATISFIED` after this ledger merges to `main` |
+| candidate_id | `gate-c-rc6-3485118e9a19` |
+| source commit | `3485118e9a19413eae9a3203338d0b361660a902` |
+| source tree | `498da55fa04aead01ed13161379d84d8e734beac` |
+| workflow name | `Gate C Candidate Build` |
+| workflow file | `.github/workflows/gate-c-candidate.yml` |
+| workflow run ID | `34182724485` |
+| workflow run attempt | `1` |
+| workflow run URL | [`34182724485`](https://github.com/kaz4g/masterocta/actions/runs/34182724485) |
+| workflow result | `completed` / `success` |
+| workflow checkout SHA | `3485118e9a19413eae9a3203338d0b361660a902` |
+| draft release ID | `384424635` |
+| draft release tag | `gate-c-rc6-3485118e9a19` |
+| draft | `true` |
+| prerelease | `true` |
+| published | `false` |
+| target commitish | `3485118e9a19413eae9a3203338d0b361660a902` |
+| candidate storage | `GitHub draft release` |
+| candidate access boundary | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
 | public distribution | `NOT AUTHORIZED` |
+| artifact filename | `Masta-Octa_0.1.0_gate-c-rc6_3485118e9a19_aarch64.dmg` |
+| artifact SHA256 | `sha256:b87197976619ba0dce8b2d167a36e2a1ef9a4ee79275a6174328f61b98c701fb` |
+| enclosed binary relative path | `Masta-Octa.app/Contents/MacOS/masterocta` |
+| app binary SHA256 | `sha256:6d50961f080d9f9a1522ec5c6b90639dc608c950d0e636a78300227699d61088` |
+| in-run checksum manifest identity | `gate-c-rc6-3485118e9a19-checksum-manifest.json` |
+| in-run checksum manifest SHA256 | `sha256:b0b70770b0be51c9a050f462357daa7c89438e9f7d68270efe0e39c133072bed` |
+| in-run checksum manifest storage | `GitHub draft release 384424635` |
+| in-run checksum manifest retrieval | `authenticated draft release asset download` |
+| candidate evidence identity | `gate-c-rc6-3485118e9a19-evidence.json` |
+| candidate evidence SHA256 | `sha256:650d531ccf003191709f63d5c5f5b916b9a6435da86f4a9bd6300977a709537a` |
+| target architecture | `aarch64-apple-darwin` |
+| build environment | `github-actions-macos-arm64` |
+| Node version | `v22.23.2` |
+| pnpm version | `11.24.0` |
+| Rust version | `1.98.1` |
+| Cargo version | `1.98.1` |
+| Xcode version | `26.6` |
+| runner image | `macos-26@20260831.0337.3` |
+| DMG verification | `PASS` |
+| codesign classification | `AD_HOC_VERIFIED` |
+| codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
+| spctl result | `rejected_expected` |
+| Human Gate C | `NOT_RUN` |
 
-Do not infer these values from the current `main` tip. They stay `UNSET` until
-an explicit RC6 freeze records them together from a one-shot dispatch on the
-post-P2 main tip. RC5 identity must not be copied or reused as RC6 identity.
-Human Gate C on current `main` requires RC6 freeze first. Human Gate C remains
-`NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+RC6 source-to-artifact provenance chain:
+
+```text
+frozen source commit/tree
+  3485118e9a19413eae9a3203338d0b361660a902 /
+  498da55fa04aead01ed13161379d84d8e734beac
+→ run 34182724485 attempt 1 checkout of that SHA
+→ same run builds DMG
+→ same run writes checksum manifest + evidence
+→ stored as draft release 384424635 with exact 3 assets
+→ authenticated retrieval
+→ local SHA256 / DMG / binary / codesign re-verification
+→ anonymous access denial
+→ RC6 freeze tuple
+```
+
+Exact draft release asset set (3 assets):
+
+```text
+Masta-Octa_0.1.0_gate-c-rc6_3485118e9a19_aarch64.dmg
+  sha256:b87197976619ba0dce8b2d167a36e2a1ef9a4ee79275a6174328f61b98c701fb
+gate-c-rc6-3485118e9a19-checksum-manifest.json
+  sha256:b0b70770b0be51c9a050f462357daa7c89438e9f7d68270efe0e39c133072bed
+gate-c-rc6-3485118e9a19-evidence.json
+  sha256:650d531ccf003191709f63d5c5f5b916b9a6435da86f4a9bd6300977a709537a
+```
+
+Local re-verification after authenticated draft release retrieval:
+
+| Check | Result |
+|---|---|
+| authenticated release identity | `PASS` |
+| exact asset set | `PASS` / exactly 3 assets |
+| downloaded asset digest comparison | `PASS` |
+| candidate evidence contract | `PASS` |
+| candidate evidence identity binding | `PASS` |
+| checksum manifest binding | `PASS` |
+| DMG SHA256 comparison | `PASS` |
+| `hdiutil verify` | `PASS` |
+| readonly attach | `PASS` |
+| unique enclosed `.app` | `PASS` |
+| enclosed binary SHA256 comparison | `PASS` |
+| codesign classification comparison | `PASS` |
+| spctl result comparison | `PASS` |
+| clean detach | `PASS` |
+| anonymous API denial | `PASS` / `NOT_FOUND` |
+| anonymous Web tag denial | `PASS` / `NOT_FOUND` |
+| all anonymous asset denial | `PASS` / `ALL_NOT_FOUND` |
+| access-boundary evaluator | `PASS` |
+
+Access boundary (formal record):
+
+```text
+access boundary verdict = AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED
+anonymous REST API = NOT_FOUND
+anonymous Web release tag = NOT_FOUND
+anonymous assets = ALL_NOT_FOUND
+draft = true
+prerelease = true
+published = false
+local access-verdict SHA256 = sha256:1d529aa324636830b849d0125d8e0eceeb79c6f4c811eae903ac221c631ca9f9
+```
+
+Do not rerun run `34182724485` or redispatch `gate-c-rc6-3485118e9a19`. Do
+not rebuild the RC6 artifact from source for Human Gate C. Do not substitute
+the RC5 DMG or a later-main build. Pull requests #103, #104, and #105 remain
+closed until M5 closure; do not reopen, rebase, or merge them into RC6.
+RC6 is a personal/local evaluation candidate, not a public release. Human
+Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 
 ## Gate C safety boundary
 
