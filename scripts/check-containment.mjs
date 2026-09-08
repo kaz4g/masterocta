@@ -382,6 +382,16 @@ const expectedV2Commands = [
   "v2_asset_metadata_replace",
   "v2_audio_preview_create",
   "v2_audio_preview_read",
+  // AUTO-SLICE-1: read-only analysis and local SQLite draft edits; no media Apply.
+  "v2_audio_onsets_start",
+  "v2_audio_onsets_status",
+  "v2_audio_onsets_cancel",
+  "v2_slice_draft_get",
+  "v2_slice_proposal_create",
+  "v2_slice_draft_update",
+  "v2_audio_waveform_range_get",
+  "v2_audio_preview_region_create",
+  "v2_audio_preview_region_read",
   "v2_audio_waveform_get",
   // Waveform 2.0: root/asset-scoped read-only peaks and tokenized range audio.
   // No path argument, write grant, or legacy command is introduced.

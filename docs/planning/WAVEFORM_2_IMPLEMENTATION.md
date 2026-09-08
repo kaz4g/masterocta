@@ -16,7 +16,8 @@ declare Human Gate C PASS, or authorize original-media writes.
 | WF2 analysis | Independent channel min/max pyramid and exact range detail | Real detail below the old 256-frame floor; silence and opposite-polarity stereo preserved |
 | WF2 interaction | Zoom, fit, scroll, range selection, channel views | Viewport and selection are separate; resize changes resolution; stale responses cannot replace the selected asset |
 | WF2 audition | Bounded preview of the selected range, including beyond 60 seconds | Source coordinates retained; one-shot root-bound tokens; whole source validated |
-| Follow-on AS | Transient detector, persisted slice draft, marker editing, derived output | Follow AUTO_SLICE_1_TECHNICAL_DESIGN.md and PR #102; not implied by waveform display completion |
+| Integrated AS-0–4 | Reuse main's transient detector, persisted slice draft and marker editing | Preserve PR #102's SliceWorkbench beside the Waveform 2.0 Inspector |
+| Follow-on AS-5+ | Format evidence and derived output | Follow AUTO_SLICE_1_TECHNICAL_DESIGN.md; media output is a separate acceptance item |
 
 ## Ownership and contracts
 
@@ -30,7 +31,9 @@ budget (32–4096 per channel). An omitted range means the complete file. Frame
 positions/counts are canonical decimal strings; sample rate and channel indices
 are small JSON numbers. Coordinates count interleaved PCM frames, never samples
 summed across channels or positions in resampled preview audio. This matches
-AUTO-SLICE-1 without importing its unmerged draft implementation.
+AUTO-SLICE-1. PR #102 merged while this branch was in final validation; the
+integration merge preserves its source/file-scoped SliceWorkbench APIs alongside
+the asset-scoped Waveform 2.0 API. Each retains its own explicit range DTO.
 
 The original is opened read-only and its SHA-256 must match the catalog. Decoder
 input is a private, verified local snapshot. The cache is versioned separately
@@ -74,8 +77,9 @@ and byte-for-byte original preservation. Test asset-switch races and continued
 operation discovery after closing the dialog. Run frontend/build/architecture,
 Rust fmt/clippy/tests, and the available UI E2E suite. Record actual results and
 environment blockers here before handoff. Dependency/lockfile changes are not
-needed. M7 transient analysis, derived-asset writes and hardware sign-off are
-separate acceptance items; this document does not mark the full M7 milestone done.
+needed relative to the updated main. M7 analysis quality evaluation, derived-asset
+writes and hardware sign-off are separate acceptance items; this document does
+not mark the full M7 milestone done.
 
 ## Validation record (2026-09-08)
 
@@ -100,6 +104,14 @@ build, 426 E2Es and Linux/macOS synthetic smoke passed. The new AIFF regression
 exposed the decoder length issue above; its correction and the retained regression
 are subject to the final PR checks. Do not infer final-head success from this
 earlier run; use the checks and evidence recorded on PR #103.
+
+Run 34177594473 then passed all five jobs on head 6fe5b4f / base cebbcce: Rust
+1,201 PASS (three existing real-CF tests ignored), frontend 491 PASS, E2E 426
+PASS, both Gate C smoke hosts and all contracts PASS. Afterward main advanced to
+827c7c5 by merging PR #102. The integration preserves all new slicing modules,
+resolves both command allowlists, and adds an E2E assertion that the Waveform 2.0
+Inspector and attack/draft editor work together. Final combined-head evidence
+is recorded on PR #103; the earlier run is not the integration acceptance.
 
 Merge requires confirmed Rust and UI E2E checks. Peak cache
 budget is 256 MiB for v2 entries, individual entries at most 64 MiB. Input is capped

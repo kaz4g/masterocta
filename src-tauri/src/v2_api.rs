@@ -64,7 +64,11 @@ pub struct ApiError {
 }
 
 impl ApiError {
-    fn new(code: impl Into<String>, message: impl Into<String>, recoverable: bool) -> Self {
+    pub(crate) fn new(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        recoverable: bool,
+    ) -> Self {
         Self {
             code: code.into(),
             message: message.into(),
@@ -1581,7 +1585,7 @@ fn invalid_file_instance_id() -> ApiError {
     )
 }
 
-fn file_for_instance_id(
+pub(crate) fn file_for_instance_id(
     identity: &CatalogRootIdentity,
     snapshot: &LibrarySnapshot,
     file_instance_id: &str,
@@ -3580,7 +3584,7 @@ fn list_library_dto_sync(
         .map(|snapshot| LibrarySnapshotDto::from_catalog_snapshot(&identity, snapshot))
 }
 
-fn load_library_snapshot(
+pub(crate) fn load_library_snapshot(
     catalog: &SharedCatalog,
     identity: &CatalogRootIdentity,
 ) -> Result<LibrarySnapshot, ApiError> {
@@ -3645,7 +3649,7 @@ fn storage_error(message: &str) -> ApiError {
     ApiError::new(code, public_message, true)
 }
 
-fn catalog_identity(session: &RootSession) -> Result<CatalogRootIdentity, ApiError> {
+pub(crate) fn catalog_identity(session: &RootSession) -> Result<CatalogRootIdentity, ApiError> {
     CatalogRootIdentity::new(session.device_fingerprint.clone()).map_err(catalog_error)
 }
 
@@ -4049,6 +4053,216 @@ pub async fn v2_asset_metadata_replace(
     let catalog = Arc::clone(catalog.inner());
     tauri::async_runtime::spawn_blocking(move || {
         replace_manual_asset_metadata_sync(&registry, &catalog, &root_id, &asset_id, metadata)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_onsets_start(
+    root_id: String,
+    file_instance_id: String,
+    region: Option<crate::slice_workbench::SliceRangeDto>,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceJobDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        workbench.start(registry, catalog, root_id, window, file_instance_id, region)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_onsets_status(
+    root_id: String,
+    job_id: String,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceJobDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.status(&root_id, &window, &job_id)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_onsets_cancel(
+    root_id: String,
+    job_id: String,
+    window: tauri::WebviewWindow,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<(), ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    tauri::async_runtime::spawn_blocking(move || workbench.cancel(&root_id, &window, &job_id))
+        .await
+        .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_slice_draft_get(
+    root_id: String,
+    job_id: String,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceDraftDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.draft(&catalog, &root_id, &window, &job_id)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+// Four parameters are injected Tauri state/window handles, never frontend authority.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn v2_slice_proposal_create(
+    root_id: String,
+    job_id: String,
+    expected_revision: u64,
+    parameters: crate::slice_workbench::OnsetParametersDto,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceProposalDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.propose(
+            &catalog,
+            &root_id,
+            &window,
+            &job_id,
+            expected_revision,
+            parameters,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn v2_slice_draft_update(
+    root_id: String,
+    job_id: String,
+    expected_revision: u64,
+    edit: crate::slice_workbench::SliceEditDto,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceDraftDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.edit(
+            &catalog,
+            &root_id,
+            &window,
+            &job_id,
+            expected_revision,
+            edit,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_waveform_range_get(
+    root_id: String,
+    job_id: String,
+    range: crate::slice_workbench::SliceRangeDto,
+    points: u32,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SliceWaveformDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.waveform(&root_id, &window, &job_id, range, points)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_preview_region_create(
+    root_id: String,
+    job_id: String,
+    range: crate::slice_workbench::SliceRangeDto,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<crate::slice_workbench::SlicePreviewDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench.preview(&root_id, &window, &job_id, range)
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_audio_preview_region_read(
+    root_id: String,
+    job_id: String,
+    preview_token: String,
+    window: tauri::WebviewWindow,
+    registry: State<'_, Arc<RootRegistry>>,
+    workbench: State<'_, crate::slice_workbench::SharedSliceWorkbench>,
+) -> Result<tauri::ipc::Response, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let window = window.label().to_owned();
+    let workbench = Arc::clone(workbench.inner());
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        registry.resolve(&root_id)?;
+        workbench
+            .read_preview(&root_id, &window, &job_id, &preview_token)
+            .map(tauri::ipc::Response::new)
     })
     .await
     .map_err(ApiError::task_failed)?

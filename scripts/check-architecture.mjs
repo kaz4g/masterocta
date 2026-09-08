@@ -34,7 +34,8 @@ const dependencyRules = new Map([
   ],
   [
     "ot-audio",
-    ["ot-domain", "serde", "serde_json", "sha2", "symphonia"],
+    // AUTO-SLICE-1 uses the reviewed RustFFT implementation for spectral flux.
+    ["ot-domain", "rustfft", "serde", "serde_json", "sha2", "symphonia"],
   ],
   ["ot-plan", ["ot-domain", "sha2"]],
   [
@@ -185,14 +186,21 @@ const v2Commands = [
   ),
 ];
 const expectedV2Commands = [
+  // Read-only source PCM and revision-checked local drafts; no media Apply.
   "v2_asset_metadata_get",
   "v2_asset_metadata_replace",
+  "v2_audio_onsets_cancel",
+  "v2_audio_onsets_start",
+  "v2_audio_onsets_status",
   "v2_audio_preview_create",
   "v2_audio_preview_range_create",
   "v2_audio_preview_read",
+  "v2_audio_preview_region_create",
+  "v2_audio_preview_region_read",
   "v2_audio_waveform_get",
   // Waveform 2.0: root/asset-scoped read-only queries; no new write authority.
   "v2_audio_waveform_query",
+  "v2_audio_waveform_range_get",
   "v2_change_apply",
   "v2_change_get_plan",
   "v2_change_plan",
@@ -226,6 +234,9 @@ const expectedV2Commands = [
   "v2_root_enable_write",
   "v2_root_register",
   "v2_root_status",
+  "v2_slice_draft_get",
+  "v2_slice_draft_update",
+  "v2_slice_proposal_create",
 ];
 const actualV2Commands = v2Commands.map((match) => match[1]).sort();
 if (JSON.stringify(actualV2Commands) !== JSON.stringify(expectedV2Commands)) {
@@ -317,4 +328,3 @@ if (failures.length > 0) {
 }
 
 console.log("Architecture dependency rules passed.");
-
