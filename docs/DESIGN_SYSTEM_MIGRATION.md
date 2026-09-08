@@ -1,7 +1,7 @@
 # Design System Migration
 
-Status: Phase A–D complete on main (DS1–DS7, UI1–UI6); theme registry follow-up
-Updated: 2026-08-30
+Status: Phase A–D complete; App.css / PartsPanel exact + palette rgba tokenize follow-up
+Updated: 2026-09-08
 
 ## Purpose
 
@@ -223,15 +223,37 @@ Phase D  UI6 Branding → DS7 Legacy CSS removal
   legacy project grids stay in view for context menus). Token consumers
   (`--mo-*`) follow the active theme; hardcoded `App.css` hex values do not
   until migrated.
-- **Out of scope:** rewriting `App.css` onto tokens, system light/dark preference,
-  per-window themes.
+- **Out of scope:** rewriting `App.css` onto tokens wholesale, system light/dark
+  preference, per-window themes.
+
+### App.css exact hex → `--mo-*` (done)
+
+- Replace hex values that exactly match existing `--mo-*` token definitions in
+  `App.css` with `var(--mo-*)` (no new tokens; no near-color collapses).
+- Leaves intentional non-exact residuals: `#000` on-accent text, soft status
+  tints, domain/rainbow badges, near-surface grays (`#252525`, etc.).
+
+### PartsPanel exact hex + palette rgba (done)
+
+- `PartsPanel.css`: exact hex → `var(--mo-*)` (same map as App.css). Leaves
+  PartsPanel domain cyan/MIDI (`#4ac8ff`, `#7b68ee`, …) and near-grays.
+- Palette `rgba()` whose RGB equals an existing token (accent / info / warning /
+  danger / success / success-strong / danger-bright) in `App.css`,
+  `PartsPanel.css`, and `AudioPoolPage.css` →
+  `color-mix(in srgb, var(--mo-*) N%, transparent)`.
+- Keep the original `rgba(...)` declaration immediately **before** each
+  `color-mix(...)` overlay so Safari 11 / macOS 10.13 WKWebView (build target
+  `safari11`) still paints status borders and selection chrome when `color-mix`
+  is unsupported.
+- Pure black/white overlays and near-palette rgba remain for later.
 
 ### Later (documented only until started)
 
 | PR | Focus |
 |----|--------|
 | — | Further unused `App.css` deletion as call sites reach zero |
-| — | Migrate remaining hardcoded chrome onto `--mo-*` so themes cover legacy surfaces |
+| — | Near-color collapses + soft status / domain tokens as needed |
+| — | B/W and near-palette `rgba()` overlays; SliceWorkbench / Waveform cool packs |
 
 ## Success criteria
 
@@ -271,6 +293,15 @@ legacy rules may be deleted opportunistically when call sites are confirmed zero
 **After theme registry:** Appearance themes are switched through registered
 `--mo-*` packs (`classic` / `masterocta`). Design-system consumers update
 immediately; leftover hardcoded `App.css` colors remain classic until tokenized.
+
+**After App.css exact tokenize:** Hex values that match existing `--mo-*`
+definitions in `App.css` use tokens, so themed surfaces/borders/status colors
+follow `data-mo-theme`. Non-exact residuals (on-accent `#000`, soft tints,
+domain badges, near-grays) and other CSS files remain for later passes.
+
+**After PartsPanel + palette rgba:** Exact PartsPanel hex and token-matched
+palette overlays (`color-mix`) follow themes. Domain FX colors, near-grays,
+and B/W overlays remain classic until later passes.
 
 ## Verification (each DS PR)
 
