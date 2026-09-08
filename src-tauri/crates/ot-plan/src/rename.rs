@@ -971,7 +971,8 @@ fn collect_unresolved_references(
         .iter()
         .filter(|assignment| {
             references_rename_source(assignment, facts)
-                || (assignment.reference_status == SampleReferenceStatus::Missing
+                || ((assignment.reference_status == SampleReferenceStatus::Missing
+                    || assignment.reference_status == SampleReferenceStatus::Ambiguous)
                     && references_rename_source_case_insensitive(assignment, facts))
         })
         .filter(|assignment| {

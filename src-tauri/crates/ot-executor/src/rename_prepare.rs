@@ -731,45 +731,30 @@ fn raw_path_resolves_to_relative(
     document_relative_path: &str,
     expected: &str,
 ) -> Result<(), ExecutorError> {
-    if resolve_raw_path_from_document(raw_path, document_relative_path)? != expected {
+    let project_directory = project_directory_for_state_document(document_relative_path)?;
+    let expected_path =
+        RootRelativePath::parse(expected).map_err(|_| ExecutorError::InvalidPlan)?;
+    let matches = ot_domain::raw_path_matches_inventory_reference(
+        &project_directory,
+        raw_path,
+        &expected_path,
+    )
+    .map_err(|_| ExecutorError::InvalidPlan)?;
+    if !matches {
         return Err(ExecutorError::InvalidPlan);
     }
     Ok(())
 }
 
-/// Resolve `PATH=` against the project directory (parent of the document).
-/// Same algorithm as `legacy_read_adapter::resolve_project_reference`.
-fn resolve_raw_path_from_document(
-    raw_path: &str,
+fn project_directory_for_state_document(
     document_relative_path: &str,
-) -> Result<String, ExecutorError> {
-    let bytes = raw_path.as_bytes();
-    if raw_path.is_empty()
-        || raw_path.starts_with(['/', '\\'])
-        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-        || raw_path.contains('\0')
-    {
+) -> Result<RootRelativePath, ExecutorError> {
+    let document =
+        RootRelativePath::parse(document_relative_path).map_err(|_| ExecutorError::InvalidPlan)?;
+    let Some((parent, _)) = document.as_str().rsplit_once('/') else {
         return Err(ExecutorError::InvalidPlan);
-    }
-    let mut components = document_relative_path.split('/').collect::<Vec<_>>();
-    if components.pop().is_none() {
-        return Err(ExecutorError::InvalidPlan);
-    }
-    for component in raw_path.split(['/', '\\']) {
-        match component {
-            "" => return Err(ExecutorError::InvalidPlan),
-            "." => {}
-            ".." => {
-                if components.pop().is_none() {
-                    return Err(ExecutorError::InvalidPlan);
-                }
-            }
-            component => components.push(component),
-        }
-    }
-    RootRelativePath::from_components(components)
-        .map(|path| path.as_str().to_owned())
-        .map_err(|_| ExecutorError::InvalidPlan)
+    };
+    RootRelativePath::parse(parent).map_err(|_| ExecutorError::InvalidPlan)
 }
 
 fn reject_incomparable_paths(paths: &BTreeSet<String>) -> Result<(), ExecutorError> {
@@ -1811,12 +1796,25 @@ mod tests {
         assert!(
             raw_path_resolves_to_relative("kick.wav", WORK_PATH, "SET/PROJECT/kick.wav").is_ok()
         );
+        let project_directory = RootRelativePath::parse("SET/PROJECT").unwrap();
         assert!(
-            resolve_raw_path_from_document("../AUDIO/kick.wav", WORK_PATH).unwrap() == SOURCE_PATH
+            ot_domain::resolve_project_reference_syntax(&project_directory, "../AUDIO/kick.wav")
+                .unwrap()
+                .as_str()
+                == SOURCE_PATH
         );
-        assert!(resolve_raw_path_from_document("../../../outside.wav", WORK_PATH).is_err());
-        assert!(resolve_raw_path_from_document("/tmp/outside.wav", WORK_PATH).is_err());
-        assert!(resolve_raw_path_from_document("nested//sample.wav", WORK_PATH).is_err());
+        assert!(
+            ot_domain::resolve_project_reference_syntax(&project_directory, "../../../outside.wav")
+                .is_err()
+        );
+        assert!(
+            ot_domain::resolve_project_reference_syntax(&project_directory, "/tmp/outside.wav")
+                .is_err()
+        );
+        assert!(
+            ot_domain::resolve_project_reference_syntax(&project_directory, "nested//sample.wav")
+                .is_err()
+        );
     }
 
     #[test]

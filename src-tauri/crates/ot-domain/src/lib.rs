@@ -3,8 +3,14 @@
 use std::fmt;
 
 pub mod onsets;
+pub mod reference_identity;
 pub mod slice_draft;
 pub mod slicing;
+
+pub use reference_identity::{
+    inventory_paths_equivalent, raw_path_matches_inventory_reference, resolve_against_inventory,
+    resolve_project_reference_syntax, ProjectReferenceSyntaxError,
+};
 
 const FILE_INSTANCE_ID_PREFIX: &str = "fileinst:v1:";
 
@@ -906,4 +912,6 @@ mod tests {
             "SET/AUDIO/new-kick.wav"
         );
     }
+
+    include!("reference_identity.test.rs");
 }
