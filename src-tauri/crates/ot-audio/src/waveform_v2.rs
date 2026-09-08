@@ -382,6 +382,7 @@ impl Snapshot {
             .expect("snapshot file exists")
             .flush()
             .map_err(cache_io)?;
+        normalize_aiff_snapshot(snapshot.file.as_mut().expect("snapshot file exists"), current)?;
         snapshot
             .file
             .as_mut()
@@ -406,6 +407,85 @@ impl Drop for Snapshot {
             let _ = fs::remove_file(path);
         }
     }
+}
+
+/// Symphonia 0.5.5 counts the eight SSND control bytes as PCM payload:
+/// https://github.com/pdeljanov/Symphonia/blob/v0.5.5/symphonia-format-riff/src/aiff/chunks.rs
+/// Validate the complete container, then adjust only the private decoder copy.
+/// The source hash and every PCM byte remain unchanged. Keep this regression
+/// covered when upgrading the decoder; a fixed demuxer will not need this shim.
+fn normalize_aiff_snapshot(file: &mut File, current: &impl Fn() -> bool) -> Result<(), AudioError> {
+    use std::io::SeekFrom;
+
+    file.rewind().map_err(cache_io)?;
+    let length = file.metadata().map_err(cache_io)?.len();
+    if length < 12 {
+        return Ok(());
+    }
+    let mut header = [0_u8; 12];
+    file.read_exact(&mut header).map_err(cache_io)?;
+    if &header[..4] != b"FORM" || !matches!(&header[8..12], b"AIFF" | b"AIFC") {
+        return Ok(());
+    }
+    let invalid = || AudioError::DecodeFailed("invalid or incomplete AIFF container".into());
+    let form_length = u32::from_be_bytes(header[4..8].try_into().expect("four-byte length"));
+    if u64::from(form_length) + 8 != length {
+        return Err(invalid());
+    }
+    let mut position = 12_u64;
+    let mut pcm_length = None;
+    let mut sound = None;
+    while position < length {
+        check_current(current)?;
+        if length - position < 8 {
+            return Err(invalid());
+        }
+        file.seek(SeekFrom::Start(position)).map_err(cache_io)?;
+        let mut chunk = [0_u8; 8];
+        file.read_exact(&mut chunk).map_err(cache_io)?;
+        let size = u32::from_be_bytes(chunk[4..].try_into().expect("four-byte length"));
+        let end = position + 8 + u64::from(size);
+        if end + u64::from(size % 2) > length {
+            return Err(invalid());
+        }
+        match &chunk[..4] {
+            b"COMM" => {
+                if pcm_length.is_some() || size < 18 {
+                    return Err(invalid());
+                }
+                let mut common = [0_u8; 18];
+                file.read_exact(&mut common).map_err(cache_io)?;
+                let channels = u16::from_be_bytes([common[0], common[1]]);
+                let frames = u32::from_be_bytes(common[2..6].try_into().expect("four-byte count"));
+                let bits = u16::from_be_bytes([common[6], common[7]]);
+                if !(1..=2).contains(&channels)
+                    || frames == 0
+                    || ![8, 16, 24, 32, 64].contains(&bits)
+                {
+                    return Err(AudioError::UnsupportedFormat);
+                }
+                pcm_length = Some(u64::from(frames) * u64::from(channels) * u64::from(bits / 8));
+            }
+            b"SSND" => {
+                if sound.is_some() || size < 8 || pcm_length != Some(u64::from(size - 8)) {
+                    return Err(invalid());
+                }
+                let mut controls = [0_u8; 8];
+                file.read_exact(&mut controls).map_err(cache_io)?;
+                if controls != [0; 8] {
+                    return Err(AudioError::UnsupportedFormat);
+                }
+                sound = Some((position + 4, size - 8));
+            }
+            _ => {}
+        }
+        position = end + u64::from(size % 2);
+    }
+    let (size_position, payload_length) = sound.ok_or_else(invalid)?;
+    file.seek(SeekFrom::Start(size_position)).map_err(cache_io)?;
+    file.write_all(&payload_length.to_be_bytes())
+        .map_err(cache_io)?;
+    file.flush().map_err(cache_io)
 }
 
 fn decode_frames(
@@ -941,6 +1021,12 @@ mod tests {
         for i in 0..frames {
             bytes.extend_from_slice(&(i as i16 * 100).to_be_bytes());
         }
+        // Metadata after SSND, including odd-sized chunk padding, is not PCM.
+        bytes.extend_from_slice(b"JUNK");
+        bytes.extend_from_slice(&3_u32.to_be_bytes());
+        bytes.extend_from_slice(&[1, 2, 3, 0]);
+        let form_size = (bytes.len() - 8) as u32;
+        bytes[4..8].copy_from_slice(&form_size.to_be_bytes());
         fs::write(&path, &bytes).unwrap();
         let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&bytes))).unwrap();
         let cache_directory = TempDir::new().unwrap();
@@ -957,7 +1043,31 @@ mod tests {
             .unwrap();
         assert_eq!(preview.bytes.len(), 64);
         assert!(i16::from_le_bytes([preview.bytes[44], preview.bytes[45]]) >= 4999);
-        assert_eq!(fs::read(path).unwrap(), bytes);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        for damage in 0..4 {
+            let mut damaged = bytes.clone();
+            match damage {
+                0 => {
+                    damaged.truncate(damaged.len() - 1);
+                }
+                1 => damaged[22..26].copy_from_slice(&(frames + 1).to_be_bytes()),
+                2 => damaged[42..46].copy_from_slice(&(10 + frames * 2).to_be_bytes()),
+                _ => damaged[46..50].copy_from_slice(&1_u32.to_be_bytes()),
+            }
+            fs::write(&path, &damaged).unwrap();
+            let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&damaged))).unwrap();
+            assert!(cache
+                .preview_range(
+                    &hash,
+                    &path,
+                    FrameRange {
+                        start_frame: 0,
+                        end_frame: 1,
+                    },
+                )
+                .is_err());
+            assert_eq!(fs::read(&path).unwrap(), damaged);
+        }
     }
 
     #[cfg(unix)]

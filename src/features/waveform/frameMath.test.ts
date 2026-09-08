@@ -17,7 +17,13 @@ describe('source frame coordinates', () => {
     expect(() => validateRange(makeRange(100n, 100n), '100')).toThrow();
   });
   it('positions a partial final bucket by its actual source frame extent', () => {
-    expect(peakPath([{ min: -1, max: 1 }, { min: 0, max: 0 }], makeRange(0n, 3n), '2', 300, 100)).toBe('M100.00 0.00V100.00M250.00 50.00V50.00');
+    expect(peakPath([{ min: -1, max: 1 }, { min: 0, max: 0 }], makeRange(0n, 3n), '2', 300, 100)).toBe('M100.00 0.00V100.00M200.00 50.00H300.00');
+  });
+  it('keeps individual samples and constant signals visible at their exact amplitude', () => {
+    expect(peakPath([{ min: .5, max: .5 }, { min: -.5, max: -.5 }], makeRange(100n, 102n), '1', 200, 100))
+      .toBe('M0.00 25.00H100.00M100.00 75.00H200.00');
+    expect(peakPath([{ min: 0, max: 0 }], makeRange(0n, 64n), '64', 200, 100))
+      .toBe('M0.00 50.00H200.00');
   });
   it('rejects corrupt channel arrays and nonfinite or inverted peaks', () => {
     const value = waveformFixture();

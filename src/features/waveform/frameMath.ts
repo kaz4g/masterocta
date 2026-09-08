@@ -67,6 +67,13 @@ export function peakPath(peaks: WaveformPeak[], range: AudioFrameRange, framesPe
     const x = Number((start + end) * 500_000n / length) / 1_000_000 * width;
     const top = (1 - Math.max(-1, Math.min(1, peak.max))) * height / 2;
     const bottom = (1 - Math.max(-1, Math.min(1, peak.min))) * height / 2;
+    // A single-frame or constant bucket has no vertical extent. Draw its exact
+    // value across that bucket so sample-level zoom and DC/silence stay visible.
+    if (peak.min === peak.max) {
+      const left = Number(start * 1_000_000n / length) / 1_000_000 * width;
+      const right = Number(end * 1_000_000n / length) / 1_000_000 * width;
+      return `M${left.toFixed(2)} ${top.toFixed(2)}H${right.toFixed(2)}`;
+    }
     return `M${x.toFixed(2)} ${top.toFixed(2)}V${bottom.toFixed(2)}`;
   }).join('');
 }
