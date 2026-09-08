@@ -29,6 +29,7 @@
   --mo-danger: #dc3545;
   --mo-danger-bright: #f44336;
   --mo-info: #4a9eff;
+  --mo-info-soft: #64b5f6;
 }
 
 /* Masta-Octa brand pack: cool graphite surfaces + teal signal accent. */
@@ -58,4 +59,5 @@
   --mo-danger: #e14b5a;
   --mo-danger-bright: #f0616f;
   --mo-info: #5aa7e0;
+  --mo-info-soft: #7ec4e8;
 }
