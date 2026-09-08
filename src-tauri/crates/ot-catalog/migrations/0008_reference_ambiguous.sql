@@ -1,5 +1,3 @@
-PRAGMA foreign_keys = OFF;
-
 DROP TRIGGER IF EXISTS sample_settings_owner_scope_insert;
 DROP TRIGGER IF EXISTS sample_settings_owner_scope_update;
 
@@ -199,5 +197,3 @@ WHEN (
 BEGIN
     SELECT RAISE(ABORT, 'sample settings owner scope mismatch');
 END;
-
-PRAGMA foreign_keys = ON;

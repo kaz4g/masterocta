@@ -1975,6 +1975,7 @@ pub(crate) fn plan_rename_sample_sync(
     let resolved = registry.resolve(root_id)?;
     ensure_clone_verified(clone_runtime, &resolved)?;
     let identity = catalog_identity(&resolved.session)?;
+    ensure_catalog_projection_trusted(catalog, &identity)?;
     let snapshot = load_library_snapshot(catalog, &identity)?;
     let source = file_for_instance_id(&identity, &snapshot, source_file_instance_id)?;
     if source.storage_scope == SampleStorageScope::Unclassified {
@@ -3599,6 +3600,24 @@ pub(crate) fn load_library_snapshot(
                 true,
             )
         })
+}
+
+pub(crate) fn ensure_catalog_projection_trusted(
+    catalog: &SharedCatalog,
+    identity: &CatalogRootIdentity,
+) -> Result<(), ApiError> {
+    let catalog = catalog.lock().map_err(|_| catalog_lock_error())?;
+    if catalog
+        .observational_projection_untrusted(identity)
+        .map_err(catalog_error)?
+    {
+        return Err(ApiError::new(
+            "CATALOG_RESCAN_REQUIRED",
+            "catalog observational projection requires a fresh rescan before write operations",
+            true,
+        ));
+    }
+    Ok(())
 }
 
 fn scan_library_sync(

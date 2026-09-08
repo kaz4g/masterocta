@@ -192,7 +192,11 @@ mod tests {
     #[test]
     fn draft_survives_reopen_and_projection_cleanup_and_enforces_cas() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("catalog.sqlite3");
+        let path = directory
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("catalog.sqlite3");
         let mut catalog = SqliteCatalog::open(&path).unwrap();
         let binding = binding();
         let mut draft = SliceDraft::empty(range("0".into(), "44100".into()).unwrap());
