@@ -1087,7 +1087,7 @@ fn ct03_filesystem_ambiguous_blocks_plan() {
                     .iter()
                     .map(|reason| reason.code.as_str())
                     .collect();
-                if !codes.iter().any(|code| *code == "UNRESOLVED_REFERENCE") {
+                if !codes.contains(&"UNRESOLVED_REFERENCE") {
                     fail(
                         CT03,
                         "plan",
