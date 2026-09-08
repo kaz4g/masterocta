@@ -1,6 +1,6 @@
 # M6 Library Workspace → Waveform 2.0
 
-Status: implemented on feature branch; validation pending on GitHub; release and Human Gate C evidence remain separate.
+Status: implemented in [PR #103](https://github.com/kaz4g/masterocta/pull/103); exact-head CI results and merge recommendation are maintained on the PR. Release and Human Gate C evidence remain separate.
 
 ## Scope and order
 
@@ -37,6 +37,12 @@ input is a private, verified local snapshot. The cache is versioned separately
 from waveform:v1, keyed by content-derived AssetId. Cache hits still verify the
 live source. Corrupt caches regenerate; unsafe cache entries fail closed.
 
+Symphonia 0.5.5 includes the eight AIFF SSND control bytes in its PCM payload
+length. The v2 decoder validates FORM/COMM/SSND boundaries and frame counts,
+then corrects that length field only in the private copy. PCM bytes and original
+files remain unchanged. Regression coverage includes a final SSND chunk, trailing
+metadata and padding, truncation, inconsistent counts and unsupported offsets.
+
 Large overview data use bounded multiresolution peaks. Requests below the cached
 resolution, or crossing partial cache buckets, decode the exact requested
 interval instead of stretching existing peaks or including out-of-range attacks.
@@ -52,6 +58,9 @@ decode; performance targets must be measured on the Mac before claiming them.
   full file. Selection is independent of viewport; keyboard/numeric alternatives
   are provided for pointer interactions.
 - Each asset change invalidates waveform/preview responses and releases Blob URLs.
+- Changing the effective audition range also invalidates pending/completed previews.
+- Single-frame and constant-value peaks render across their actual bucket extent;
+  sample-level zoom never hides them as zero-length SVG strokes.
 - Closing the operations dialog does not unmount or discard a prepared plan,
   execution status, recovery state, or backup approval flow. The dialog cannot
   close during a mutation. A persistent status button exposes pending operations.
@@ -68,22 +77,31 @@ environment blockers here before handoff. Dependency/lockfile changes are not
 needed. M7 transient analysis, derived-asset writes and hardware sign-off are
 separate acceptance items; this document does not mark the full M7 milestone done.
 
-## Initial validation (2026-09-08)
+## Validation record (2026-09-08)
 
-- Frontend suite: 63 files / 489 tests PASS, with the thread pool selected for this
-  restricted runtime. The additional range-IPC contract test is verified separately.
+- Initial local frontend suite: 63 files / 489 tests PASS, with the thread pool
+  selected for this restricted runtime. Subsequent waveform regression tests:
+  15/15 PASS, including stale previews, precise coordinates and constant peaks.
 - TypeScript and Vite production build: PASS. Existing bundle-size warnings remain.
 - Containment: PASS; the exact allowlist adds only the two read-only audio commands.
 - Gate C contracts: 117/118 PASS. The existing unreadable-file subprocess test
   cannot run its uid/gid-switched child in this environment; no gate rule was changed.
-- Rust fmt, clippy, workspace tests, architecture metadata: unavailable locally
-  because cargo/rustc/rustfmt are absent. Rust source has not yet been compiled.
+- Rust tooling and architecture metadata: unavailable locally because
+  cargo/rustc/rustfmt are absent. GitHub CI is the Rust validation environment.
 - Local Chromium E2E: blocked before tests by `socket() failed: Operation not
   permitted` in Chromium process-singleton startup. The existing rename E2E routes
   were adapted to the operations dialog; two Waveform Workspace E2Es were added.
 - Dependencies, lockfiles, release workflow, frozen candidates and media: unchanged.
 
-The feature remains a draft until Rust and UI E2E checks are confirmed. Peak cache
+GitHub validation before the final AIFF/drawing refinements (run 34173970881)
+passed architecture, containment, Rust formatting and Clippy; frontend checks
+(63 files / 490 tests), both Gate C contract suites (118 tests total), production
+build, 426 E2Es and Linux/macOS synthetic smoke passed. The new AIFF regression
+exposed the decoder length issue above; its correction and the retained regression
+are subject to the final PR checks. Do not infer final-head success from this
+earlier run; use the checks and evidence recorded on PR #103.
+
+Merge requires confirmed Rust and UI E2E checks. Peak cache
 budget is 256 MiB for v2 entries, individual entries at most 64 MiB. Input is capped
 at 2 GiB; snapshot bytes live only in application cache and are unlinked immediately
 on Unix. Range preview is bounded to 30 seconds / 16 MiB. Fine range requests can

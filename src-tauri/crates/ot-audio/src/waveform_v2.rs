@@ -382,7 +382,10 @@ impl Snapshot {
             .expect("snapshot file exists")
             .flush()
             .map_err(cache_io)?;
-        normalize_aiff_snapshot(snapshot.file.as_mut().expect("snapshot file exists"), current)?;
+        normalize_aiff_snapshot(
+            snapshot.file.as_mut().expect("snapshot file exists"),
+            current,
+        )?;
         snapshot
             .file
             .as_mut()
@@ -482,7 +485,8 @@ fn normalize_aiff_snapshot(file: &mut File, current: &impl Fn() -> bool) -> Resu
         position = end + u64::from(size % 2);
     }
     let (size_position, payload_length) = sound.ok_or_else(invalid)?;
-    file.seek(SeekFrom::Start(size_position)).map_err(cache_io)?;
+    file.seek(SeekFrom::Start(size_position))
+        .map_err(cache_io)?;
     file.write_all(&payload_length.to_be_bytes())
         .map_err(cache_io)?;
     file.flush().map_err(cache_io)
@@ -1021,12 +1025,6 @@ mod tests {
         for i in 0..frames {
             bytes.extend_from_slice(&(i as i16 * 100).to_be_bytes());
         }
-        // Metadata after SSND, including odd-sized chunk padding, is not PCM.
-        bytes.extend_from_slice(b"JUNK");
-        bytes.extend_from_slice(&3_u32.to_be_bytes());
-        bytes.extend_from_slice(&[1, 2, 3, 0]);
-        let form_size = (bytes.len() - 8) as u32;
-        bytes[4..8].copy_from_slice(&form_size.to_be_bytes());
         fs::write(&path, &bytes).unwrap();
         let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&bytes))).unwrap();
         let cache_directory = TempDir::new().unwrap();
@@ -1044,6 +1042,27 @@ mod tests {
         assert_eq!(preview.bytes.len(), 64);
         assert!(i16::from_le_bytes([preview.bytes[44], preview.bytes[45]]) >= 4999);
         assert_eq!(fs::read(&path).unwrap(), bytes);
+        // Metadata after SSND, including odd-sized chunk padding, is not PCM.
+        bytes.extend_from_slice(b"JUNK");
+        bytes.extend_from_slice(&3_u32.to_be_bytes());
+        bytes.extend_from_slice(&[1, 2, 3, 0]);
+        let form_size = (bytes.len() - 8) as u32;
+        bytes[4..8].copy_from_slice(&form_size.to_be_bytes());
+        fs::write(&path, &bytes).unwrap();
+        let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&bytes))).unwrap();
+        let tail = cache
+            .preview_range(
+                &hash,
+                &path,
+                FrameRange {
+                    start_frame: 120,
+                    end_frame: 128,
+                },
+            )
+            .unwrap();
+        assert_eq!(tail.bytes.len(), 60);
+        assert!(i16::from_le_bytes([tail.bytes[58], tail.bytes[59]]) >= 12699);
+        assert_eq!(fs::read(&path).unwrap(), bytes);
         for damage in 0..4 {
             let mut damaged = bytes.clone();
             match damage {
@@ -1055,7 +1074,8 @@ mod tests {
                 _ => damaged[46..50].copy_from_slice(&1_u32.to_be_bytes()),
             }
             fs::write(&path, &damaged).unwrap();
-            let hash = ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&damaged))).unwrap();
+            let hash =
+                ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&damaged))).unwrap();
             assert!(cache
                 .preview_range(
                     &hash,
