@@ -431,16 +431,25 @@ impl SliceWorkbench {
             .filter(|m| m.manual || m.locked)
             .map(|m| m.start)
             .collect::<Vec<_>>();
-        let proposal = ready
+        let mut proposal = ready
             .analysis
             .propose(parameters, &protected, &job.cancelled)
             .map_err(pcm_error)?;
+        let before_exclusions = proposal.candidates.len();
+        proposal.candidates.retain(|candidate| {
+            !draft.suppressed_candidate_ids.contains(&candidate.id)
+                && !draft
+                    .exclusions
+                    .iter()
+                    .any(|range| range.contains(candidate.estimated_attack))
+        });
+        let user_excluded = before_exclusions - proposal.candidates.len();
         let proposal_id = self.token("proposal");
         let dto = SliceProposalDto {
             proposal_id: proposal_id.clone(),
             expected_revision,
             candidate_count: proposal.candidates.len(),
-            suppressed_count: proposal.suppressed.len(),
+            suppressed_count: proposal.suppressed.len() + user_excluded,
             exceeds_draft_limit: proposal.candidates.len() > MAX_DRAFT_MARKERS,
             // Results are bounded. No oversized JSON response for pathological audio.
             candidates: proposal
@@ -839,6 +848,11 @@ mod tests {
         let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(44_100)).unwrap();
         let mut samples = vec![0.0; 44_100];
         samples[101] = 0.5;
+        for (i, value) in samples[11_025..11_907].iter_mut().enumerate() {
+            *value = (std::f32::consts::TAU * i as f32 * 1000.0 / 44_100.0).cos()
+                * 0.7
+                * (-(i as f32) / 300.0).exp();
+        }
         let analysis = OnsetAnalysis::build(
             PcmRegion {
                 source: PcmInfo {
@@ -885,7 +899,7 @@ mod tests {
         *workbench.current.lock().unwrap() = Some(Arc::clone(&job));
         let directory = tempfile::tempdir().unwrap();
         let catalog = Arc::new(Mutex::new(
-            SqliteCatalog::open(&directory.path().join("catalog.sqlite3")).unwrap(),
+            SqliteCatalog::open(directory.path().join("catalog.sqlite3")).unwrap(),
         ));
         (workbench, job, catalog, directory)
     }
@@ -1066,5 +1080,69 @@ mod tests {
                 }
             )
             .is_err());
+    }
+
+    #[test]
+    fn deleted_boundaries_are_excluded_from_the_next_preview_as_well_as_acceptance() {
+        let (workbench, job, catalog, _directory) = fixture();
+        let proposal = workbench
+            .propose(&catalog, &job.root, "main", &job.id, 0, parameters())
+            .unwrap();
+        assert!(proposal.candidate_count > 0);
+        let saved = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                0,
+                SliceEditDto::AcceptProposal {
+                    proposal_id: proposal.proposal_id,
+                },
+            )
+            .unwrap();
+        let removed = saved.markers.last().unwrap();
+        let deleted = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                1,
+                SliceEditDto::Delete {
+                    marker_id: removed.marker_id.clone(),
+                },
+            )
+            .unwrap();
+        let next = workbench
+            .propose(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                deleted.revision,
+                parameters(),
+            )
+            .unwrap();
+        assert!(!next
+            .candidates
+            .iter()
+            .any(|c| c.candidate_id == removed.marker_id));
+        let accepted = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                deleted.revision,
+                SliceEditDto::AcceptProposal {
+                    proposal_id: next.proposal_id,
+                },
+            )
+            .unwrap();
+        assert!(!accepted
+            .markers
+            .iter()
+            .any(|m| m.marker_id == removed.marker_id));
     }
 }
