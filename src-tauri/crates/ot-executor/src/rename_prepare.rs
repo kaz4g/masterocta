@@ -1803,18 +1803,21 @@ mod tests {
                 .as_str()
                 == SOURCE_PATH
         );
-        assert!(
-            ot_domain::resolve_project_reference_syntax(&project_directory, "../../../outside.wav")
-                .is_err()
-        );
-        assert!(
-            ot_domain::resolve_project_reference_syntax(&project_directory, "/tmp/outside.wav")
-                .is_err()
-        );
-        assert!(
-            ot_domain::resolve_project_reference_syntax(&project_directory, "nested//sample.wav")
-                .is_err()
-        );
+        assert!(ot_domain::resolve_project_reference_syntax(
+            &project_directory,
+            "../../../outside.wav"
+        )
+        .is_err());
+        assert!(ot_domain::resolve_project_reference_syntax(
+            &project_directory,
+            "/tmp/outside.wav"
+        )
+        .is_err());
+        assert!(ot_domain::resolve_project_reference_syntax(
+            &project_directory,
+            "nested//sample.wav"
+        )
+        .is_err());
     }
 
     #[test]
