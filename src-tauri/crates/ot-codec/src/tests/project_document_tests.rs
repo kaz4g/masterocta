@@ -24,10 +24,16 @@ fn gate_c_meta() -> String {
         .to_owned()
 }
 
+fn gate_c_containers() -> String {
+    "[SETTINGS]\r\nWRITEPROTECTED=0\r\n[/SETTINGS]\r\n\r\n[STATES]\r\nBANK=0\r\n[/STATES]\r\n"
+        .to_owned()
+}
+
 fn gate_c_twelve_sample_document() -> Vec<u8> {
     let body = format!(
-        "{meta}\r\n{static1}\r\n{static2}\r\n{static4}\r\n{static5}\r\n{flex129}\r\n{flex130}\r\n{flex131}\r\n{flex132}\r\n{flex133}\r\n{flex134}\r\n{flex135}\r\n{flex136}\r\n",
+        "{meta}\r\n{containers}\r\n{static1}\r\n{static2}\r\n{static4}\r\n{static5}\r\n{flex129}\r\n{flex130}\r\n{flex131}\r\n{flex132}\r\n{flex133}\r\n{flex134}\r\n{flex135}\r\n{flex136}\r\n",
         meta = gate_c_meta(),
+        containers = gate_c_containers(),
         static1 = sample_block("STATIC", "001", "../AUDIO/kick.wav"),
         static2 = sample_block("STATIC", "002", "../AUDIO/snare.wav"),
         static4 = sample_block("STATIC", "004", "../AUDIO/hat.wav"),
@@ -51,13 +57,15 @@ fn gate_c_twelve_sample_structure_parses_regular_and_recorder_buffers() {
     assert_eq!(parsed.parse_status, StateDocumentParseStatus::Parsed);
     assert_eq!(
         parsed.compatibility,
-        ProjectDocumentCompatibility::Supported {
-            evidence: ProjectCompatibilityEvidence::VerifiedMasterOctaFixture,
-        }
+        ProjectDocumentCompatibility::Supported
+    );
+    assert_eq!(
+        parsed.compatibility_evidence,
+        Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
     );
     assert_eq!(parsed.source_version.as_deref(), Some("R0173      1.40"));
     assert_eq!(PROJECT_PARSER_NAME, "masterocta/ot-codec-project");
-    assert_eq!(PROJECT_PARSER_REVISION, "v1");
+    assert_eq!(PROJECT_PARSER_REVISION, "v2");
     assert_eq!(parsed.regular_assignments.len(), 4);
     assert!(parsed.regular_assignments.iter().all(|assignment| {
         assignment.slot.number() != 129
@@ -75,8 +83,9 @@ fn gate_c_twelve_sample_structure_parses_regular_and_recorder_buffers() {
 #[test]
 fn duplicate_sample_blocks_fail_closed() {
     let body = format!(
-        "{meta}\r\n{first}\r\n{second}\r\n",
+        "{meta}\r\n{containers}\r\n{first}\r\n{second}\r\n",
         meta = gate_c_meta(),
+        containers = gate_c_containers(),
         first = sample_block("STATIC", "001", "kick.wav"),
         second = sample_block("STATIC", "001", "other.wav"),
     );
@@ -87,9 +96,12 @@ fn duplicate_sample_blocks_fail_closed() {
 
 #[test]
 fn invalid_meta_type_is_malformed() {
-    let body =
-        "[META]\r\nTYPE=NOT-A-PROJECT\r\nVERSION=19\r\nOS_VERSION=R0173      1.40\r\n[/META]\r\n";
-    let parsed = parse_project_document(&encode_windows_1258(body));
+    let body = format!(
+        "{meta}\r\n{containers}\r\n",
+        meta = "[META]\r\nTYPE=NOT-A-PROJECT\r\nVERSION=19\r\nOS_VERSION=R0173      1.40\r\n[/META]\r\n",
+        containers = gate_c_containers(),
+    );
+    let parsed = parse_project_document(&encode_windows_1258(&body));
     assert_eq!(parsed.parse_status, StateDocumentParseStatus::Malformed);
     assert_eq!(
         parsed.compatibility,
@@ -100,8 +112,9 @@ fn invalid_meta_type_is_malformed() {
 #[test]
 fn invalid_slot_number_malforms_the_document() {
     let body = format!(
-        "{meta}\r\n{sample}\r\n",
+        "{meta}\r\n{containers}\r\n{sample}\r\n",
         meta = gate_c_meta(),
+        containers = gate_c_containers(),
         sample = sample_block("STATIC", "200", "kick.wav"),
     );
     let parsed = parse_project_document(&encode_windows_1258(&body));
@@ -120,4 +133,55 @@ fn recorder_buffer_non_empty_path_does_not_malform_project() {
         assignment.slot == SampleSlotId::new(SampleSlotKind::Flex, 1).unwrap()
             && assignment.raw_path == "../AUDIO/rec.wav"
     }));
+}
+
+#[test]
+fn missing_settings_section_is_malformed() {
+    let body = format!(
+        "{meta}\r\n[STATES]\r\nBANK=0\r\n[/STATES]\r\n",
+        meta = gate_c_meta(),
+    );
+    let parsed = parse_project_document(&encode_windows_1258(&body));
+    assert_eq!(parsed.parse_status, StateDocumentParseStatus::Malformed);
+}
+
+#[test]
+fn missing_states_section_is_malformed() {
+    let body = format!(
+        "{meta}\r\n[SETTINGS]\r\nWRITEPROTECTED=0\r\n[/SETTINGS]\r\n",
+        meta = gate_c_meta(),
+    );
+    let parsed = parse_project_document(&encode_windows_1258(&body));
+    assert_eq!(parsed.parse_status, StateDocumentParseStatus::Malformed);
+}
+
+#[test]
+fn invalid_os_token_is_malformed() {
+    let body = format!(
+        "{meta}\r\n{containers}\r\n",
+        meta = "[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\nVERSION=19\r\nOS_VERSION=NOT-A-TOKEN\r\n[/META]\r\n",
+        containers = gate_c_containers(),
+    );
+    let parsed = parse_project_document(&encode_windows_1258(&body));
+    assert_eq!(parsed.parse_status, StateDocumentParseStatus::Malformed);
+    assert_eq!(
+        parsed.compatibility,
+        ProjectDocumentCompatibility::Malformed
+    );
+}
+
+#[test]
+fn upstream_candidate_release_does_not_attach_upstream_library_in_codec() {
+    let body = format!(
+        "{meta}\r\n{containers}\r\n",
+        meta = "[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\nVERSION=19\r\nOS_VERSION=R0173      1.40A\r\n[/META]\r\n",
+        containers = gate_c_containers(),
+    );
+    let parsed = parse_project_document(&encode_windows_1258(&body));
+    assert_eq!(parsed.parse_status, StateDocumentParseStatus::Parsed);
+    assert_eq!(
+        parsed.compatibility,
+        ProjectDocumentCompatibility::Supported
+    );
+    assert_eq!(parsed.compatibility_evidence, None);
 }

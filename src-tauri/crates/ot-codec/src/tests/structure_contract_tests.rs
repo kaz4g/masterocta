@@ -17,11 +17,17 @@ fn gate_c_meta() -> String {
         .to_owned()
 }
 
+fn gate_c_containers() -> String {
+    "[SETTINGS]\r\nWRITEPROTECTED=0\r\n[/SETTINGS]\r\n\r\n[STATES]\r\nBANK=0\r\n[/STATES]\r\n"
+        .to_owned()
+}
+
 #[test]
 fn reader_and_rewrite_agree_on_unclosed_sample_block() {
     let bytes = encode_windows_1258(&format!(
-        "{}\r\n{}",
+        "{}\r\n{}\r\n{}",
         gate_c_meta(),
+        gate_c_containers(),
         "[SAMPLE]\r\nTYPE=STATIC\r\nSLOT=001\r\nPATH=kick.wav\r\n"
     ));
     let parsed = parse_project_document(&bytes);
@@ -36,8 +42,9 @@ fn reader_and_rewrite_agree_on_unclosed_sample_block() {
 #[test]
 fn reader_and_rewrite_agree_on_duplicate_type_slot_pair() {
     let bytes = encode_windows_1258(&format!(
-        "{}\r\n{}\r\n{}",
+        "{}\r\n{}\r\n{}\r\n{}",
         gate_c_meta(),
+        gate_c_containers(),
         sample_block("STATIC", "001", "a.wav"),
         sample_block("STATIC", "001", "b.wav")
     ));
@@ -52,8 +59,9 @@ fn reader_and_rewrite_agree_on_duplicate_type_slot_pair() {
 #[test]
 fn reader_and_rewrite_agree_on_static_129_malformed() {
     let bytes = encode_windows_1258(&format!(
-        "{}\r\n{}",
+        "{}\r\n{}\r\n{}",
         gate_c_meta(),
+        gate_c_containers(),
         sample_block("STATIC", "129", "a.wav")
     ));
     let parsed = parse_project_document(&bytes);
@@ -67,8 +75,9 @@ fn reader_and_rewrite_agree_on_static_129_malformed() {
 #[test]
 fn reader_and_rewrite_agree_on_flex_137_malformed() {
     let bytes = encode_windows_1258(&format!(
-        "{}\r\n{}",
+        "{}\r\n{}\r\n{}",
         gate_c_meta(),
+        gate_c_containers(),
         sample_block("FLEX", "137", "a.wav")
     ));
     let parsed = parse_project_document(&bytes);
@@ -82,18 +91,19 @@ fn reader_and_rewrite_agree_on_flex_137_malformed() {
 #[test]
 fn reader_and_rewrite_agree_on_supported_twelve_sample_document() {
     let body = format!(
-        "{meta}\r\n{static1}\r\n{flex129}\r\n",
+        "{meta}\r\n{containers}\r\n{static1}\r\n{flex129}\r\n",
         meta = gate_c_meta(),
+        containers = gate_c_containers(),
         static1 = sample_block("STATIC", "001", "../AUDIO/kick.wav"),
         flex129 = sample_block("FLEX", "129", ""),
     );
     let bytes = encode_windows_1258(&body);
     let parsed = parse_project_document(&bytes);
     assert_eq!(parsed.parse_status, StateDocumentParseStatus::Parsed);
-    assert!(matches!(
+    assert_eq!(
         parsed.compatibility,
-        ProjectDocumentCompatibility::Supported { .. }
-    ));
+        ProjectDocumentCompatibility::Supported
+    );
     assert_eq!(parsed.regular_assignments.len(), 1);
     assert_eq!(parsed.recorder_buffers.len(), 1);
     let inspect = MemoryProjectReferenceCodec

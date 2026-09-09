@@ -8,7 +8,8 @@ pub use ot_codec_ports::rewrite_same_directory_path;
 use ot_domain::{RootPathComponent, SampleSlotId, SampleSlotKind};
 
 pub use project_document::{
-    parse_project_document, ProjectDocumentCompatibility, ProjectDocumentParseResult,
+    parse_os_version, parse_project_document, upstream_candidate_release,
+    ProjectDocumentCompatibility, ProjectDocumentParseResult, ProjectOsVersion,
     RecorderBufferObservation, RegularSampleAssignment, PROJECT_PARSER_NAME,
     PROJECT_PARSER_REVISION,
 };
