@@ -8,6 +8,10 @@ pub(crate) const SAMPLE_START: &str = "[SAMPLE]";
 pub(crate) const SAMPLE_END: &str = "[/SAMPLE]";
 pub(crate) const META_START: &str = "[META]";
 pub(crate) const META_END: &str = "[/META]";
+pub(crate) const SETTINGS_START: &str = "[SETTINGS]";
+pub(crate) const SETTINGS_END: &str = "[/SETTINGS]";
+pub(crate) const STATES_START: &str = "[STATES]";
+pub(crate) const STATES_END: &str = "[/STATES]";
 pub(crate) const FLEX_RECORDER_MIN: u16 = 129;
 pub(crate) const FLEX_RECORDER_MAX: u16 = 136;
 
@@ -79,6 +83,60 @@ pub(crate) fn classify_observed_slot(kind: SampleSlotKind, number: u16) -> Obser
 
 pub(crate) fn is_flex_recorder_buffer(kind: SampleSlotKind, number: u16) -> bool {
     kind == SampleSlotKind::Flex && (FLEX_RECORDER_MIN..=FLEX_RECORDER_MAX).contains(&number)
+}
+
+pub(crate) fn validate_required_container_sections(text: &str) -> Result<(), SampleStructureError> {
+    validate_single_required_section(text, SETTINGS_START, SETTINGS_END)?;
+    validate_single_required_section(text, STATES_START, STATES_END)?;
+    Ok(())
+}
+
+fn validate_single_required_section(
+    text: &str,
+    start: &str,
+    end: &str,
+) -> Result<(), SampleStructureError> {
+    let lines = text_lines(text);
+    let mut open_depth = 0;
+    let mut saw_open = false;
+    let mut saw_close = false;
+    for line in &lines {
+        let content = line.content;
+        if content == start {
+            if saw_open {
+                return Err(SampleStructureError::MalformedDocument);
+            }
+            if open_depth > 0 {
+                return Err(SampleStructureError::NestedSampleBlock);
+            }
+            saw_open = true;
+            open_depth += 1;
+        } else if content == end {
+            if open_depth == 0 {
+                return Err(SampleStructureError::UnexpectedSampleCloser);
+            }
+            open_depth -= 1;
+            saw_close = true;
+        } else if open_depth > 0
+            && matches!(
+                content,
+                META_START
+                    | META_END
+                    | SETTINGS_START
+                    | SETTINGS_END
+                    | STATES_START
+                    | STATES_END
+                    | SAMPLE_START
+                    | SAMPLE_END
+            )
+        {
+            return Err(SampleStructureError::NestedSampleBlock);
+        }
+    }
+    if !saw_open || !saw_close || open_depth != 0 {
+        return Err(SampleStructureError::MalformedDocument);
+    }
+    Ok(())
 }
 
 pub(crate) fn parse_sample_blocks(

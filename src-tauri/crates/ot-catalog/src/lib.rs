@@ -21,7 +21,8 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 10;
+const LATEST_SCHEMA_VERSION: u64 = 11;
+const PROJECTION_REPAIR_META_KEY: &str = "observational_projection_repair_applied";
 const MIGRATION_REQUIRES_FOREIGN_KEYS_OFF: u64 = 8;
 const MIGRATIONS: &[(u64, &str)] = &[
     // Entries are applied in ascending version order.
@@ -55,6 +56,10 @@ const MIGRATIONS: &[(u64, &str)] = &[
     (
         10,
         include_str!("../migrations/0010_observational_projection_trust.sql"),
+    ),
+    (
+        11,
+        include_str!("../migrations/0011_projection_trust_repair.sql"),
     ),
 ];
 
@@ -2079,16 +2084,21 @@ fn migrate(connection: &mut Connection) -> Result<(), CatalogError> {
         });
     }
 
-    let requires_projection_repair = current_version >= MIGRATION_REQUIRES_FOREIGN_KEYS_OFF;
+    let version_before = current_version;
 
     for (version, sql) in MIGRATIONS {
         if *version > current_version {
-            apply_migration(connection, *version, sql)?;
+            if *version == 11 {
+                apply_migration_11_with_projection_repair(
+                    connection,
+                    *version,
+                    sql,
+                    version_before,
+                )?;
+            } else {
+                apply_migration(connection, *version, sql)?;
+            }
         }
-    }
-
-    if requires_projection_repair {
-        mark_all_roots_projection_untrusted(connection)?;
     }
 
     backfill_project_discovery_flags(connection)?;
@@ -2127,27 +2137,71 @@ fn backfill_project_discovery_flags(connection: &Connection) -> Result<(), Catal
     Ok(())
 }
 
-fn mark_all_roots_projection_untrusted(connection: &Connection) -> Result<(), CatalogError> {
-    let has_column: bool = connection
-        .query_row(
-            "SELECT EXISTS(
-                SELECT 1 FROM pragma_table_info('roots')
-                WHERE name = 'observational_projection_untrusted'
-            )",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(unavailable)?;
-    if !has_column {
-        return Ok(());
-    }
-    connection
-        .execute(
-            "UPDATE roots SET observational_projection_untrusted = 1",
-            [],
-        )
-        .map_err(unavailable)?;
-    Ok(())
+fn apply_migration_11_with_projection_repair(
+    connection: &mut Connection,
+    version: u64,
+    sql: &str,
+    version_before: u64,
+) -> Result<(), CatalogError> {
+    let migration_result = (|| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .execute_batch(sql)
+            .map_err(|error| migration_error(version, error))?;
+        let repair_applied: i64 = transaction
+            .query_row(
+                "SELECT CAST(value AS INTEGER) FROM catalog_meta WHERE key = ?1",
+                params![PROJECTION_REPAIR_META_KEY],
+                |row| row.get(0),
+            )
+            .map_err(|error| migration_error(version, error))?;
+        if repair_applied == 0 {
+            if version_before >= MIGRATION_REQUIRES_FOREIGN_KEYS_OFF {
+                let has_column: bool = transaction
+                    .query_row(
+                        "SELECT EXISTS(
+                            SELECT 1 FROM pragma_table_info('roots')
+                            WHERE name = 'observational_projection_untrusted'
+                        )",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| migration_error(version, error))?;
+                if has_column {
+                    transaction
+                        .execute(
+                            "UPDATE roots SET observational_projection_untrusted = 1",
+                            [],
+                        )
+                        .map_err(|error| migration_error(version, error))?;
+                }
+            }
+            transaction
+                .execute(
+                    "UPDATE catalog_meta SET value = '1' WHERE key = ?1",
+                    params![PROJECTION_REPAIR_META_KEY],
+                )
+                .map_err(|error| migration_error(version, error))?;
+        }
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations (version, applied_at) \
+                 VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                params![
+                    i64::try_from(version).map_err(|error| CatalogError::Migration {
+                        version,
+                        message: error.to_string(),
+                    })?
+                ],
+            )
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .commit()
+            .map_err(|error| migration_error(version, error))
+    })();
+    migration_result
 }
 
 fn apply_migration(
@@ -2788,6 +2842,164 @@ mod tests {
         assert!(catalog
             .observational_projection_untrusted(&identity('d'))
             .unwrap());
+    }
+
+    fn insert_trusted_v10_root(connection: &Connection, hex_digit: char) {
+        let root_fingerprint = format!("rootfp:v1:{}", hex_digit.to_string().repeat(64));
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision, \
+                    observational_projection_untrusted) \
+                 VALUES (1, '{root_fingerprint}', \
+                         1, 'Trusted Root', 1, 'now', 1, 0);"
+            ))
+            .unwrap();
+    }
+
+    fn repair_applied_flag(connection: &Connection) -> i64 {
+        connection
+            .query_row(
+                "SELECT CAST(value AS INTEGER) FROM catalog_meta WHERE key = ?1",
+                params![PROJECTION_REPAIR_META_KEY],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn existing_v10_database_marks_projection_untrusted_once_on_upgrade() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-trusted.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'e');
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('e'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&catalog.connection), 1);
+        drop(catalog);
+
+        let reopened = SqliteCatalog::open(&path).unwrap();
+        assert!(reopened
+            .observational_projection_untrusted(&identity('e'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&reopened.connection), 1);
+    }
+
+    #[test]
+    fn projection_repair_rescan_and_reopen_preserves_trust() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-rescan-trust.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'f');
+        drop(connection);
+
+        let mut catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('f'))
+            .unwrap());
+        catalog
+            .store_snapshot(&observation('f', "Rescanned"), &populated_snapshot())
+            .unwrap();
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('f'))
+            .unwrap());
+        drop(catalog);
+
+        for _ in 0..2 {
+            let reopened = SqliteCatalog::open(&path).unwrap();
+            assert!(!reopened
+                .observational_projection_untrusted(&identity('f'))
+                .unwrap());
+        }
+    }
+
+    #[test]
+    fn projection_repair_untrusts_roots_independently() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-ab-independent.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        let identity_a = identity('a');
+        let identity_b = identity('b');
+        let fp_a = identity_a.as_str();
+        let fp_b = identity_b.as_str();
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision, \
+                    observational_projection_untrusted) \
+                 VALUES \
+                   (1, '{fp_a}', 1, 'Root A', 1, 'now', 1, 0), \
+                   (2, '{fp_b}', 1, 'Root B', 1, 'now', 1, 0);"
+            ))
+            .unwrap();
+        drop(connection);
+
+        let mut catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('a'))
+            .unwrap());
+        assert!(catalog
+            .observational_projection_untrusted(&identity('b'))
+            .unwrap());
+        catalog
+            .store_snapshot(&observation('a', "Root A"), &populated_snapshot())
+            .unwrap();
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('a'))
+            .unwrap());
+        assert!(catalog
+            .observational_projection_untrusted(&identity('b'))
+            .unwrap());
+    }
+
+    #[test]
+    fn projection_repair_failure_can_be_retried_on_reopen() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-repair-retry.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'c');
+        drop(connection);
+
+        let migration_11 = include_str!("../migrations/0011_projection_trust_repair.sql");
+        let failing_sql = format!("{migration_11}\nTHIS IS NOT SQL;");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        let error =
+            apply_migration_11_with_projection_repair(&mut connection, 11, &failing_sql, 10)
+                .unwrap_err();
+        assert!(matches!(error, CatalogError::Migration { version: 11, .. }));
+        assert_eq!(max_schema_version(&connection), 10);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'catalog_meta'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('c'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&catalog.connection), 1);
     }
 
     #[test]

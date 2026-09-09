@@ -2,7 +2,8 @@ use crate::device_detection::{scan_directory_strict, DeviceScanError, OctatrackP
 use crate::host_metadata_policy::is_ignored_host_metadata;
 use crate::project_reader::{compute_sample_usage_for_documents, read_raw_sample_fields};
 use ot_codec::{
-    parse_project_document, resolve_against_inventory, PROJECT_PARSER_NAME, PROJECT_PARSER_REVISION,
+    parse_os_version, parse_project_document, resolve_against_inventory,
+    upstream_candidate_release, PROJECT_PARSER_NAME, PROJECT_PARSER_REVISION,
 };
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
@@ -15,7 +16,7 @@ use ot_domain::{
 use ot_storage_ports::{ReadOnlyLibrary, StorageError};
 use ot_tools_io::{
     BankFile, HasChecksumField, HasFileVersionField, HasHeaderField, MarkersFile, OctatrackFileIO,
-    SampleSettingsFile,
+    ProjectFile, SampleSettingsFile,
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -408,6 +409,10 @@ fn classify_storage_scope(
 
 const BANK_PARSER_NAME: &str = crate::bank_validation::BANK_VALIDATOR_NAME;
 const BANK_PARSER_REVISION: &str = crate::bank_validation::BANK_VALIDATOR_REVISION;
+const BANK_DECODER_NAME: &str = "masterocta/ot-tools-io-bank";
+const BANK_DECODER_REVISION: &str = "v1";
+const SAMPLE_SETTINGS_PARSER_NAME: &str = "masterocta/sample-settings";
+const SAMPLE_SETTINGS_PARSER_REVISION: &str = "v1";
 
 const STATE_PARSER_NAME: &str = PROJECT_PARSER_NAME;
 const STATE_PARSER_REVISION: &str = PROJECT_PARSER_REVISION;
@@ -628,7 +633,7 @@ fn scan_slot_local_settings(
             let mut sample_settings = empty_sample_settings(
                 SampleSettingsOwner::SlotAssignment,
                 document.source_relative_path.clone(),
-                document.parser_provenance.clone(),
+                sample_settings_provenance(None),
                 document.parser_provenance.source_version.clone(),
             );
             sample_settings.project_document_relative_path =
@@ -782,7 +787,7 @@ fn parse_sidecar_settings(
             let mut settings = empty_sample_settings(
                 SampleSettingsOwner::FileInstanceSidecar,
                 sidecar_relative,
-                parser_provenance(None, None),
+                sample_settings_provenance(None),
                 None,
             );
             settings.file_instance_relative_path = Some(file_instance_relative);
@@ -794,7 +799,7 @@ fn parse_sidecar_settings(
     let mut settings = empty_sample_settings(
         SampleSettingsOwner::FileInstanceSidecar,
         sidecar_relative,
-        parser_provenance(source_version, None),
+        sample_settings_provenance(source_version),
         None,
     );
     settings.file_instance_relative_path = Some(file_instance_relative);
@@ -921,21 +926,26 @@ fn parse_project_state(
         Err(_) => {
             return (
                 StateDocumentParseStatus::Malformed,
-                parser_provenance(None, None),
+                project_parser_provenance(None, None),
                 Vec::new(),
             )
         }
     };
     let parsed = parse_project_document(&bytes);
     let source_version = parsed.source_version.clone();
-    let compatibility_evidence = parsed.compatibility_evidence;
+    let mut compatibility_evidence = parsed.compatibility_evidence;
     let parse_status = parsed.parse_status;
     if parse_status != StateDocumentParseStatus::Parsed {
         return (
             parse_status,
-            parser_provenance(source_version, compatibility_evidence),
+            project_parser_provenance(source_version, compatibility_evidence),
             Vec::new(),
         );
+    }
+    if compatibility_evidence != Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture) {
+        if let Some(upstream) = verify_upstream_project_compatibility(source_file, &parsed) {
+            compatibility_evidence = Some(upstream);
+        }
     }
 
     let assignments = parsed
@@ -958,9 +968,29 @@ fn parse_project_state(
 
     (
         StateDocumentParseStatus::Parsed,
-        parser_provenance(source_version, compatibility_evidence),
+        project_parser_provenance(source_version, compatibility_evidence),
         assignments,
     )
+}
+
+fn verify_upstream_project_compatibility(
+    source_file: &Path,
+    parsed: &ot_codec::ProjectDocumentParseResult,
+) -> Option<ProjectCompatibilityEvidence> {
+    let release = parsed
+        .source_version
+        .as_deref()
+        .and_then(parse_os_version)
+        .map(|os| os.release)?;
+    if !upstream_candidate_release(&release) {
+        return None;
+    }
+    let temp = tempfile::TempDir::new().ok()?;
+    let copy_path = temp.path().join("project.work");
+    fs::copy(source_file, &copy_path).ok()?;
+    ProjectFile::from_data_file(&copy_path)
+        .ok()
+        .map(|_| ProjectCompatibilityEvidence::UpstreamLibrary)
 }
 
 fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProvenance) {
@@ -974,16 +1004,16 @@ fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProv
                 }
                 Err(_) => StateDocumentParseStatus::Malformed,
             };
-            (status, bank_parser_provenance(source_version))
+            (status, bank_validation_provenance(source_version))
         }
         Err(_) => (
             StateDocumentParseStatus::Malformed,
-            parser_provenance(None, None),
+            bank_decode_failure_provenance(),
         ),
     }
 }
 
-fn bank_parser_provenance(source_version: Option<String>) -> ParserProvenance {
+fn bank_validation_provenance(source_version: Option<String>) -> ParserProvenance {
     ParserProvenance {
         parser_name: BANK_PARSER_NAME.into(),
         parser_revision: BANK_PARSER_REVISION.into(),
@@ -992,7 +1022,25 @@ fn bank_parser_provenance(source_version: Option<String>) -> ParserProvenance {
     }
 }
 
-fn parser_provenance(
+fn bank_decode_failure_provenance() -> ParserProvenance {
+    ParserProvenance {
+        parser_name: BANK_DECODER_NAME.into(),
+        parser_revision: BANK_DECODER_REVISION.into(),
+        source_version: None,
+        compatibility_evidence: None,
+    }
+}
+
+fn sample_settings_provenance(source_version: Option<String>) -> ParserProvenance {
+    ParserProvenance {
+        parser_name: SAMPLE_SETTINGS_PARSER_NAME.into(),
+        parser_revision: SAMPLE_SETTINGS_PARSER_REVISION.into(),
+        source_version,
+        compatibility_evidence: None,
+    }
+}
+
+fn project_parser_provenance(
     source_version: Option<String>,
     compatibility_evidence: Option<ProjectCompatibilityEvidence>,
 ) -> ParserProvenance {
@@ -1290,7 +1338,7 @@ mod tests {
                 role: StateDocumentRole::Working,
                 bank_index: None,
                 parse_status: StateDocumentParseStatus::Parsed,
-                parser_provenance: parser_provenance(Some("1.40A".into()), None),
+                parser_provenance: project_parser_provenance(Some("1.40A".into()), None),
             }],
             slot_assignments: vec![SlotAssignment {
                 project_document_relative_path: source,
@@ -2072,5 +2120,171 @@ mod tests {
         })
         .unwrap_err();
         assert!(error.message().starts_with("LIBRARY_SCAN_FAILED:"));
+    }
+
+    #[test]
+    fn bank_decode_failure_records_bank_decoder_provenance() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/real_device_os_1_40/project.work");
+        fs::copy(&fixture, project_directory.join("project.work")).unwrap();
+        fs::write(project_directory.join("bank01.work"), b"not a bank").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, _, _) = scan_state_inventory(&canonical, &topology).unwrap();
+        let bank = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+
+        assert_eq!(bank.parse_status, StateDocumentParseStatus::Malformed);
+        assert_eq!(bank.parser_provenance.parser_name, BANK_DECODER_NAME);
+        assert_eq!(
+            bank.parser_provenance.parser_revision,
+            BANK_DECODER_REVISION
+        );
+        assert!(bank.parser_provenance.source_version.is_none());
+        assert!(bank.parser_provenance.compatibility_evidence.is_none());
+        assert_ne!(bank.parser_provenance.parser_name, STATE_PARSER_NAME);
+    }
+
+    #[test]
+    fn sidecar_settings_use_sample_settings_parser_not_project_parser() {
+        let root = TempDir::new().unwrap();
+        let audio = root.path().join("SET/AUDIO/kick.wav");
+        fs::create_dir_all(audio.parent().unwrap()).unwrap();
+        fs::write(&audio, b"kick").unwrap();
+        fs::write(audio.with_extension("ot"), b"not a sidecar").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.file_instances.push(FileInstance {
+            relative_path: RootRelativePath::parse("SET/AUDIO/kick.wav").unwrap(),
+            content_hash: ContentHash::parse(format!("sha256:{}", "a".repeat(64))).unwrap(),
+            byte_size: 4,
+            modified_at_unix_ns: Some(1),
+            storage_scope: SampleStorageScope::SetAudioPool,
+            hash_freshness: ContentHashFreshness::ComputedThisScan,
+        });
+
+        let settings = scan_file_sidecar_settings(&canonical, &topology).unwrap();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(
+            settings[0].parser_provenance.parser_name,
+            SAMPLE_SETTINGS_PARSER_NAME
+        );
+        assert_eq!(
+            settings[0].parser_provenance.parser_revision,
+            SAMPLE_SETTINGS_PARSER_REVISION
+        );
+        assert!(settings[0].parser_provenance.source_version.is_none());
+        assert_ne!(settings[0].parser_provenance.parser_name, STATE_PARSER_NAME);
+    }
+
+    #[test]
+    fn unknown_machine_type_bank_is_not_parsed() {
+        use ot_tools_io::OctatrackFileIO;
+
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        let mut bank = BankFile::from_data_file(&fixture_directory.join("bank01.work")).unwrap();
+        bank.parts.unsaved.0[0].audio_track_machine_types[0] = 42;
+        bank.to_data_file(&project_directory.join("bank01.work"))
+            .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        let bank = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+
+        assert_eq!(bank.parse_status, StateDocumentParseStatus::Malformed);
+        assert_eq!(bank.parser_provenance.parser_name, BANK_PARSER_NAME);
+        assert!(
+            !assignments.is_empty(),
+            "project assignments may still parse"
+        );
+        assert!(usage_edges.is_empty());
+    }
+
+    #[test]
+    fn state_document_provenance_round_trips_through_catalog_store_and_reopen() {
+        use ot_catalog::SqliteCatalog;
+        use ot_storage_ports::{CatalogRootIdentity, CatalogRootObservation, LibraryCatalog};
+
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        fs::copy(
+            fixture_directory.join("bank01.work"),
+            project_directory.join("bank01.work"),
+        )
+        .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        topology.state_documents = documents;
+        topology.slot_assignments = assignments;
+        topology.usage_edges = usage_edges;
+        topology.sample_settings = scan_sample_settings(&canonical, &topology).unwrap();
+
+        let catalog_path = root.path().canonicalize().unwrap().join("catalog.sqlite3");
+        let identity = CatalogRootIdentity::new(format!("rootfp:v1:{}", "c".repeat(64))).unwrap();
+        let observation = CatalogRootObservation {
+            identity: identity.clone(),
+            identity_is_stable: true,
+            display_name: "Provenance".into(),
+            observed_revision: 1,
+        };
+        {
+            let mut catalog = SqliteCatalog::open(&catalog_path).unwrap();
+            catalog.store_snapshot(&observation, &topology).unwrap();
+        }
+        let catalog = SqliteCatalog::open(&catalog_path).unwrap();
+        let loaded = catalog.load_latest_snapshot(&identity).unwrap().unwrap();
+
+        let project = loaded
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+        assert_eq!(project.parser_provenance.parser_name, STATE_PARSER_NAME);
+        assert_eq!(
+            project.parser_provenance.parser_revision,
+            STATE_PARSER_REVISION
+        );
+        let bank = loaded
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+        assert_eq!(bank.parser_provenance.parser_name, BANK_PARSER_NAME);
+        assert!(loaded.sample_settings.iter().all(|settings| {
+            settings.parser_provenance.parser_name == SAMPLE_SETTINGS_PARSER_NAME
+        }));
     }
 }

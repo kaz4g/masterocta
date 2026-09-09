@@ -2,8 +2,8 @@
 
 use crate::project_structure::{
     classify_observed_slot, decode_reversible_windows_1258, field_value,
-    parse_sample_blocks as parse_structure_sample_blocks, ObservedSlotKind, SampleStructureError,
-    META_END, META_START,
+    parse_sample_blocks as parse_structure_sample_blocks, validate_required_container_sections,
+    ObservedSlotKind, SampleStructureError, META_END, META_START,
 };
 use ot_domain::{
     ProjectCompatibilityEvidence, RecorderBufferId, SampleSlotId, SampleSlotKind,
@@ -11,13 +11,13 @@ use ot_domain::{
 };
 
 pub const PROJECT_PARSER_NAME: &str = "masterocta/ot-codec-project";
-pub const PROJECT_PARSER_REVISION: &str = "v1";
+pub const PROJECT_PARSER_REVISION: &str = "v2";
 
 const META_TYPE: &str = "OCTATRACK DPS-1 PROJECT";
 const META_VERSION: u32 = 19;
 const VERIFIED_OS_REVISION: &str = "R0173";
 const VERIFIED_OS_RELEASE: &str = "1.40";
-const UPSTREAM_RELEASE_SUFFIXES: [&str; 3] = ["1.40A", "1.40B", "1.40C"];
+pub(crate) const UPSTREAM_CANDIDATE_RELEASES: [&str; 3] = ["1.40A", "1.40B", "1.40C"];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectDocumentParseResult {
@@ -31,9 +31,7 @@ pub struct ProjectDocumentParseResult {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectDocumentCompatibility {
-    Supported {
-        evidence: ProjectCompatibilityEvidence,
-    },
+    Supported,
     UnsupportedVersion,
     Malformed,
 }
@@ -58,9 +56,9 @@ struct MetaFields {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct ProjectOsVersion {
-    revision: String,
-    release: String,
+pub struct ProjectOsVersion {
+    pub revision: String,
+    pub release: String,
 }
 
 pub fn parse_project_document(bytes: &[u8]) -> ProjectDocumentParseResult {
@@ -85,24 +83,20 @@ pub fn parse_project_document(bytes: &[u8]) -> ProjectDocumentParseResult {
         }
     };
 
-    let source_version = Some(meta.os_version.clone());
-    let compatibility = evaluate_compatibility(&meta);
-    let compatibility_evidence = match compatibility {
-        ProjectDocumentCompatibility::Supported { evidence } => Some(evidence),
-        ProjectDocumentCompatibility::UnsupportedVersion
-        | ProjectDocumentCompatibility::Malformed => None,
-    };
+    if validate_required_container_sections(&text).is_err() {
+        return malformed_result(Some(meta.os_version.clone()));
+    }
 
-    if !matches!(
-        compatibility,
-        ProjectDocumentCompatibility::Supported { .. }
-    ) {
+    let source_version = Some(meta.os_version.clone());
+    let (compatibility, compatibility_evidence) = evaluate_compatibility(&meta);
+
+    if !matches!(compatibility, ProjectDocumentCompatibility::Supported) {
         let parse_status = match compatibility {
             ProjectDocumentCompatibility::UnsupportedVersion => {
                 StateDocumentParseStatus::UnsupportedVersion
             }
             ProjectDocumentCompatibility::Malformed => StateDocumentParseStatus::Malformed,
-            ProjectDocumentCompatibility::Supported { .. } => StateDocumentParseStatus::Parsed,
+            ProjectDocumentCompatibility::Supported => StateDocumentParseStatus::Parsed,
         };
         return ProjectDocumentParseResult {
             parse_status,
@@ -254,36 +248,38 @@ fn parse_u32_field(value: &str) -> Result<u32, StateDocumentParseStatus> {
         .map_err(|_| StateDocumentParseStatus::Malformed)
 }
 
-fn evaluate_compatibility(meta: &MetaFields) -> ProjectDocumentCompatibility {
+fn evaluate_compatibility(
+    meta: &MetaFields,
+) -> (
+    ProjectDocumentCompatibility,
+    Option<ProjectCompatibilityEvidence>,
+) {
     if meta.file_type != META_TYPE {
-        return ProjectDocumentCompatibility::Malformed;
+        return (ProjectDocumentCompatibility::Malformed, None);
     }
     if meta.project_version != META_VERSION {
-        return ProjectDocumentCompatibility::UnsupportedVersion;
+        return (ProjectDocumentCompatibility::UnsupportedVersion, None);
     }
-    let os_version = parse_os_version(&meta.os_version);
-    if os_version.is_none() {
-        return ProjectDocumentCompatibility::UnsupportedVersion;
-    }
-    let os_version = os_version.unwrap();
-    if upstream_release_supported(&os_version.release) {
-        return ProjectDocumentCompatibility::Supported {
-            evidence: ProjectCompatibilityEvidence::UpstreamLibrary,
-        };
-    }
+    let Some(os_version) = parse_os_version(&meta.os_version) else {
+        return (ProjectDocumentCompatibility::Malformed, None);
+    };
     if os_version.revision == VERIFIED_OS_REVISION && os_version.release == VERIFIED_OS_RELEASE {
-        return ProjectDocumentCompatibility::Supported {
-            evidence: ProjectCompatibilityEvidence::VerifiedMasterOctaFixture,
-        };
+        return (
+            ProjectDocumentCompatibility::Supported,
+            Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture),
+        );
     }
-    ProjectDocumentCompatibility::UnsupportedVersion
+    if upstream_candidate_release(&os_version.release) {
+        return (ProjectDocumentCompatibility::Supported, None);
+    }
+    (ProjectDocumentCompatibility::UnsupportedVersion, None)
 }
 
-fn upstream_release_supported(release: &str) -> bool {
-    UPSTREAM_RELEASE_SUFFIXES.contains(&release)
+pub fn upstream_candidate_release(release: &str) -> bool {
+    UPSTREAM_CANDIDATE_RELEASES.contains(&release)
 }
 
-pub(crate) fn parse_os_version(value: &str) -> Option<ProjectOsVersion> {
+pub fn parse_os_version(value: &str) -> Option<ProjectOsVersion> {
     let separator_start = value.as_bytes().iter().position(|byte| *byte == b' ')?;
     let revision = &value[..separator_start];
     let separator_end = value.as_bytes()[separator_start..]

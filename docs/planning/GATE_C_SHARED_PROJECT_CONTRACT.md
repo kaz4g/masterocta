@@ -16,7 +16,7 @@ This document records the shared contract that replaces that split behavior.
 | Responsibility | Owner | Revision |
 |---|---|---|
 | Reversible Windows-1258 + SAMPLE structure scan | `ot-codec::project_structure` | shared with reader + rewrite |
-| Project bytes → META, compatibility, assignments | `ot-codec::parse_project_document` | `masterocta/ot-codec-project` / `v1` |
+| Project bytes → META, compatibility, assignments | `ot-codec::parse_project_document` | `masterocta/ot-codec-project` / `v2` |
 | Surgical PATH rewrite (regular slots only) | `ot-codec::MemoryProjectReferenceCodec` | existing M5-B contract |
 | Syntax + inventory reference identity | `ot-domain::reference_identity` | re-exported by `ot-codec::reference_resolution` |
 | Catalog persistence | `ot-catalog` / `legacy_read_adapter` | no re-interpretation |
@@ -36,23 +36,36 @@ Neither parser nor rewrite opens filesystem paths, Tauri handles, or SQLite.
 - **Invalid:** Static ≥129, Flex ≥137, slot 0, unknown `TYPE`, duplicate TYPE+SLOT,
   unclosed `[SAMPLE]`, irreversible Windows-1258 → `Malformed`.
 
-## Compatibility (before upstream suffix alone)
+## Required Project containers
+
+Before SAMPLE scan or compatibility evidence, the codec requires exactly one each of
+closed, non-nested:
+
+- `[META]` … `[/META]`
+- `[SETTINGS]` … `[/SETTINGS]`
+- `[STATES]` … `[/STATES]`
+
+`[SAMPLE]` blocks are 0..N. Missing, duplicate, unclosed, or nested required
+containers → `Malformed`. Optional fields inside containers (for example SAMPLE
+`TRIGQUANTIZATION`) are not required.
+
+## Compatibility (structure + version candidate)
 
 Supported only when all hold:
 
-1. `TYPE=OCTATRACK DPS-1 PROJECT`
-2. `VERSION=19`
-3. OS token parses as `R####` + ASCII spaces + release (`1.40`, `1.40A`, …)
+1. Required containers above are valid
+2. `TYPE=OCTATRACK DPS-1 PROJECT`
+3. `VERSION=19`
+4. OS token parses as `R####` + ASCII spaces + release (`1.40`, `1.40A`, …)
 
-Evidence:
+Evidence (never inferred from release suffix alone in the codec):
 
-- `UpstreamLibrary` when pinned `ot-tools-io` reports compatible **and** the above
-  hold.
-- `VerifiedMasterOctaFixture` for exact `R0173` / `1.40` + VERSION 19 when upstream
-  reports unsupported.
+- `VerifiedMasterOctaFixture` for exact `R0173` / `1.40` + VERSION 19
+- `UpstreamLibrary` only after catalog scan copies bytes to a TempDir and pinned
+  `ProjectFile` succeeds for upstream-candidate releases (`1.40A`, `1.40B`, `1.40C`)
 
-Unknown VERSION → `UnsupportedVersion` (read-only). Malformed META/token →
-`Malformed`.
+Unknown VERSION or release → `UnsupportedVersion` (read-only). Malformed META or
+unparseable OS token → `Malformed`.
 
 ## Reference identity
 
@@ -122,17 +135,29 @@ Evidence from tracked fixtures and `ot-tools-io` decode (not Elektron spec):
 | Bank raw ≥128 (except 129–136 flex) | — | not mapped to regular usage |
 
 Usage is built from the same in-memory `BankFile` immediately after decode +
-validation. Bank provenance records `masterocta/bank-validation` / `v1`, not the
-Project parser name.
+validation. Bank machine types must be known values 0–4 (Static, Flex, Thru,
+Neighbor, Pickup per pinned `ot-tools-io`); any other value → Bank not `Parsed` and
+usage/rename gates stay incomplete.
 
-## Catalog migration trust (0010)
+## Parser provenance by document kind
 
-Migration `0008` FK handling was corrected (FK toggle outside immediate TX). Existing
-databases that already applied pre-fix `0008` are marked
-`observational_projection_untrusted` on open (schema ≥ 8). Write/plan/prepare paths
-fail closed until `replace_projection` (rescan) succeeds. Fresh migrations from v7
-and below retain data and stay trusted. **No user production DB migration is applied
-from this remediation branch.**
+| Document / artifact | `parser_name` | `parser_revision` | Notes |
+|---|---|---|---|
+| Project `.work` / `.strd` | `masterocta/ot-codec-project` | `v2` | includes compatibility evidence when verified |
+| Bank decode failure | `masterocta/ot-tools-io-bank` | `v1` | no `source_version`, no validator success |
+| Bank after validation | `masterocta/bank-validation` | `v1` | decode succeeded |
+| `.ot` sidecar / slot-local settings | `masterocta/sample-settings` | `v1` | does not copy Project parser name |
+
+## Catalog migration trust (0010 + 0011)
+
+Migration `0008` FK handling was corrected (FK toggle outside immediate TX). Migration
+`0011` records `catalog_meta.observational_projection_repair_applied` and, **once per
+database in the same transaction as applying 0011**, marks existing roots with
+`observational_projection_untrusted = 1` when the pre-upgrade schema was ≥ 8. Reopen
+after repair does not re-untrust rescanned roots. Fresh migrations from v7 and below
+retain data and stay trusted. Full rescan success (`replace_projection`) is the only
+per-root trust recovery. Write/plan/prepare paths fail closed while untrusted.
+**No user production DB migration is applied from this remediation branch.**
 
 ## Bank checksum
 

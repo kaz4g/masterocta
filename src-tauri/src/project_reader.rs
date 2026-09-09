@@ -1191,6 +1191,8 @@ pub(crate) fn compute_sample_usage_for_documents(
     let skip_master = decoded.lines().any(|line| line.trim() == "MASTER_TRACK=1");
     let bank = BankFile::from_data_file(bank_file_path)
         .map_err(|error| format!("failed to parse bank state: {error:?}"))?;
+    crate::bank_validation::validate_bank_file(&bank)
+        .map_err(|error| format!("bank validation failed: {error:?}"))?;
     let mut static_usage: Vec<Vec<SlotUsageEntry>> = vec![Vec::new(); 128];
     let mut flex_usage: Vec<Vec<SlotUsageEntry>> = vec![Vec::new(); 128];
 
