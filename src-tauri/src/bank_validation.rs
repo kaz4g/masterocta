@@ -13,6 +13,7 @@ pub(crate) enum BankValidationError {
     UnsupportedVersion,
     InvalidPartAssignment,
     InvalidMachineSlot,
+    InvalidMachineType,
 }
 
 pub(crate) fn validate_bank_file(bank: &BankFile) -> Result<(), BankValidationError> {
@@ -31,6 +32,11 @@ pub(crate) fn validate_bank_file(bank: &BankFile) -> Result<(), BankValidationEr
         }
     }
     for part in bank.parts.unsaved.0.iter().chain(bank.parts.saved.0.iter()) {
+        for machine_type in &part.audio_track_machine_types {
+            if !machine_type_valid(*machine_type) {
+                return Err(BankValidationError::InvalidMachineType);
+            }
+        }
         for track in &part.audio_track_machine_slots {
             if !machine_static_slot_id_valid(track.static_slot_id) {
                 return Err(BankValidationError::InvalidMachineSlot);
@@ -41,6 +47,11 @@ pub(crate) fn validate_bank_file(bank: &BankFile) -> Result<(), BankValidationEr
         }
     }
     Ok(())
+}
+
+/// Static=0, Flex=1, Thru=2, Neighbor=3, Pickup=4 per pinned ot-tools-io.
+fn machine_type_valid(machine_type: u8) -> bool {
+    matches!(machine_type, 0..=4)
 }
 
 /// Bank machine slots store a 0-based pool index (`0` = slot 1, `9` = slot 10).
@@ -112,5 +123,34 @@ mod tests {
     fn bank_machine_slot_out_of_range_is_rejected() {
         assert_eq!(bank_machine_slot_to_usage_index(128), None);
         assert_eq!(bank_machine_slot_to_usage_index(129), None);
+    }
+
+    #[test]
+    fn known_machine_types_zero_through_four_pass_validation() {
+        let mut bank = fixture_bank("bank01.work");
+        bank.parts.unsaved.0[0].audio_track_machine_types = [0, 1, 2, 3, 4, 0, 1, 2];
+        assert_eq!(validate_bank_file(&bank), Ok(()));
+    }
+
+    #[test]
+    fn unknown_machine_type_rejects_bank() {
+        for machine_type in [5_u8, 42, 255] {
+            let mut bank = fixture_bank("bank01.work");
+            bank.parts.unsaved.0[0].audio_track_machine_types[0] = machine_type;
+            assert_eq!(
+                validate_bank_file(&bank),
+                Err(BankValidationError::InvalidMachineType)
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_machine_type_in_saved_part_rejects_bank() {
+        let mut bank = fixture_bank("bank01.work");
+        bank.parts.saved.0[1].audio_track_machine_types[3] = 42;
+        assert_eq!(
+            validate_bank_file(&bank),
+            Err(BankValidationError::InvalidMachineType)
+        );
     }
 }
