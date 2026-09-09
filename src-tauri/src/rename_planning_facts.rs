@@ -341,6 +341,9 @@ fn project_usage_graph_complete(snapshot: &LibrarySnapshot, project: &LibraryPro
                 && document.project_relative_path == project.relative_path
                 && document.role == StateDocumentRole::Working
                 && document.parse_status == StateDocumentParseStatus::Parsed
+                && crate::project_compatibility::project_upstream_evidence_confirmed(
+                    &document.parser_provenance,
+                )
         })
     {
         return false;

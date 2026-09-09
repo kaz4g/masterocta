@@ -104,6 +104,23 @@ impl SqliteCatalog {
         Ok(untrusted != 0)
     }
 
+    /// Marks one root's observational projection untrusted until the next successful rescan.
+    pub fn mark_observational_projection_untrusted(
+        &self,
+        identity: &CatalogRootIdentity,
+    ) -> Result<(), CatalogError> {
+        let Some(root_row_id) = self.root_row_id(identity)? else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "UPDATE roots SET observational_projection_untrusted = 1 WHERE id = ?1",
+                params![root_row_id],
+            )
+            .map_err(unavailable)?;
+        Ok(())
+    }
+
     fn root_row_id(&self, identity: &CatalogRootIdentity) -> Result<Option<i64>, CatalogError> {
         self.connection
             .query_row(
