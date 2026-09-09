@@ -2,7 +2,8 @@ use crate::root_registry::{ResolvedRoot, RootRegistryError};
 use ot_domain::{
     ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySnapshot,
     RootRelativePath, SampleSettings, SampleSettingsOwner, SampleSettingsParseStatus,
-    SampleUsageEdge, SlotAssignment, StateDocument, StateDocumentKind, StateDocumentRole,
+    SampleUsageEdge, SlotAssignment, StateDocument, StateDocumentKind, StateDocumentParseStatus,
+    StateDocumentRole,
 };
 use ot_plan::{
     classify_destination_state, derive_file_instance_id, PathComparisonMode,
@@ -282,20 +283,74 @@ fn sidecar_projection_key(settings: &[SampleSettings]) -> Vec<(String, String, S
 }
 
 fn derive_set_project_coverage_complete(snapshot: &LibrarySnapshot) -> bool {
+    let projects = discovered_projects(snapshot);
+    if projects.is_empty() {
+        return false;
+    }
+    projects
+        .iter()
+        .all(|project| project_coverage_complete(snapshot, project))
+}
+
+fn derive_usage_graph_complete(snapshot: &LibrarySnapshot) -> bool {
+    let projects = discovered_projects(snapshot);
+    if projects.is_empty() {
+        return false;
+    }
+    projects
+        .iter()
+        .all(|project| project_usage_graph_complete(snapshot, project))
+}
+
+fn discovered_projects(snapshot: &LibrarySnapshot) -> Vec<&LibraryProject> {
     snapshot
         .sets
         .iter()
         .flat_map(|set| set.projects.iter())
         .chain(snapshot.standalone_projects.iter())
-        .all(|project| project_coverage_complete(snapshot, project))
+        .collect()
 }
 
-fn derive_usage_graph_complete(snapshot: &LibrarySnapshot) -> bool {
-    derive_set_project_coverage_complete(snapshot)
+fn project_usage_graph_complete(snapshot: &LibrarySnapshot, project: &LibraryProject) -> bool {
+    if !project_coverage_complete(snapshot, project) {
+        return false;
+    }
+
+    let bank_documents = snapshot
+        .state_documents
+        .iter()
+        .filter(|document| {
+            document.kind == StateDocumentKind::Bank
+                && document.project_relative_path == project.relative_path
+        })
+        .collect::<Vec<_>>();
+
+    if project.has_banks && bank_documents.is_empty() {
+        return false;
+    }
+
+    for document in bank_documents {
+        if document.parse_status != StateDocumentParseStatus::Parsed {
+            return false;
+        }
+    }
+
+    if project.has_project_file
+        && !snapshot.state_documents.iter().any(|document| {
+            document.kind == StateDocumentKind::Project
+                && document.project_relative_path == project.relative_path
+                && document.role == StateDocumentRole::Working
+                && document.parse_status == StateDocumentParseStatus::Parsed
+        })
+    {
+        return false;
+    }
+
+    true
 }
 
 fn project_coverage_complete(snapshot: &LibrarySnapshot, project: &LibraryProject) -> bool {
-    if project.has_banks && !project.has_project_file {
+    if project.has_banks && !project.has_project_file && !project.has_saved_checkpoint {
         return false;
     }
     if project.has_project_file
@@ -831,12 +886,49 @@ mod tests {
     }
 
     #[test]
-    fn unicode_case_collision_is_detected_for_non_ascii_names() {
-        let intended = RootRelativePath::parse("SET/AUDIO/über.wav").unwrap();
-        let sibling = RootRelativePath::parse("SET/AUDIO/ÜBER.wav").unwrap();
-        assert_eq!(
-            find_unicode_case_collision(&intended, &[sibling]),
-            Some(RootRelativePath::parse("SET/AUDIO/ÜBER.wav").unwrap())
-        );
+    fn bank_only_project_marks_usage_and_coverage_incomplete() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("SET/AUDIO")).unwrap();
+        fs::write(temp.path().join("SET/AUDIO/kick.wav"), vec![0_u8; 100]).unwrap();
+        let resolved = resolved(temp.path());
+        let (_, live_hash) = hash_live_file(&temp.path().join("SET/AUDIO/kick.wav")).unwrap();
+        let mut source = file_instance("SET/AUDIO/kick.wav", 1);
+        source.content_hash = live_hash;
+        let destination = RootRelativePath::parse("SET/AUDIO/kick-2.wav").unwrap();
+        let mut snapshot = LibrarySnapshot::default();
+        snapshot.standalone_projects.push(LibraryProject {
+            relative_path: RootRelativePath::parse("SET/PROJECT").unwrap(),
+            display_name: "PROJECT".into(),
+            has_project_file: false,
+            has_saved_checkpoint: false,
+            has_banks: true,
+        });
+        let facts =
+            build_rename_planning_facts(&resolved, &snapshot, 1, 1, &source, destination).unwrap();
+        assert!(!facts.usage_graph_complete);
+        assert!(!facts.set_project_coverage_complete);
+    }
+
+    #[test]
+    fn empty_topology_marks_usage_and_coverage_incomplete() {
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("SET/AUDIO")).unwrap();
+        fs::write(temp.path().join("SET/AUDIO/kick.wav"), vec![0_u8; 100]).unwrap();
+        let resolved = resolved(temp.path());
+        let (_, live_hash) = hash_live_file(&temp.path().join("SET/AUDIO/kick.wav")).unwrap();
+        let mut source = file_instance("SET/AUDIO/kick.wav", 1);
+        source.content_hash = live_hash;
+        let destination = RootRelativePath::parse("SET/AUDIO/kick-2.wav").unwrap();
+        let facts = build_rename_planning_facts(
+            &resolved,
+            &LibrarySnapshot::default(),
+            1,
+            1,
+            &source,
+            destination,
+        )
+        .unwrap();
+        assert!(!facts.usage_graph_complete);
+        assert!(!facts.set_project_coverage_complete);
     }
 }

@@ -970,8 +970,13 @@ fn collect_unresolved_references(
         .slot_assignments
         .iter()
         .filter(|assignment| {
-            assignment_relates_to_rename_source(assignment, facts)
-                && assignment.reference_status != SampleReferenceStatus::Resolved
+            references_rename_source(assignment, facts)
+                || ((assignment.reference_status == SampleReferenceStatus::Missing
+                    || assignment.reference_status == SampleReferenceStatus::Ambiguous)
+                    && references_rename_source_case_insensitive(assignment, facts))
+        })
+        .filter(|assignment| {
+            assignment.reference_status != SampleReferenceStatus::Resolved
                 && assignment.reference_status != SampleReferenceStatus::UnassignedSlot
         })
         .map(|assignment| RenameUnresolvedReference {

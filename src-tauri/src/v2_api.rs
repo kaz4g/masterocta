@@ -1859,6 +1859,7 @@ fn plan_additive_copy_sync(
 ) -> Result<ChangePlanDto, ApiError> {
     let resolved = registry.resolve(root_id)?;
     let identity = catalog_identity(&resolved.session)?;
+    ensure_catalog_projection_trusted(catalog, &identity)?;
     let snapshot = load_library_snapshot(catalog, &identity)?;
     ensure_write_eligible(&snapshot)?;
     let source = file_for_instance_id(&identity, &snapshot, source_file_instance_id)?;
@@ -1979,6 +1980,7 @@ pub(crate) fn plan_rename_sample_sync(
     let resolved = registry.resolve(root_id)?;
     ensure_clone_verified(clone_runtime, &resolved)?;
     let identity = catalog_identity(&resolved.session)?;
+    ensure_catalog_projection_trusted(catalog, &identity)?;
     let snapshot = load_library_snapshot(catalog, &identity)?;
     let source = file_for_instance_id(&identity, &snapshot, source_file_instance_id)?;
     if source.storage_scope == SampleStorageScope::Unclassified {
@@ -2207,6 +2209,9 @@ fn verify_stored_rename_plan_freshness(
     }
 
     let identity = catalog_identity(&resolved.session)?;
+    if require_write {
+        ensure_catalog_projection_trusted(catalog, &identity)?;
+    }
     let snapshot = load_library_snapshot(catalog, &identity)?;
     ensure_write_eligible(&snapshot)?;
     let source = snapshot
@@ -3605,7 +3610,25 @@ pub(crate) fn load_library_snapshot(
         })
 }
 
-pub(crate) fn scan_library_sync(
+pub(crate) fn ensure_catalog_projection_trusted(
+    catalog: &SharedCatalog,
+    identity: &CatalogRootIdentity,
+) -> Result<(), ApiError> {
+    let catalog = catalog.lock().map_err(|_| catalog_lock_error())?;
+    if catalog
+        .observational_projection_untrusted(identity)
+        .map_err(catalog_error)?
+    {
+        return Err(ApiError::new(
+            "CATALOG_RESCAN_REQUIRED",
+            "catalog observational projection requires a fresh rescan before write operations",
+            true,
+        ));
+    }
+    Ok(())
+}
+
+fn scan_library_sync(
     registry: &RootRegistry,
     catalog: &SharedCatalog,
     root_id: &RootId,
