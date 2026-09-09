@@ -2813,6 +2813,107 @@ mod tests {
         assert!(foreign_keys.query([]).unwrap().next().unwrap().is_none());
     }
 
+    fn foreign_keys_enabled(connection: &Connection) -> bool {
+        connection
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap()
+    }
+
+    fn max_schema_version(connection: &Connection) -> i64 {
+        connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    }
+
+    fn slot_assignment_count(connection: &Connection) -> i64 {
+        connection
+            .query_row("SELECT COUNT(*) FROM slot_assignments", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn migration_8_success_restores_foreign_keys_after_outside_transaction_toggle() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let assignments_before = slot_assignment_count(&connection);
+        assert_eq!(assignments_before, 1);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        apply_migration(&mut connection, 8, migration_8).unwrap();
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 8);
+        assert_eq!(slot_assignment_count(&connection), assignments_before);
+        let mut foreign_keys = connection.prepare("PRAGMA foreign_key_check").unwrap();
+        assert!(foreign_keys.query([]).unwrap().next().unwrap().is_none());
+    }
+
+    #[test]
+    fn migration_8_failure_restores_foreign_keys_and_preserves_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let assignments_before = slot_assignment_count(&connection);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        let failing_sql = format!("{migration_8}\nTHIS IS NOT SQL;");
+        let error = apply_migration(&mut connection, 8, &failing_sql).unwrap_err();
+        assert!(matches!(error, CatalogError::Migration { version: 8, .. }));
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        assert_eq!(slot_assignment_count(&connection), assignments_before);
+    }
+
+    #[test]
+    fn migration_8_foreign_key_check_blocks_commit_and_preserves_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        let orphan_insert = "
+INSERT INTO slot_assignments (
+    id, state_document_id, slot_kind, slot_number,
+    referenced_relative_path, reference_status
+) VALUES (99999, 99999, 'static', 99, 'SET/AUDIO/orphan.wav', 'resolved');";
+        let violating_sql = format!("{migration_8}{orphan_insert}");
+        let error = apply_migration(&mut connection, 8, &violating_sql).unwrap_err();
+        assert!(matches!(
+            error,
+            CatalogError::Migration { version: 8, .. } | CatalogError::Integrity { .. }
+        ));
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let orphan_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM slot_assignments WHERE id = 99999)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!orphan_exists);
+        assert_eq!(slot_assignment_count(&connection), 1);
+    }
+
     #[cfg(unix)]
     #[test]
     fn database_symlinks_are_rejected_by_sqlite_open_flags() {
