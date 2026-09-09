@@ -163,8 +163,13 @@ fn project_meta() -> &'static str {
     "[META]\r\nTYPE=OCTATRACK DPS-1 PROJECT\r\nVERSION=19\r\nOS_VERSION=R0173      1.40\r\n[/META]\r\n"
 }
 
+fn project_containers() -> &'static str {
+    "[SETTINGS]\r\nWRITEPROTECTED=0\r\n[/SETTINGS]\r\n\r\n[STATES]\r\nBANK=0\r\n[/STATES]\r\n"
+}
+
 fn build_project_document(samples: &[(&str, &str, &str)]) -> Vec<u8> {
     let mut body = project_meta().to_owned();
+    body.push_str(project_containers());
     for (kind, number, path) in samples {
         body.push_str("\r\n");
         body.push_str(&sample_block(kind, number, path));
