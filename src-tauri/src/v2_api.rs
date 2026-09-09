@@ -29,8 +29,8 @@ use ot_domain::{
     ContentHash, FileInstance, InvalidManualMetadata, LibraryProject, LibrarySet, LibrarySnapshot,
     ManualAssetMetadata, ManualNote, ManualTag, RenameSampleIntent, RootId, RootRelativePath,
     SampleReferenceStatus, SampleSettingsOwner, SampleSettingsParseStatus, SampleSlotKind,
-    SampleStorageScope, SampleUsageEdge, SampleUsageKind, StateDocumentParseStatus,
-    StateDocumentRole,
+    SampleStorageScope, SampleUsageEdge, SampleUsageKind, StateDocumentKind,
+    StateDocumentParseStatus, StateDocumentRole,
 };
 use ot_executor::{
     OperationId, RenameJournalStatus, RenameOperationJournal, RenameProjectRewriteRecord,
@@ -1617,10 +1617,14 @@ pub(crate) fn file_for_instance_id(
 }
 
 fn ensure_write_eligible(snapshot: &LibrarySnapshot) -> Result<(), ApiError> {
-    let unsupported_state = snapshot
-        .state_documents
-        .iter()
-        .any(|document| document.parse_status != StateDocumentParseStatus::Parsed);
+    let unsupported_state = snapshot.state_documents.iter().any(|document| {
+        document.parse_status != StateDocumentParseStatus::Parsed
+            || (document.kind == StateDocumentKind::Project
+                && document.parse_status == StateDocumentParseStatus::Parsed
+                && !crate::project_compatibility::project_upstream_evidence_confirmed(
+                    &document.parser_provenance,
+                ))
+    });
     let unsupported_settings = snapshot
         .sample_settings
         .iter()
@@ -3628,6 +3632,16 @@ pub(crate) fn ensure_catalog_projection_trusted(
     Ok(())
 }
 
+fn mark_catalog_projection_untrusted(
+    catalog: &SharedCatalog,
+    identity: &CatalogRootIdentity,
+) -> Result<(), ApiError> {
+    let catalog = catalog.lock().map_err(|_| catalog_lock_error())?;
+    catalog
+        .mark_observational_projection_untrusted(identity)
+        .map_err(catalog_error)
+}
+
 fn scan_library_sync(
     registry: &RootRegistry,
     catalog: &SharedCatalog,
@@ -3644,10 +3658,15 @@ fn scan_library_sync(
             .unwrap_or_default()
     };
     let storage = RegisteredLegacyLibrary::new(root_id.clone(), resolved.canonical_path, baseline);
-    ListLibrary::new(&storage)
-        .execute(root_id)
-        .map(|snapshot| (resolved.session, snapshot))
-        .map_err(|error| storage_error(error.message()))
+    match ListLibrary::new(&storage).execute(root_id) {
+        Ok(snapshot) => Ok((resolved.session, snapshot)),
+        Err(error) => {
+            if error.message().starts_with("VERIFY_UNAVAILABLE:") {
+                let _ = mark_catalog_projection_untrusted(catalog, &identity);
+            }
+            Err(storage_error(error.message()))
+        }
+    }
 }
 
 fn storage_error(message: &str) -> ApiError {
@@ -6984,6 +7003,143 @@ mod tests {
             panic!("expected idempotent planned rename");
         };
         assert_eq!(replay_plan.plan_id, plan.plan_id);
+    }
+
+    fn build_upstream_rejected_project_fixture(root: &Path) {
+        let project_dir = root.join("SET/PROJECT");
+        let audio_dir = root.join("SET/AUDIO");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::create_dir_all(&audio_dir).unwrap();
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device/project.work");
+        let source = String::from_utf8(fs::read(&fixture).unwrap()).unwrap();
+        let rejected = source.replace("TEMPOx24=3027", "TEMPOx24=not_a_number");
+        fs::write(project_dir.join("project.work"), rejected.as_bytes()).unwrap();
+        write_test_wav(&audio_dir.join("pad.wav"));
+    }
+
+    #[test]
+    fn gate_c_r2_t1_upstream_rejection_blocks_write_and_rename_planning() {
+        let root = TempDir::new().unwrap();
+        build_upstream_rejected_project_fixture(root.path());
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        let rename_runtime = open_test_rename_runtime(data_directory.path());
+        let write = write_runtime(data_directory.path());
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+
+        let snapshot = load_library_snapshot(
+            &catalog,
+            &catalog_identity(&registry.resolve(&root_id).unwrap().session).unwrap(),
+        )
+        .unwrap();
+        let project = snapshot
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+        assert_eq!(project.parse_status, StateDocumentParseStatus::Malformed);
+        assert!(project.parser_provenance.compatibility_evidence.is_none());
+
+        let write_error =
+            enable_write_sync(&registry, &catalog, &write, &rename_runtime, &root_id).unwrap_err();
+        assert_eq!(write_error.code, "WRITE_NOT_SUPPORTED");
+
+        let dto = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let source_id = dto.audio_files[0].file_instance_id.clone();
+        let plan_response = plan_rename_sample_sync(
+            &registry,
+            &catalog,
+            &clone_runtime,
+            &rename_runtime,
+            &root_id,
+            &source_id,
+            "SET/AUDIO/new-pad.wav",
+        )
+        .unwrap();
+        let RenamePlanResponseDto::Blocked(blocked) = plan_response else {
+            panic!("expected blocked rename plan for upstream-rejected project");
+        };
+        assert!(blocked.block_reasons.iter().any(|reason| {
+            reason.code == "MALFORMED_STATE_DOCUMENT" || reason.code == "INCOMPLETE_USAGE_GRAPH"
+        }));
+    }
+
+    #[cfg(feature = "test-seams")]
+    #[test]
+    fn gate_c_r2_t2_upstream_verify_io_failure_untrusts_root_and_blocks_stale_catalog() {
+        use crate::legacy_read_adapter::set_upstream_verify_temp_dir_fail;
+
+        let root = TempDir::new().unwrap();
+        build_gate_c_planning_fixture(root.path());
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        let rename_runtime = open_test_rename_runtime(data_directory.path());
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let resolved = registry.resolve(&root_id).unwrap();
+        let identity = catalog_identity(&resolved.session).unwrap();
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+
+        ensure_catalog_projection_trusted(&catalog, &identity).unwrap();
+        let baseline = load_library_snapshot(&catalog, &identity).unwrap();
+        let baseline_project = baseline
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+        assert_eq!(
+            baseline_project.parse_status,
+            StateDocumentParseStatus::Parsed
+        );
+
+        set_upstream_verify_temp_dir_fail(true);
+        let scan_error = scan_library_sync(&registry, &catalog, &root_id).unwrap_err();
+        assert_eq!(scan_error.code, "LIBRARY_SCAN_FAILED");
+        set_upstream_verify_temp_dir_fail(false);
+
+        let catalog_guard = catalog.lock().unwrap();
+        assert!(catalog_guard
+            .observational_projection_untrusted(&identity)
+            .unwrap());
+        drop(catalog_guard);
+
+        let unchanged = load_library_snapshot(&catalog, &identity).unwrap();
+        let unchanged_project = unchanged
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+        assert_eq!(
+            unchanged_project.parse_status,
+            StateDocumentParseStatus::Parsed
+        );
+
+        let dto = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let source_id = dto
+            .audio_files
+            .iter()
+            .find(|file| file.relative_path == "SET/AUDIO/pad.wav")
+            .unwrap()
+            .file_instance_id
+            .clone();
+        let plan_error = plan_rename_sample_sync(
+            &registry,
+            &catalog,
+            &clone_runtime,
+            &rename_runtime,
+            &root_id,
+            &source_id,
+            "SET/AUDIO/new-pad.wav",
+        )
+        .unwrap_err();
+        assert_eq!(plan_error.code, "CATALOG_RESCAN_REQUIRED");
     }
 
     #[test]

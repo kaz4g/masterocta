@@ -2,7 +2,7 @@
 //! Production catalog parsing uses `ot_codec::parse_project_document`.
 #![allow(dead_code)]
 
-use ot_domain::ProjectCompatibilityEvidence;
+use ot_domain::{ParserProvenance, ProjectCompatibilityEvidence};
 use ot_tools_io::ProjectFile;
 
 const VERIFIED_PROJECT_VERSION: u32 = 19;
@@ -37,6 +37,14 @@ pub(crate) struct ProjectCompatibilityDecision {
     pub(crate) upstream: UpstreamCompatibility,
     pub(crate) project_version: u32,
     pub(crate) os_version: Option<ProjectOsVersion>,
+}
+
+pub(crate) fn project_upstream_evidence_confirmed(provenance: &ParserProvenance) -> bool {
+    matches!(
+        provenance.compatibility_evidence,
+        Some(ProjectCompatibilityEvidence::UpstreamLibrary)
+            | Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
+    )
 }
 
 pub(crate) fn evaluate_project_compatibility(
