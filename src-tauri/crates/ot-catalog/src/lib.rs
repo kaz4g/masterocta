@@ -2198,12 +2198,13 @@ fn apply_migration(
 }
 
 fn set_foreign_keys(connection: &Connection, enabled: bool) -> Result<bool, CatalogError> {
+    let previous: bool = connection
+        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+        .map_err(unavailable)?;
     connection
         .pragma_update(None, "foreign_keys", enabled)
         .map_err(unavailable)?;
-    connection
-        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
-        .map_err(unavailable)
+    Ok(previous)
 }
 
 fn restore_foreign_keys(connection: &Connection, previous: bool) -> Result<(), CatalogError> {
