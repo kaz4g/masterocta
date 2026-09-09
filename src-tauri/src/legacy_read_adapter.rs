@@ -23,7 +23,54 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Component, Path, PathBuf};
+#[cfg(feature = "test-seams")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
+
+#[cfg(feature = "test-seams")]
+static UPSTREAM_VERIFY_TEMP_DIR_FAIL: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "test-seams")]
+static UPSTREAM_VERIFY_WRITE_FAIL: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum UpstreamProjectVerify {
+    NotRequired,
+    Confirmed,
+    DocumentRejected,
+    Unavailable,
+}
+
+#[cfg(feature = "test-seams")]
+#[allow(dead_code)]
+pub fn set_upstream_verify_temp_dir_fail(fail: bool) {
+    UPSTREAM_VERIFY_TEMP_DIR_FAIL.store(fail, Ordering::SeqCst);
+}
+
+#[cfg(feature = "test-seams")]
+#[allow(dead_code)]
+pub fn set_upstream_verify_write_fail(fail: bool) {
+    UPSTREAM_VERIFY_WRITE_FAIL.store(fail, Ordering::SeqCst);
+}
+
+#[cfg(feature = "test-seams")]
+fn upstream_verify_temp_dir_fail_enabled() -> bool {
+    UPSTREAM_VERIFY_TEMP_DIR_FAIL.load(Ordering::SeqCst)
+}
+
+#[cfg(feature = "test-seams")]
+fn upstream_verify_write_fail_enabled() -> bool {
+    UPSTREAM_VERIFY_WRITE_FAIL.load(Ordering::SeqCst)
+}
+
+#[cfg(not(feature = "test-seams"))]
+fn upstream_verify_temp_dir_fail_enabled() -> bool {
+    false
+}
+
+#[cfg(not(feature = "test-seams"))]
+fn upstream_verify_write_fail_enabled() -> bool {
+    false
+}
 
 pub struct RegisteredLegacyLibrary {
     root_id: RootId,
@@ -466,7 +513,7 @@ fn scan_state_inventory(
                     &project_source,
                     &project_file,
                     &inventory_paths,
-                );
+                )?;
                 if parse_status == StateDocumentParseStatus::Parsed {
                     parsed_project_source = Some(project_source.clone());
                     for assignment in assignments {
@@ -916,19 +963,22 @@ fn parse_project_state(
     source_relative_path: &RootRelativePath,
     source_file: &Path,
     inventory_paths: &HashSet<String>,
-) -> (
-    StateDocumentParseStatus,
-    ParserProvenance,
-    Vec<SlotAssignment>,
-) {
+) -> Result<
+    (
+        StateDocumentParseStatus,
+        ParserProvenance,
+        Vec<SlotAssignment>,
+    ),
+    StorageError,
+> {
     let bytes = match fs::read(source_file) {
         Ok(bytes) => bytes,
         Err(_) => {
-            return (
+            return Ok((
                 StateDocumentParseStatus::Malformed,
                 project_parser_provenance(None, None),
                 Vec::new(),
-            )
+            ));
         }
     };
     let parsed = parse_project_document(&bytes);
@@ -936,15 +986,29 @@ fn parse_project_state(
     let mut compatibility_evidence = parsed.compatibility_evidence;
     let parse_status = parsed.parse_status;
     if parse_status != StateDocumentParseStatus::Parsed {
-        return (
+        return Ok((
             parse_status,
             project_parser_provenance(source_version, compatibility_evidence),
             Vec::new(),
-        );
+        ));
     }
-    if compatibility_evidence != Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture) {
-        if let Some(upstream) = verify_upstream_project_compatibility(source_file, &parsed) {
-            compatibility_evidence = Some(upstream);
+
+    match verify_upstream_project_compatibility(&bytes, &parsed) {
+        UpstreamProjectVerify::NotRequired => {}
+        UpstreamProjectVerify::Confirmed => {
+            compatibility_evidence = Some(ProjectCompatibilityEvidence::UpstreamLibrary);
+        }
+        UpstreamProjectVerify::DocumentRejected => {
+            return Ok((
+                StateDocumentParseStatus::Malformed,
+                project_parser_provenance(source_version, None),
+                Vec::new(),
+            ));
+        }
+        UpstreamProjectVerify::Unavailable => {
+            return Err(StorageError::new(
+                "VERIFY_UNAVAILABLE: upstream project compatibility verification failed",
+            ));
         }
     }
 
@@ -966,31 +1030,59 @@ fn parse_project_state(
         })
         .collect();
 
-    (
+    Ok((
         StateDocumentParseStatus::Parsed,
         project_parser_provenance(source_version, compatibility_evidence),
         assignments,
-    )
+    ))
 }
 
 fn verify_upstream_project_compatibility(
-    source_file: &Path,
+    bytes: &[u8],
     parsed: &ot_codec::ProjectDocumentParseResult,
-) -> Option<ProjectCompatibilityEvidence> {
-    let release = parsed
+) -> UpstreamProjectVerify {
+    if parsed.compatibility_evidence
+        == Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
+    {
+        return UpstreamProjectVerify::NotRequired;
+    }
+    let Some(release) = parsed
         .source_version
         .as_deref()
         .and_then(parse_os_version)
-        .map(|os| os.release)?;
+        .map(|os| os.release)
+    else {
+        return UpstreamProjectVerify::NotRequired;
+    };
     if !upstream_candidate_release(&release) {
-        return None;
+        return UpstreamProjectVerify::NotRequired;
     }
-    let temp = tempfile::TempDir::new().ok()?;
-    let copy_path = temp.path().join("project.work");
-    fs::copy(source_file, &copy_path).ok()?;
-    ProjectFile::from_data_file(&copy_path)
-        .ok()
-        .map(|_| ProjectCompatibilityEvidence::UpstreamLibrary)
+    let temp = match create_upstream_verify_temp_dir() {
+        Ok(temp) => temp,
+        Err(()) => return UpstreamProjectVerify::Unavailable,
+    };
+    let verify_path = temp.path().join("project.work");
+    if write_upstream_verify_bytes(&verify_path, bytes).is_err() {
+        return UpstreamProjectVerify::Unavailable;
+    }
+    match ProjectFile::from_data_file(&verify_path) {
+        Ok(_) => UpstreamProjectVerify::Confirmed,
+        Err(_) => UpstreamProjectVerify::DocumentRejected,
+    }
+}
+
+fn create_upstream_verify_temp_dir() -> Result<tempfile::TempDir, ()> {
+    if upstream_verify_temp_dir_fail_enabled() {
+        return Err(());
+    }
+    tempfile::TempDir::new().map_err(|_| ())
+}
+
+fn write_upstream_verify_bytes(path: &Path, bytes: &[u8]) -> Result<(), ()> {
+    if upstream_verify_write_fail_enabled() {
+        return Err(());
+    }
+    fs::write(path, bytes).map_err(|_| ())
 }
 
 fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProvenance) {
@@ -2286,5 +2378,102 @@ mod tests {
         assert!(loaded.sample_settings.iter().all(|settings| {
             settings.parser_provenance.parser_name == SAMPLE_SETTINGS_PARSER_NAME
         }));
+    }
+
+    fn upstream_rejected_project_fixture() -> (TempDir, PathBuf) {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device/project.work");
+        let source = String::from_utf8(fs::read(&fixture).unwrap()).unwrap();
+        let rejected = source.replace("TEMPOx24=3027", "TEMPOx24=not_a_number");
+        let project_file = project_directory.join("project.work");
+        fs::write(&project_file, rejected.as_bytes()).unwrap();
+        let verify_path = project_directory.join("verify.work");
+        fs::write(&verify_path, rejected.as_bytes()).unwrap();
+        assert!(
+            ProjectFile::from_data_file(&verify_path).is_err(),
+            "fixture mutation must be rejected by pinned ProjectFile"
+        );
+        (root, project_file)
+    }
+
+    #[test]
+    fn gate_c_r2_t1_upstream_document_rejection_is_malformed_without_assignments() {
+        let (root, project_file) = upstream_rejected_project_fixture();
+        let before = snapshot_files(root.path());
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        let project = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+
+        assert_eq!(project.parse_status, StateDocumentParseStatus::Malformed);
+        assert!(project.parser_provenance.compatibility_evidence.is_none());
+        assert!(assignments.is_empty());
+        assert!(usage_edges.is_empty());
+        assert_eq!(snapshot_files(root.path()), before);
+        assert!(
+            parse_project_document(&fs::read(project_file).unwrap()).parse_status
+                == StateDocumentParseStatus::Parsed
+        );
+    }
+
+    #[test]
+    fn gate_c_r2_t3_upstream_verify_uses_held_bytes_not_source_reread() {
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device/project.work");
+        let bytes = fs::read(&fixture).unwrap();
+        let parsed = parse_project_document(&bytes);
+        assert_eq!(parsed.parse_status, StateDocumentParseStatus::Parsed);
+
+        let root = TempDir::new().unwrap();
+        let corrupt_path = root.path().join("project.work");
+        fs::write(&corrupt_path, b"corrupted on disk").unwrap();
+        assert!(ProjectFile::from_data_file(&corrupt_path).is_err());
+
+        assert_eq!(
+            verify_upstream_project_compatibility(&bytes, &parsed),
+            UpstreamProjectVerify::Confirmed
+        );
+    }
+
+    #[test]
+    fn gate_c_r2_t4_real_device_1_40b_fixture_keeps_upstream_library_evidence() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, _, _) = scan_state_inventory(&canonical, &topology).unwrap();
+        let project = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+
+        assert_eq!(project.parse_status, StateDocumentParseStatus::Parsed);
+        assert_eq!(
+            project.parser_provenance.compatibility_evidence,
+            Some(ProjectCompatibilityEvidence::UpstreamLibrary)
+        );
+        assert_eq!(
+            project.parser_provenance.source_version.as_deref(),
+            Some("R0177     1.40B")
+        );
     }
 }
