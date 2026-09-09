@@ -61,8 +61,18 @@ Supported only when all hold:
 Evidence (never inferred from release suffix alone in the codec):
 
 - `VerifiedMasterOctaFixture` for exact `R0173` / `1.40` + VERSION 19
-- `UpstreamLibrary` only after catalog scan copies bytes to a TempDir and pinned
-  `ProjectFile` succeeds for upstream-candidate releases (`1.40A`, `1.40B`, `1.40C`)
+- `UpstreamLibrary` only after catalog scan writes the **same bytes read for codec
+  parsing** into a TempDir and pinned `ProjectFile::from_data_file` succeeds for
+  upstream-candidate releases (`1.40A`, `1.40B`, `1.40C`)
+
+Upstream-candidate projects stay non-`Parsed` until `UpstreamLibrary` is confirmed.
+Pinned `ProjectFile` rejection → `Malformed` with no assignments or usage edges; the
+scan continues for other documents. TempDir or temp write failure →
+`VERIFY_UNAVAILABLE:` scan error and **only that root** is marked
+`observational_projection_untrusted = 1` (no Malformed misclassification).
+
+Legacy catalog rows that still show `Parsed` without confirmed project evidence are
+blocked at write/rename gates until a successful rescan replaces the projection.
 
 Unknown VERSION or release → `UnsupportedVersion` (read-only). Malformed META or
 unparseable OS token → `Malformed`.
