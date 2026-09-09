@@ -436,6 +436,94 @@ fn assert_preserved_graph(catalog: &SqliteCatalog, expected: &PreservedRows) {
             &format!("{:?}", work.parse_status),
         );
     }
+    let strd = snapshot
+        .state_documents
+        .iter()
+        .find(|document| {
+            document.role == StateDocumentRole::SavedCheckpoint
+                && document.kind == StateDocumentKind::Project
+        })
+        .unwrap_or_else(|| {
+            fail(
+                "state_documents",
+                "saved_checkpoint Project present",
+                "missing",
+            )
+        });
+    if strd.parse_status != StateDocumentParseStatus::Parsed {
+        fail(
+            "state_documents",
+            "saved_checkpoint Project remains Parsed",
+            &format!("{:?}", strd.parse_status),
+        );
+    }
+    let has_saved_checkpoint: i64 = catalog
+        .connection
+        .query_row(
+            "SELECT has_saved_checkpoint FROM projects WHERE relative_path = 'SET/PROJECT'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    if has_saved_checkpoint != 1 {
+        fail(
+            "has_saved_checkpoint",
+            "1 after saved_checkpoint backfill",
+            &has_saved_checkpoint.to_string(),
+        );
+    }
+}
+
+#[test]
+fn ct04_v7_migration_leaves_projection_trusted() {
+    let directory = TempDir::new().unwrap();
+    let path = database_path(&directory);
+    {
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_historical_v7(&mut connection);
+        populate_v7(&connection);
+        let version: i64 = connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 7);
+    }
+
+    let catalog = SqliteCatalog::open(&path).unwrap();
+    let version: i64 = catalog
+        .connection
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(version, LATEST_SCHEMA_VERSION as i64);
+    let untrusted_flag: i64 = catalog
+        .connection
+        .query_row(
+            "SELECT observational_projection_untrusted FROM roots WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    if untrusted_flag != 0 {
+        fail(
+            "projection_trust",
+            "observational_projection_untrusted=0 after v7→latest",
+            &untrusted_flag.to_string(),
+        );
+    }
+    if catalog
+        .observational_projection_untrusted(&CatalogRootIdentity::new(ROOT_FINGERPRINT).unwrap())
+        .unwrap()
+    {
+        fail(
+            "projection_trust",
+            "trusted after v7→latest migration",
+            "observational_projection_untrusted=true",
+        );
+    }
 }
 
 #[test]
@@ -502,58 +590,175 @@ fn ct04_populated_v7_survives_production_migrator() {
 }
 
 #[test]
-fn ct04_failed_migration_restores_foreign_keys_pragma() {
+fn ct04_failed_migration_8_restores_foreign_keys_outside_transaction() {
     let mut connection = Connection::open_in_memory().unwrap();
     configure_connection(&connection).unwrap();
+    apply_historical_v7(&mut connection);
+    populate_v7(&connection);
+    let version_before: i64 = connection
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    if version_before != 7 {
+        fail(
+            "precondition",
+            "schema version 7",
+            &version_before.to_string(),
+        );
+    }
     let before: bool = connection
         .pragma_query_value(None, "foreign_keys", |row| row.get(0))
         .unwrap();
     if !before {
         fail("precondition", "foreign_keys ON", "OFF");
     }
-    let error = apply_migration(
-        &mut connection,
-        1,
-        "PRAGMA foreign_keys = OFF; \
-         CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT); \
-         CREATE TABLE half_applied (id INTEGER); \
-         THIS IS NOT SQL;",
-    )
-    .unwrap_err();
+
+    let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+    let failing_sql = format!("{migration_8}\nTHIS IS NOT SQL;");
+    let error = apply_migration(&mut connection, 8, &failing_sql).unwrap_err();
     if !matches!(
         error,
-        ot_storage_ports::CatalogError::Migration { version: 1, .. }
+        ot_storage_ports::CatalogError::Migration { version: 8, .. }
     ) {
         fail(
             "fault_injection",
-            "Migration error for version 1",
+            "Migration error for version 8",
             &format!("{error:?}"),
         );
     }
+
     let after: bool = connection
         .pragma_query_value(None, "foreign_keys", |row| row.get(0))
         .unwrap();
     if !after {
         fail(
             "foreign_keys_restore",
-            "foreign_keys ON after failed migration",
+            "foreign_keys ON after failed migration 8",
             "OFF",
         );
     }
-    for table in ["schema_migrations", "half_applied"] {
-        let exists: bool = connection
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1)",
-                params![table],
-                |row| row.get(0),
-            )
-            .unwrap();
-        if exists {
-            fail(
-                "rollback",
-                &format!("{table} rolled back"),
-                "table still exists",
-            );
+    let version_after: i64 = connection
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    if version_after != 7 {
+        fail(
+            "rollback",
+            "schema version remains 7",
+            &version_after.to_string(),
+        );
+    }
+    let assignment_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM slot_assignments", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    if assignment_count != 2 {
+        fail(
+            "rollback",
+            "slot_assignments preserved",
+            &assignment_count.to_string(),
+        );
+    }
+}
+
+#[test]
+fn ct04_migration_8_foreign_key_check_blocks_commit() {
+    let mut connection = Connection::open_in_memory().unwrap();
+    configure_connection(&connection).unwrap();
+    apply_historical_v7(&mut connection);
+    populate_v7(&connection);
+
+    let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+    let orphan_insert = "
+INSERT INTO slot_assignments (
+    id, state_document_id, slot_kind, slot_number,
+    referenced_relative_path, reference_status
+) VALUES (99999, 99999, 'static', 99, 'SET/AUDIO/orphan.wav', 'resolved');";
+    let violating_sql = format!("{migration_8}{orphan_insert}");
+    let error = apply_migration(&mut connection, 8, &violating_sql).unwrap_err();
+    if !matches!(
+        error,
+        ot_storage_ports::CatalogError::Migration { version: 8, .. }
+            | ot_storage_ports::CatalogError::Integrity { .. }
+    ) {
+        fail(
+            "integrity_injection",
+            "migration 8 blocked by foreign key check",
+            &format!("{error:?}"),
+        );
+    }
+
+    let after: bool = connection
+        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+        .unwrap();
+    if !after {
+        fail(
+            "foreign_keys_restore",
+            "foreign_keys ON after integrity failure",
+            "OFF",
+        );
+    }
+    let version_after: i64 = connection
+        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    if version_after != 7 {
+        fail(
+            "rollback",
+            "schema version remains 7",
+            &version_after.to_string(),
+        );
+    }
+    let orphan_exists: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM slot_assignments WHERE id = 99999)",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    if orphan_exists {
+        fail("rollback", "orphan row absent", "orphan row committed");
+    }
+}
+
+#[test]
+fn ct04_existing_v9_database_marks_projection_untrusted() {
+    let directory = TempDir::new().unwrap();
+    let path = database_path(&directory);
+    {
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_historical_v7(&mut connection);
+        for (version, sql) in super::MIGRATIONS {
+            if *version >= 8 && *version <= 9 {
+                apply_migration(&mut connection, *version, sql).unwrap();
+            }
         }
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots (
+                    id, fingerprint, identity_is_stable, display_name,
+                    last_observed_revision, last_observed_at, latest_completed_scan_revision
+                ) VALUES (
+                    1, '{ROOT_FINGERPRINT}', 1, 'V9 Root', 1, '{STAMP}', 1
+                );"
+            ))
+            .unwrap();
+    }
+
+    let catalog = SqliteCatalog::open(&path).unwrap();
+    if !catalog
+        .observational_projection_untrusted(&CatalogRootIdentity::new(ROOT_FINGERPRINT).unwrap())
+        .unwrap()
+    {
+        fail(
+            "projection_trust",
+            "observational_projection_untrusted=true for existing v9",
+            "trusted",
+        );
     }
 }

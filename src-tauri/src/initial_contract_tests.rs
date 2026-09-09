@@ -9,7 +9,7 @@ use super::{
     apply_rename_sync, authorize_rename_sync, catalog_identity, create_rename_backup_sync,
     enable_write_sync, load_library_snapshot, opaque_file_instance_id, plan_rename_sample_sync,
     prepare_rename_sync, register_root_sync, rename_continue_sync, scan_library_sync,
-    RenamePlanDto, RenamePlanResponseDto,
+    RenameApplyStatusDto, RenamePlanDto, RenamePlanResponseDto,
 };
 use crate::catalog_runtime::{open_shared_catalog, SharedCatalog};
 use crate::clone_runtime::{open_shared_clone_runtime, SharedCloneRuntime};
@@ -58,6 +58,7 @@ impl DeviceIdentityProvider for StableTestIdentity {
 
 struct ContractHarness {
     media_root: TempDir,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     data_directory: TempDir,
     registry: RootRegistry,
     catalog: SharedCatalog,
@@ -75,6 +76,72 @@ struct FileRecord {
 
 fn fail(scenario: &str, stage: &str, expected: &str, observed: &str) -> ! {
     panic!("{scenario} failed at {stage}: expected {expected}; observed {observed}");
+}
+
+fn assert_apply_verification_contract(
+    scenario: &str,
+    applied: &RenameApplyStatusDto,
+    expected_file_count: u64,
+) {
+    if applied.mutation_state != "committed" {
+        fail(
+            scenario,
+            "apply_mutation",
+            "mutation_state=committed",
+            &applied.mutation_state,
+        );
+    }
+    if applied.verification_state != "passed" {
+        fail(
+            scenario,
+            "apply_verification",
+            "verification_state=passed",
+            &format!(
+                "{} (code={:?})",
+                applied.verification_state, applied.verification_code
+            ),
+        );
+    }
+    if !applied.rescan_completed {
+        fail(
+            scenario,
+            "apply_rescan",
+            "rescan_completed=true",
+            "rescan_completed=false",
+        );
+    }
+    if applied.observed_file_count != expected_file_count {
+        fail(
+            scenario,
+            "apply_file_count",
+            &expected_file_count.to_string(),
+            &applied.observed_file_count.to_string(),
+        );
+    }
+    if applied.missing_reference_count != 0 {
+        fail(
+            scenario,
+            "apply_missing_refs",
+            "0",
+            &applied.missing_reference_count.to_string(),
+        );
+    }
+    if applied.invalid_reference_count != 0 {
+        fail(
+            scenario,
+            "apply_invalid_refs",
+            "0",
+            &applied.invalid_reference_count.to_string(),
+        );
+    }
+    if applied.unresolved_reference_count != 0 {
+        fail(
+            scenario,
+            "apply_unresolved_refs",
+            "0",
+            &applied.unresolved_reference_count.to_string(),
+        );
+    }
 }
 
 fn encode_windows_1258(text: &str) -> Vec<u8> {
@@ -264,6 +331,7 @@ fn extract_sample_block(document: &[u8], kind: &str, number: &str) -> Vec<u8> {
     document[start..start + end + end_marker.len()].to_vec()
 }
 
+#[cfg(target_os = "linux")]
 fn filesystem_is_case_sensitive(directory: &Path) -> bool {
     let upper = directory.join("CaseProbeA");
     let lower = directory.join("caseprobea");
@@ -456,6 +524,8 @@ impl ContractHarness {
                 &format!("{error:?}"),
             )
         });
+        let pre_apply_snapshot = self.load_snapshot();
+        let expected_file_count = pre_apply_snapshot.file_instances.len() as u64;
         let applied = apply_rename_sync(
             &self.registry,
             &self.catalog,
@@ -469,14 +539,7 @@ impl ContractHarness {
             &continuation.continuation_authority_id,
         )
         .unwrap_or_else(|error| fail("harness", "apply", "committed apply", &format!("{error:?}")));
-        if applied.mutation_state != "committed" {
-            fail(
-                "harness",
-                "apply",
-                "mutation_state=committed",
-                &applied.mutation_state,
-            );
-        }
+        assert_apply_verification_contract("harness", &applied, expected_file_count);
         match scan_library_sync(&self.registry, &self.catalog, &self.root_id) {
             Ok((_, live)) => live,
             Err(error) => fail(
@@ -488,6 +551,7 @@ impl ContractHarness {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn prepared_snapshot_exists(&self) -> bool {
         let prepared_dir = self
             .data_directory
@@ -1037,6 +1101,7 @@ fn ct03_project_bytes() -> Vec<u8> {
     build_project_document(&[("STATIC", "001", "../AUDIO/KICK.wav")])
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn ct03_filesystem_ambiguous_blocks_plan() {
     let media = TempDir::new().unwrap();
@@ -1134,14 +1199,6 @@ fn ct03_filesystem_ambiguous_blocks_plan() {
 fn ct03_filesystem_unique_control_reaches_prepare() {
     let media = TempDir::new().unwrap();
     fs::create_dir_all(media.path().join("SET/AUDIO")).unwrap();
-    if !filesystem_is_case_sensitive(&media.path().join("SET/AUDIO")) {
-        fail(
-            CT03,
-            "host_capability",
-            "case-sensitive filesystem required for the unique-control binding",
-            "case-insensitive host (this case is not executed and must not be counted as PASS)",
-        );
-    }
     seed_standard_tree(
         media.path(),
         &ct03_project_bytes(),

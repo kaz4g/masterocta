@@ -23,7 +23,7 @@ on:
       - '.github/workflows/**'
       - '.github/actions/**'
   pull_request:
-    branches: [main]
+    branches: [main, fix/gate-c-shared-project-contracts]
     paths:
       - 'src/**'
       - 'src-tauri/**'
@@ -187,6 +187,9 @@ jobs:
 
       - name: Run Gate C candidate contract tests
         run: pnpm run test:gate-c-candidate
+
+      - name: Run initial-contracts runner tests
+        run: node --test scripts/run-initial-contracts.test.mjs
 
       - name: Build frontend
         run: pnpm run build

@@ -1011,14 +1011,6 @@ fn collect_unresolved_usage_edges(
         .collect()
 }
 
-fn assignment_relates_to_rename_source(
-    assignment: &RenameSlotAssignmentObservation,
-    facts: &RenameSamplePlanningFacts,
-) -> bool {
-    references_rename_source(assignment, facts)
-        || references_rename_source_case_insensitive(assignment, facts)
-}
-
 fn references_rename_source(
     assignment: &RenameSlotAssignmentObservation,
     facts: &RenameSamplePlanningFacts,
