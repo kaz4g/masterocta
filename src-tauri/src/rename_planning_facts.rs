@@ -335,15 +335,15 @@ fn project_usage_graph_complete(snapshot: &LibrarySnapshot, project: &LibraryPro
         }
     }
 
-    if project.has_project_file {
-        if !snapshot.state_documents.iter().any(|document| {
+    if project.has_project_file
+        && !snapshot.state_documents.iter().any(|document| {
             document.kind == StateDocumentKind::Project
                 && document.project_relative_path == project.relative_path
                 && document.role == StateDocumentRole::Working
                 && document.parse_status == StateDocumentParseStatus::Parsed
-        }) {
-            return false;
-        }
+        })
+    {
+        return false;
     }
 
     true

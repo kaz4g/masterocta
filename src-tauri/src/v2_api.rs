@@ -1855,6 +1855,7 @@ fn plan_additive_copy_sync(
 ) -> Result<ChangePlanDto, ApiError> {
     let resolved = registry.resolve(root_id)?;
     let identity = catalog_identity(&resolved.session)?;
+    ensure_catalog_projection_trusted(catalog, &identity)?;
     let snapshot = load_library_snapshot(catalog, &identity)?;
     ensure_write_eligible(&snapshot)?;
     let source = file_for_instance_id(&identity, &snapshot, source_file_instance_id)?;
@@ -2204,6 +2205,9 @@ fn verify_stored_rename_plan_freshness(
     }
 
     let identity = catalog_identity(&resolved.session)?;
+    if require_write {
+        ensure_catalog_projection_trusted(catalog, &identity)?;
+    }
     let snapshot = load_library_snapshot(catalog, &identity)?;
     ensure_write_eligible(&snapshot)?;
     let source = snapshot

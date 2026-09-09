@@ -2091,7 +2091,39 @@ fn migrate(connection: &mut Connection) -> Result<(), CatalogError> {
         mark_all_roots_projection_untrusted(connection)?;
     }
 
+    backfill_project_discovery_flags(connection)?;
+
     configure_connection(connection)?;
+    Ok(())
+}
+
+fn backfill_project_discovery_flags(connection: &Connection) -> Result<(), CatalogError> {
+    let has_column: bool = connection
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM pragma_table_info('projects')
+                WHERE name = 'has_saved_checkpoint'
+            )",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(unavailable)?;
+    if !has_column {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "UPDATE projects SET has_saved_checkpoint = 1
+             WHERE has_saved_checkpoint = 0 AND EXISTS (
+                SELECT 1 FROM state_documents sd
+                WHERE sd.root_id = projects.root_id
+                  AND sd.scan_session_id = projects.scan_session_id
+                  AND sd.project_relative_path = projects.relative_path
+                  AND sd.document_kind = 'project'
+                  AND sd.document_role = 'saved_checkpoint'
+             );",
+        )
+        .map_err(unavailable)?;
     Ok(())
 }
 
@@ -2137,6 +2169,10 @@ fn apply_migration(
         transaction
             .execute_batch(sql)
             .map_err(|error| migration_error(version, error))?;
+        if foreign_keys_off {
+            set_foreign_keys(&transaction, true)?;
+            assert_foreign_key_check(&transaction)?;
+        }
         transaction
             .execute(
                 "INSERT INTO schema_migrations (version, applied_at) \
@@ -2174,6 +2210,19 @@ fn restore_foreign_keys(connection: &Connection, previous: bool) -> Result<(), C
     set_foreign_keys(connection, previous)?;
     if previous {
         configure_connection(connection)?;
+    }
+    Ok(())
+}
+
+fn assert_foreign_key_check(connection: &Connection) -> Result<(), CatalogError> {
+    let mut foreign_keys = connection
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(unavailable)?;
+    let mut rows = foreign_keys.query([]).map_err(unavailable)?;
+    if rows.next().map_err(unavailable)?.is_some() {
+        return Err(CatalogError::Integrity {
+            message: "foreign key check failed after migration".into(),
+        });
     }
     Ok(())
 }
