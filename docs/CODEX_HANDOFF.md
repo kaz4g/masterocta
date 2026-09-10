@@ -103,12 +103,18 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Gate C post-#109/#111 rebaseline: **MERGED**（#114）
 - Gate C RC7 candidate build: **COMPLETE**（run `34438615252`、draft release `386014076`）
 - Gate C RC7 freeze ledger: **MERGED**（#115）
-- 観測した origin/main（2026-09-10）: `af04f793cba1c229e30ede4aedeb4f697583c327`
-- Human Gate C: **STOP** at RC7 Prepare (`ArtifactTampered`)。正本は
+- Gate C RC7 Human Gate C: **STOP** at Prepare (`ArtifactTampered`)。正本は
   `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`
+- Prepare artifact fix: **MERGED**（#116）
+- Gate C RC8 candidate build: **COMPLETE**（run `34453265057`、draft release `386101842`）
+- Gate C RC8 freeze ledger: **Draft PR pending**（branch `docs/gate-c-rc8-freeze`）
+- 観測した origin/main（2026-09-10）: `8382de2ed1d2ce7323ed17c1a8833da267abc635`
+  （tree `4ce5c7c2697611464cdd14be82918bb336a6a89b`）
+- Human Gate C: **NOT_RUN**（RC8 freeze ledger merge 後に RC8 のみ）
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: Prepare artifact 修正の merge 後に **新しい** Gate C 候補を凍結する。
+- 次作業: RC8 freeze ledger Draft PR の merge 後、Human Gate C を RC8 で再開。
   RC7 の再ビルド・再利用・当該セッションの Continue/Apply はしない。
+  RC7 アプリと RC8 を同時起動しない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -306,12 +312,14 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ### 6.0 現在の次作業（2026-09-10）
 
-**作業ID:** `MO-GATE-C-RC7-PREPARE-ARTIFACT-1`
+**作業ID:** `MO-GATE-C-RC8-FREEZE-1`（Draft PR 作成済み。merge 待ち）
 
-RC7 Human Gate C は Approve & Prepare で `ArtifactTampered` により STOP。
-正本は `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`。RC7 凍結 identity は保持し、
-再ビルド・Continue/Apply・#103/#104/#105 再開はしない。Human Gate C 再開は
-この修正の merge、新しい preflight、新候補の freeze の後。
+RC8 候補 `gate-c-rc8-8382de2ed1d2`（source `8382de2` / run `34453265057`）の
+freeze 台帳 Draft PR を作成した。merge 後に Human Gate C を RC8 で再開する。
+RC7 Human Gate C は Prepare で STOP 済み。正本は
+`docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`。RC7 再ビルド・Continue/Apply・
+#103/#104/#105 再開はしない。新しい disposable clone と新 PRE byte manifest を
+使う。RC7 停止セッション / runtime / 保全証拠は流用しない。
 
 以下は完了済みマイルストーンの履歴であり、現在の着手点ではない。
 

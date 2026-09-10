@@ -100,10 +100,13 @@ Clock-controlled tests cover:
 
 Resume Human Gate C only after:
 
-1. This fix merges to `main`
-2. A new Gate C preflight on that main
-3. A new candidate ID / freeze (not RC7 reuse)
-4. A fresh disposable clone and pre-run byte manifest
+1. This fix merges to `main` (**done** — #116)
+2. A new Gate C preflight on that main (**done** — post-#116 preflight)
+3. A new candidate ID / freeze (**RC8** `gate-c-rc8-8382de2ed1d2`; not RC7 reuse)
+4. The RC8 freeze ledger PR merges to `main`
+5. A fresh disposable clone and pre-run byte manifest
 
 Do not rebuild RC7. Do not dispatch `gate-c-rc7-31107ae4ae21`. Do not reopen
-#103 / #104 / #105.
+#103 / #104 / #105. Do not Continue / Apply the stopped RC7 session. Do not run
+RC7 and RC8 app instances concurrently or reuse RC7 journal / prepared-plan /
+Application Support state for RC8 Human Gate C.
