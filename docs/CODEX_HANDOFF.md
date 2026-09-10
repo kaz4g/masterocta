@@ -102,11 +102,13 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Gate C RC6 freeze: **MERGED**（#108）。RC6 は歴史的凍結。current-main Human Gate C 対象外（#109/#111 後）
 - Gate C post-#109/#111 rebaseline: **MERGED**（#114）
 - Gate C RC7 candidate build: **COMPLETE**（run `34438615252`、draft release `386014076`）
-- Gate C RC7 freeze ledger: **Draft PR 提出中**（merge 後に Human Gate C 可）
-- 観測した origin/main（2026-09-10）: `31107ae4ae21fc5445cdb153cfaf9310fc7d474d`
-  （tree `b33434d874868b38ede838ae241080afe5d0f26e`）。RC7 source と一致
-- Human Gate C: **NOT_RUN**。Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: RC7 freeze ledger PR merge → Human Gate C（`GATE_C_CLONE_SMOKE.md`）
+- Gate C RC7 freeze ledger: **MERGED**（#115）
+- 観測した origin/main（2026-09-10）: `af04f793cba1c229e30ede4aedeb4f697583c327`
+- Human Gate C: **STOP** at RC7 Prepare (`ArtifactTampered`)。正本は
+  `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`
+- Gate C: **NOT_PASS**。M5: **INCOMPLETE**
+- 次作業: Prepare artifact 修正の merge 後に **新しい** Gate C 候補を凍結する。
+  RC7 の再ビルド・再利用・当該セッションの Continue/Apply はしない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -304,16 +306,12 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ### 6.0 現在の次作業（2026-09-10）
 
-**作業ID:** `MO-GATE-C-RC7-FREEZE-1`（Draft PR 提出中）
+**作業ID:** `MO-GATE-C-RC7-PREPARE-ARTIFACT-1`
 
-RC7 候補は run `34438615252` で作成済み。freeze 台帳は docs-only Draft PR で
-提出中。**merge 後**の次段階:
-
-1. **Human Gate C** — 凍結 RC7 DMG のみ、`GATE_C_CLONE_SMOKE.md` に従う
-2. **M5 closure PR** — Human Gate C PASS 後
-
-Bank checksum role-specific fixtures は rename gate を阻害しない（`NON_BLOCKING`）。
-未実装のまま将来の Bank write 用に残す。
+RC7 Human Gate C は Approve & Prepare で `ArtifactTampered` により STOP。
+正本は `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`。RC7 凍結 identity は保持し、
+再ビルド・Continue/Apply・#103/#104/#105 再開はしない。Human Gate C 再開は
+この修正の merge、新しい preflight、新候補の freeze の後。
 
 以下は完了済みマイルストーンの履歴であり、現在の着手点ではない。
 

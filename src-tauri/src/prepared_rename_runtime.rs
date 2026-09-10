@@ -29,6 +29,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+type UnixClock = Arc<dyn Fn() -> u64 + Send + Sync>;
+
 const PREPARED_RENAME_PLAN_SCHEMA: &str = "masterocta-prepared-rename-plan:v1";
 const PREPARED_RENAME_PLANS_DIRECTORY: &str = "prepared-rename-plans";
 const PRODUCT_DIRECTORY: &str = "MasterOCTa";
@@ -174,6 +176,7 @@ pub struct PreparedRenameRuntime {
     local_paths: ExecutorLocalPaths,
     continuation_state: Mutex<ContinuationState>,
     continuation_ttl: Duration,
+    clock: UnixClock,
 }
 
 #[derive(Debug)]
@@ -210,6 +213,20 @@ impl PreparedRenameRuntime {
         local_paths: ExecutorLocalPaths,
         continuation_ttl: Duration,
     ) -> Result<Self, PreparedRenameRuntimeError> {
+        Self::new_with_clock(
+            storage_root,
+            local_paths,
+            continuation_ttl,
+            Arc::new(unix_now),
+        )
+    }
+
+    pub(crate) fn new_with_clock(
+        storage_root: PathBuf,
+        local_paths: ExecutorLocalPaths,
+        continuation_ttl: Duration,
+        clock: UnixClock,
+    ) -> Result<Self, PreparedRenameRuntimeError> {
         ensure_real_directory(
             &storage_root,
             &storage_root.join(PREPARED_RENAME_PLANS_DIRECTORY),
@@ -223,7 +240,20 @@ impl PreparedRenameRuntime {
             local_paths,
             continuation_state: Mutex::new(ContinuationState::default()),
             continuation_ttl,
+            clock,
         })
+    }
+
+    fn now(&self) -> u64 {
+        (self.clock)()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_create_once_intercept(
+        &self,
+        intercept: crate::local_artifact::CreateOnceIntercept,
+    ) {
+        self.artifact_store.set_create_once_intercept(intercept);
     }
 
     pub fn persist_after_prepare(
@@ -277,15 +307,21 @@ impl PreparedRenameRuntime {
             reference_update_count: plan.reference_update_count,
             plan: payload,
             content_binding: String::new(),
-            created_at_unix: unix_now(),
+            created_at_unix: self.now(),
         };
         snapshot.content_binding = derive_snapshot_content_binding(&snapshot);
         let artifact_id = PreparedRenamePlanId::parse(&prepared_plan_id)
             .map_err(PreparedRenameRuntimeError::Artifact)?;
-        self.artifact_store
+        match self
+            .artifact_store
             .write_json_create_once(artifact_id.file_stem(), &snapshot)
-            .map_err(PreparedRenameRuntimeError::Artifact)?;
-        Ok(snapshot)
+        {
+            Ok(()) => Ok(snapshot),
+            Err(LocalArtifactError::ArtifactTampered) => {
+                self.accept_existing_equivalent_snapshot(&snapshot, operation_id)
+            }
+            Err(error) => Err(PreparedRenameRuntimeError::Artifact(error)),
+        }
     }
 
     pub fn load_prepared_snapshot(
@@ -601,6 +637,30 @@ impl PreparedRenameRuntime {
             return Err(PreparedRenameRuntimeError::JournalMismatch);
         }
         Ok(())
+    }
+
+    fn accept_existing_equivalent_snapshot(
+        &self,
+        generated: &PreparedRenamePlanSnapshot,
+        operation_id: &OperationId,
+    ) -> Result<PreparedRenamePlanSnapshot, PreparedRenameRuntimeError> {
+        let existing = match self.load_prepared_snapshot(operation_id) {
+            Ok(snapshot) => snapshot,
+            Err(PreparedRenameRuntimeError::SnapshotNotFound) => {
+                return Err(PreparedRenameRuntimeError::SnapshotTampered);
+            }
+            Err(error) => return Err(error),
+        };
+        if existing.content_binding != generated.content_binding
+            || existing.prepared_plan_id != generated.prepared_plan_id
+            || existing.plan_id != generated.plan_id
+            || existing.backup_snapshot_id != generated.backup_snapshot_id
+            || existing.clone_baseline_evidence_id != generated.clone_baseline_evidence_id
+            || existing.recovery_binding != generated.recovery_binding
+        {
+            return Err(PreparedRenameRuntimeError::SnapshotTampered);
+        }
+        Ok(existing)
     }
 
     fn verify_backup_for_snapshot(
@@ -1270,13 +1330,24 @@ impl std::error::Error for PreparedRenameRuntimeError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ot_codec::MemoryProjectReferenceCodec;
+    use ot_executor::{ApprovedExecutionRoot, AuthorityError, WriteAuthority};
     use ot_plan::derive_rename_plan_id;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use tempfile::TempDir;
+
+    const AUDIO_BYTES: &[u8] = b"rename-audio";
+    const CLONE_BASELINE: &str =
+        "clone-baseline-evidence:v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    fn hash_bytes(bytes: &[u8]) -> ContentHash {
+        ContentHash::parse(format!("sha256:{:x}", Sha256::digest(bytes))).unwrap()
+    }
 
     fn sample_plan(root_id: &RootId) -> RenameImpactPlan {
         let destination = RootRelativePath::parse("SET/AUDIO/kick-renamed.wav").unwrap();
         let source = RootRelativePath::parse("SET/AUDIO/kick.wav").unwrap();
-        let hash = ContentHash::parse(format!("sha256:{}", "a".repeat(64))).unwrap();
+        let hash = hash_bytes(AUDIO_BYTES);
         let mut plan = RenameImpactPlan {
             id: PlanId::parse(format!("plan:v1:{}", "0".repeat(64))).unwrap(),
             root_id: root_id.clone(),
@@ -1287,15 +1358,15 @@ mod tests {
                 "c".repeat(64)
             ))
             .unwrap(),
-            source_relative_path: source,
-            source_byte_size: 44,
+            source_relative_path: source.clone(),
+            source_byte_size: AUDIO_BYTES.len() as u64,
             source_content_hash: hash,
             destination_relative_path: destination,
             state_document_impacts: Vec::new(),
             usage_edge_impacts: Vec::new(),
             sidecar_impacts: Vec::new(),
             unresolved_references: Vec::new(),
-            backup_relative_paths: Vec::new(),
+            backup_relative_paths: vec![source],
             estimated_media_additional_bytes: 0,
             estimated_local_staging_bytes: 0,
             reference_update_count: 0,
@@ -1303,6 +1374,91 @@ mod tests {
         };
         plan.id = derive_rename_plan_id(&plan);
         plan
+    }
+
+    struct FixtureAuthority {
+        root: ApprovedExecutionRoot,
+    }
+
+    impl WriteAuthority for FixtureAuthority {
+        fn resolve_for_write(
+            &self,
+            root_id: &RootId,
+        ) -> Result<ApprovedExecutionRoot, AuthorityError> {
+            if &self.root.root_id != root_id {
+                return Err(AuthorityError::NotApproved);
+            }
+            Ok(self.root.clone())
+        }
+    }
+
+    struct PersistFixture {
+        _temp: TempDir,
+        runtime: PreparedRenameRuntime,
+        plan: RenameImpactPlan,
+        backup: VerifiedRenameBackup,
+        operation_id: OperationId,
+        clock: Arc<AtomicU64>,
+        media_root: PathBuf,
+        staging_directory: PathBuf,
+        backup_directory: PathBuf,
+        journal_directory: PathBuf,
+        artifact_path: PathBuf,
+    }
+
+    fn persist_fixture() -> PersistFixture {
+        let temp = TempDir::new().unwrap();
+        let media_root = temp.path().join("root");
+        fs::create_dir_all(media_root.join("SET/AUDIO")).unwrap();
+        fs::write(media_root.join("SET/AUDIO/kick.wav"), AUDIO_BYTES).unwrap();
+        let clock = Arc::new(AtomicU64::new(1_700_000_000));
+        let clock_fn = {
+            let clock = Arc::clone(&clock);
+            Arc::new(move || clock.load(Ordering::SeqCst))
+        };
+        let backup_directory = temp.path().join("backups");
+        let staging_directory = temp.path().join("staging");
+        let journal_directory = temp.path().join("journals");
+        let local_paths = ExecutorLocalPaths {
+            staging_directory: staging_directory.clone(),
+            backup_directory: backup_directory.clone(),
+            journal_directory: journal_directory.clone(),
+        };
+        let runtime = PreparedRenameRuntime::new_with_clock(
+            temp.path().join("MasterOCTa"),
+            local_paths,
+            Duration::from_secs(300),
+            clock_fn,
+        )
+        .unwrap();
+        let root_id = RootId::new("root-session-1").unwrap();
+        let plan = sample_plan(&root_id);
+        let backup = BackupStore::new(backup_directory.clone())
+            .create_verified_for_rename(&media_root, &plan)
+            .unwrap();
+        let operation_id = OperationId::for_rename_plan(&plan);
+        let digest = operation_id
+            .as_str()
+            .strip_prefix("operation:v1:")
+            .expect("OperationId uses the v1 prefix");
+        let artifact_path = temp
+            .path()
+            .join("MasterOCTa")
+            .join("prepared-rename-plans")
+            .join(format!("{digest}.json"));
+        PersistFixture {
+            _temp: temp,
+            runtime,
+            plan,
+            backup,
+            operation_id,
+            clock,
+            media_root,
+            staging_directory,
+            backup_directory,
+            journal_directory,
+            artifact_path,
+        }
     }
 
     #[test]
@@ -1383,13 +1539,246 @@ mod tests {
                 &record.continuation_authority_id,
             )
             .unwrap_err();
+        assert!(matches!(
+            error,
+            PreparedRenameRuntimeError::ContinuationExpired
+                | PreparedRenameRuntimeError::ContinuationNotFound
+        ),);
+    }
+
+    #[test]
+    fn persist_concurrent_persist_does_not_treat_in_progress_write_as_tamper() {
+        use crate::local_artifact::CreateOnceIntercept;
+        use std::sync::mpsc;
+        use std::thread;
+
+        let fixture = persist_fixture();
+        let (created_tx, created_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let created_tx = Mutex::new(Some(created_tx));
+        let resume_rx = Mutex::new(resume_rx);
+        fixture
+            .runtime
+            .set_create_once_intercept(CreateOnceIntercept {
+                before_lock: None,
+                after_exclusive_create: Some(Arc::new(move || {
+                    if let Some(tx) = created_tx.lock().expect("created sender").take() {
+                        tx.send(())
+                            .expect("first persist created the snapshot file");
+                    }
+                    resume_rx
+                        .lock()
+                        .expect("resume receiver")
+                        .recv()
+                        .expect("resume first persist after the second persist has entered write");
+                })),
+            });
+
+        thread::scope(|scope| {
+            let first_handle = scope.spawn(|| {
+                fixture.runtime.persist_prepared_snapshot(
+                    &fixture.plan,
+                    &fixture.operation_id,
+                    &fixture.backup,
+                    CLONE_BASELINE,
+                )
+            });
+            created_rx
+                .recv()
+                .expect("first persist reached exclusive create before JSON write");
+
+            fixture.clock.store(1_700_000_042, Ordering::SeqCst);
+            let (entered_tx, entered_rx) = mpsc::channel();
+            let entered_tx = Mutex::new(Some(entered_tx));
+            fixture
+                .runtime
+                .set_create_once_intercept(CreateOnceIntercept {
+                    before_lock: Some(Arc::new(move || {
+                        if let Some(tx) = entered_tx.lock().expect("entered sender").take() {
+                            tx.send(()).expect(
+                                "second persist entered create-once before taking the stem lock",
+                            );
+                        }
+                    })),
+                    after_exclusive_create: None,
+                });
+
+            let second_handle = scope.spawn(|| {
+                fixture.runtime.persist_prepared_snapshot(
+                    &fixture.plan,
+                    &fixture.operation_id,
+                    &fixture.backup,
+                    CLONE_BASELINE,
+                )
+            });
+            entered_rx.recv().expect(
+                "second persist started while the first snapshot write was still in progress",
+            );
+            resume_tx
+                .send(())
+                .expect("resume first persist JSON write after the second persist started");
+
+            let first = first_handle.join().expect("first persist thread").unwrap();
+            let second = second_handle
+                .join()
+                .expect("second persist thread")
+                .unwrap();
+            assert_eq!(first.created_at_unix, 1_700_000_000);
+            assert_eq!(second.created_at_unix, first.created_at_unix);
+            assert_eq!(second.content_binding, first.content_binding);
+            let loaded = fixture
+                .runtime
+                .load_prepared_snapshot(&fixture.operation_id)
+                .unwrap();
+            assert_eq!(loaded, first);
+        });
+    }
+
+    #[test]
+    fn persist_is_idempotent_when_only_created_at_unix_differs() {
+        let fixture = persist_fixture();
+        let first = fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+        assert_eq!(first.created_at_unix, 1_700_000_000);
+
+        fixture.clock.store(1_700_000_042, Ordering::SeqCst);
+        let second = fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+        assert_eq!(second.created_at_unix, first.created_at_unix);
+        assert_eq!(second.content_binding, first.content_binding);
+        let loaded = fixture
+            .runtime
+            .load_prepared_snapshot(&fixture.operation_id)
+            .unwrap();
+        assert_eq!(loaded, first);
+    }
+
+    #[test]
+    fn persist_rejects_existing_artifact_with_different_plan_binding() {
+        let fixture = persist_fixture();
+        fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+
+        let mut snapshot: PreparedRenamePlanSnapshot =
+            serde_json::from_slice(&fs::read(&fixture.artifact_path).unwrap()).unwrap();
+        snapshot.destination_relative_path = "SET/AUDIO/tampered.wav".to_owned();
+        snapshot.content_binding = super::derive_snapshot_content_binding(&snapshot);
+        fs::write(
+            &fixture.artifact_path,
+            serde_json::to_vec_pretty(&snapshot).unwrap(),
+        )
+        .unwrap();
+
+        fixture.clock.store(1_700_000_042, Ordering::SeqCst);
+        let error = fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap_err();
         assert!(
-            matches!(
-                error,
-                PreparedRenameRuntimeError::ContinuationExpired
-                    | PreparedRenameRuntimeError::ContinuationNotFound
-            ),
+            matches!(error, PreparedRenameRuntimeError::SnapshotTampered),
             "unexpected error: {error:?}"
         );
+    }
+
+    #[test]
+    fn persist_recreates_snapshot_when_journal_exists_and_snapshot_is_missing() {
+        let fixture = persist_fixture();
+        let authority = FixtureAuthority {
+            root: ApprovedExecutionRoot {
+                root_id: fixture.plan.root_id.clone(),
+                device_fingerprint: fixture.plan.device_fingerprint.clone(),
+                observed_revision: fixture.plan.base_observed_revision,
+                canonical_path: fixture.media_root.canonicalize().unwrap(),
+                write_enabled: true,
+                stable_device_identity: true,
+            },
+        };
+        let executor = RenameSampleExecutor::new(ExecutorLocalPaths {
+            staging_directory: fixture.staging_directory.clone(),
+            backup_directory: fixture.backup_directory.clone(),
+            journal_directory: fixture.journal_directory.clone(),
+        });
+        executor
+            .prepare(&fixture.plan, &MemoryProjectReferenceCodec, &authority)
+            .unwrap();
+
+        let incomplete = fixture
+            .runtime
+            .prepared_operation_status(&fixture.operation_id, None)
+            .unwrap_err();
+        assert!(
+            matches!(incomplete, PreparedRenameRuntimeError::SnapshotIncomplete),
+            "unexpected error: {incomplete:?}"
+        );
+
+        let first = fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+        assert_eq!(first.created_at_unix, 1_700_000_000);
+        let status = fixture
+            .runtime
+            .prepared_operation_status(&fixture.operation_id, None)
+            .unwrap();
+        assert!(status.prepared_snapshot_available);
+        assert_eq!(status.journal_status, Some(RenameJournalStatus::Prepared));
+    }
+
+    #[test]
+    fn persist_after_snapshot_delete_writes_a_new_create_once_artifact() {
+        let fixture = persist_fixture();
+        fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+        fs::remove_file(&fixture.artifact_path).unwrap();
+
+        fixture.clock.store(1_700_000_099, Ordering::SeqCst);
+        let recreated = fixture
+            .runtime
+            .persist_prepared_snapshot(
+                &fixture.plan,
+                &fixture.operation_id,
+                &fixture.backup,
+                CLONE_BASELINE,
+            )
+            .unwrap();
+        assert_eq!(recreated.created_at_unix, 1_700_000_099);
     }
 }

@@ -253,7 +253,12 @@ unwired until R3 wires Continuation Authority.
 ## M5-C5 R2 — prepared rename continuation
 
 After C2 `Prepared`, `masterocta-prepared-rename-plan:v1` persists the validated
-`RenameImpactPlan` plus journal/backup/clone-evidence bindings. Process restart
+`RenameImpactPlan` plus journal/backup/clone-evidence bindings. The snapshot file
+stem is the operation digest. `created_at_unix` is metadata only and is not part
+of `content_binding`. A later persist of the same operation must return the
+existing create-once snapshot when identity matches; it must not treat a
+timestamp-only byte difference as tamper, and it must not overwrite a snapshot
+whose binding differs. Process restart
 invalidates in-memory Rename / Clone / Continuation authority; rediscovery reads
 journal + snapshot only. Explicit operator Continue (`v2_rename_continue`) re-verifies
 backup, journal binding, and live clone manifest before issuing a memory-only

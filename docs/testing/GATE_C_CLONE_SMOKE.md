@@ -1,11 +1,12 @@
 # Gate C cloned-media rename smoke
 
 **Current-main authorization:** After PR #109 / #111, do **not** run Human Gate C
-on RC6. RC7 is the post-rebaseline current-main candidate. Read
-[`GATE_C_POST109_111_REBASELINE.md`](GATE_C_POST109_111_REBASELINE.md) and
-[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC7. Human Gate C on RC7 starts
-**only after** the RC7 freeze ledger PR merges to `main`. Until then, this
-checklist is **not** authorized for current-main execution.
+on RC6. RC7 (`gate-c-rc7-31107ae4ae21`) is frozen but Human Gate C on that
+candidate is **STOP** at Approve & Prepare. Read
+[`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md) and
+[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC7. Do not Continue / Apply the
+stopped RC7 session. Do not rebuild RC7. Resume Human Gate C only on a **new**
+candidate after the Prepare artifact fix merges and a new freeze is recorded.
 
 ## Purpose
 

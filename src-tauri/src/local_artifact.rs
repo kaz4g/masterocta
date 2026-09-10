@@ -1,8 +1,10 @@
 use serde::{de::DeserializeOwned, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 pub const CLONE_BASELINE_EVIDENCE_PREFIX: &str = "clone-baseline-evidence:v1:";
 pub const CLONE_SOURCE_EVIDENCE_PREFIX: &str = "clone-source-evidence:v1:";
@@ -124,8 +126,18 @@ fn validate_prefixed_sha256(value: &str, prefix: &str) -> Result<(), LocalArtifa
     }
 }
 
+#[cfg(test)]
+#[derive(Clone, Default)]
+pub(crate) struct CreateOnceIntercept {
+    pub before_lock: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub after_exclusive_create: Option<Arc<dyn Fn() + Send + Sync>>,
+}
+
 pub struct LocalArtifactStore {
     artifacts_directory: PathBuf,
+    stem_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    #[cfg(test)]
+    create_once_intercept: Mutex<Option<CreateOnceIntercept>>,
 }
 
 impl LocalArtifactStore {
@@ -147,7 +159,45 @@ impl LocalArtifactStore {
         }
         Ok(Self {
             artifacts_directory: canonical,
+            stem_locks: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            create_once_intercept: Mutex::new(None),
         })
+    }
+
+    fn stem_mutex(&self, file_stem: &str) -> Result<Arc<Mutex<()>>, LocalArtifactError> {
+        let mut locks = self.stem_locks.lock().map_err(|_| LocalArtifactError::Io)?;
+        Ok(locks
+            .entry(file_stem.to_owned())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_create_once_intercept(&self, intercept: CreateOnceIntercept) {
+        if let Ok(mut slot) = self.create_once_intercept.lock() {
+            *slot = Some(intercept);
+        }
+    }
+
+    #[cfg(test)]
+    fn invoke_create_once_intercept(&self, after_exclusive_create: bool) {
+        let intercept = self
+            .create_once_intercept
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        let Some(intercept) = intercept else {
+            return;
+        };
+        let callback = if after_exclusive_create {
+            intercept.after_exclusive_create
+        } else {
+            intercept.before_lock
+        };
+        if let Some(callback) = callback {
+            callback();
+        }
     }
 
     pub fn artifact_path(&self, file_stem: &str) -> Result<PathBuf, LocalArtifactError> {
@@ -166,11 +216,28 @@ impl LocalArtifactStore {
         file_stem: &str,
         value: &T,
     ) -> Result<(), LocalArtifactError> {
+        // Hold the stem lock across exclusive create, write completion, and
+        // existing-byte verification so a concurrent persist cannot observe a
+        // partial snapshot as tamper.
+        #[cfg(test)]
+        self.invoke_create_once_intercept(false);
+        let stem_lock = self.stem_mutex(file_stem)?;
+        let _guard = stem_lock.lock().map_err(|_| LocalArtifactError::Io)?;
+        self.write_json_create_once_locked(file_stem, value)
+    }
+
+    fn write_json_create_once_locked<T: Serialize>(
+        &self,
+        file_stem: &str,
+        value: &T,
+    ) -> Result<(), LocalArtifactError> {
         let path = self.artifact_path(file_stem)?;
         let serialized = serde_json::to_vec_pretty(value).map_err(|_| LocalArtifactError::Io)?;
         let expected_hash = content_hash(&serialized);
         match open_regular_file_for_write_create(&path) {
             Ok(mut file) => {
+                #[cfg(test)]
+                self.invoke_create_once_intercept(true);
                 file.write_all(&serialized)
                     .map_err(|_| LocalArtifactError::Io)?;
                 file.sync_all().map_err(|_| LocalArtifactError::Io)?;
@@ -190,6 +257,8 @@ impl LocalArtifactStore {
     }
 
     pub fn read_json<T: DeserializeOwned>(&self, file_stem: &str) -> Result<T, LocalArtifactError> {
+        let stem_lock = self.stem_mutex(file_stem)?;
+        let _guard = stem_lock.lock().map_err(|_| LocalArtifactError::Io)?;
         let path = self.artifact_path(file_stem)?;
         let bytes = read_regular_file_bytes(&path)?;
         serde_json::from_slice(&bytes).map_err(|_| LocalArtifactError::Io)
