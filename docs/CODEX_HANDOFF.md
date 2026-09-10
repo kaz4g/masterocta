@@ -100,10 +100,13 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - #109 shared Project parser / reference contracts: **MERGED**（`2be490a`）
 - #111 shared contract tests / remaining product blockers: **MERGED**（`2cbb4a3`）
 - Gate C RC6 freeze: **MERGED**（#108）。RC6 は歴史的凍結。current-main Human Gate C 対象外（#109/#111 後）
-- Gate C post-#109/#111 rebaseline: **docs PR pending merge**
-  （`docs/testing/GATE_C_POST109_111_REBASELINE.md`、verdict `MO_GATE_C_REBASELINE_CODE_READY`）
+- Gate C post-#109/#111 rebaseline: **MERGED**（#114）
+- Gate C RC7 candidate build: **COMPLETE**（run `34438615252`、draft release `386014076`）
+- Gate C RC7 freeze ledger: **Draft PR 提出中**（merge 後に Human Gate C 可）
+- 観測した origin/main（2026-09-10）: `31107ae4ae21fc5445cdb153cfaf9310fc7d474d`
+  （tree `b33434d874868b38ede838ae241080afe5d0f26e`）。RC7 source と一致
 - Human Gate C: **NOT_RUN**。Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次候補: RC7 想定、identity **UNSET**（preflight + dispatch は別工程）
+- 次作業: RC7 freeze ledger PR merge → Human Gate C（`GATE_C_CLONE_SMOKE.md`）
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -301,14 +304,13 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ### 6.0 現在の次作業（2026-09-10）
 
-**Gate C post-#109/#111 rebaseline**（`MO-GATE-C-POST109-111-REBASELINE-1`）は
-docs PR で提出中。merge 後の次段階:
+**作業ID:** `MO-GATE-C-RC7-FREEZE-1`（Draft PR 提出中）
 
-1. **Operator preflight** — merged main tip 上で次候補（想定 RC7）の source commit/tree を固定
-2. **Main CI push success** — preflight 基準 commit で CI green（PR CI のみ不可）
-3. **One-shot Gate C Candidate Build** — ledger 手順どおり dispatch（この agent 作業外）
-4. **RC freeze ledger PR** — DMG/binary/run 証拠を docs-only で凍結
-5. **Human Gate C** — 新凍結候補のみ、`GATE_C_CLONE_SMOKE.md` に従う
+RC7 候補は run `34438615252` で作成済み。freeze 台帳は docs-only Draft PR で
+提出中。**merge 後**の次段階:
+
+1. **Human Gate C** — 凍結 RC7 DMG のみ、`GATE_C_CLONE_SMOKE.md` に従う
+2. **M5 closure PR** — Human Gate C PASS 後
 
 Bank checksum role-specific fixtures は rename gate を阻害しない（`NON_BLOCKING`）。
 未実装のまま将来の Bank write 用に残す。

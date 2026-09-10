@@ -141,10 +141,23 @@ judgments consume catalog hash reuse for write safety on evaluation commit.
 | Local full CI suite | **not run** locally. Evaluation commit `2cbb4a3` covered by main `push` CI [`34426771538`](https://github.com/kaz4g/masterocta/actions/runs/34426771538) |
 | GitHub Actions on this docs PR | **expected to run**. `.github/workflows/ci.yml` includes `docs/testing/GATE_C_*.md` and `docs/testing/FAT_HASH_1_ASSESSMENT.md` on `pull_request`. Head `5242058` CI [`34434899136`](https://github.com/kaz4g/masterocta/actions/runs/34434899136) `completed` / `success` (Rust Tests, Gate C Synthetic Smoke ubuntu+macos, Frontend Checks, E2E). Follow-up commits must report their own PR CI run. |
 
+| RC7 identity (uncreated at assessment time) | **UNSET** on evaluation commit; recorded by RC7 freeze ledger PR on source `31107ae4…` |
+
+## RC7 freeze follow-up
+
+RC7 candidate build completed on current `main` source
+`31107ae4ae21fc5445cdb153cfaf9310fc7d474d` / tree
+`b33434d874868b38ede838ae241080afe5d0f26e` (run `34438615252`, draft release
+`386014076`). Full identity tuple and local verification are recorded in
+[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC7 by the RC7 freeze ledger
+Draft PR. This assessment document keeps the historical evaluation commit
+`2cbb4a3` unchanged. Human Gate C on RC7 is **NOT AUTHORIZED** until that
+freeze ledger PR merges to `main`.
+
 ## Remaining blockers (outside this PR)
 
-- Operator preflight + RC7 freeze (future docs-only ledger after successful dispatch)
-- Human Gate C clone-load smoke on frozen post-rebaseline candidate
+- RC7 freeze ledger PR merge (docs-only; pending)
+- Human Gate C clone-load smoke on frozen RC7 candidate (after ledger merge)
 - Bank checksum role-specific fixtures (future; non-blocking for rename gate)
 - M5 closure PR (after Human Gate C PASS)
 
@@ -152,10 +165,9 @@ judgments consume catalog hash reuse for write safety on evaluation commit.
 
 | Step | Owner | Expected output |
 |---|---|---|
-| Merge this rebaseline PR | reviewer | ledger + smoke + handoff aligned on `main` |
-| Operator preflight on merged main tip | human operator | recorded source commit/tree for RC7 |
-| Main CI success after preflight base | CI | green `push` run on preflight commit |
-| One-shot Gate C Candidate Build | human operator | draft release + evidence JSON (not in this work) |
+| Merge RC7 freeze ledger PR | reviewer | RC7 `FROZEN` effective on `main` |
+| Human Gate C on RC7 frozen candidate | human operator | signed checklist evidence |
+| M5 closure PR | reviewer | after Human Gate C PASS |
 
 This assessment did **not** merge, dispatch workflows, create candidates, or access
 removable media.
