@@ -1,12 +1,13 @@
 # Gate C cloned-media rename smoke
 
 **Current-main authorization:** After PR #109 / #111, do **not** run Human Gate C
-on RC6. RC7 (`gate-c-rc7-31107ae4ae21`) is frozen but Human Gate C on that
-candidate is **STOP** at Approve & Prepare. Read
-[`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md) and
-[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC7. Do not Continue / Apply the
-stopped RC7 session. Do not rebuild RC7. Resume Human Gate C only on a **new**
-candidate after the Prepare artifact fix merges and a new freeze is recorded.
+on RC6. RC7 Human Gate C is **STOP** at Approve & Prepare — do not Continue /
+Apply that session or rebuild RC7 (see
+[`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md)). RC8
+(`gate-c-rc8-8382de2ed1d2`) is the post-#116 current-main candidate. Read
+[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8. Human Gate C on RC8 starts
+**only after** the RC8 freeze ledger PR merges to `main`. Until then, this
+checklist is **not** authorized for current-main execution.
 
 ## Purpose
 
@@ -134,8 +135,15 @@ RC2 attempt 34016038137 FAILURE recorded
 → RC7 attempt 34438615252 SUCCESS recorded
 → draft candidate retrieved and SHA256 re-verified locally PASS
 → provenance / access boundary confirmed PASS
-→ RC7 freeze ledger PR (merge pending)
-→ Human Gate C on RC7 frozen candidate only after ledger merge
+→ RC7 freeze ledger PR merged (#115)
+→ Human Gate C on RC7 STOP at Approve & Prepare (`ArtifactTampered`)
+→ Prepare artifact fix merged (#116)
+→ Gate C Candidate Build dispatched once as gate-c-rc8-8382de2ed1d2
+→ RC8 attempt 34453265057 SUCCESS recorded
+→ draft candidate retrieved and SHA256 re-verified locally PASS
+→ provenance / access boundary confirmed PASS
+→ RC8 freeze ledger PR (merge pending)
+→ Human Gate C on RC8 frozen candidate only after ledger merge
 → M5 closure PR
 ```
 
@@ -161,7 +169,8 @@ Human Gate C after #109 / #111 (see GATE_C_POST109_111_REBASELINE.md). Do not
 rebuild the RC6 DMG from source. Do not substitute RC5, RC6, or an unfrozen
 later-main build for current-main Human Gate C.
 
-Current RC7 candidate coordinates (**authorization pending ledger merge**):
+Historical RC7 candidate coordinates (**Human Gate C STOP at Prepare; not for
+current-main use**):
 
 | Field | Value |
 |---|---|
@@ -178,9 +187,29 @@ Current RC7 candidate coordinates (**authorization pending ledger merge**):
 | access boundary verdict | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
 | public distribution | `NOT AUTHORIZED` |
 
-RC7 is the post-rebaseline current-main candidate. Human Gate C on RC7 is
-**NOT AUTHORIZED** until the RC7 freeze ledger PR merges to `main`. Do not
-rebuild the RC7 DMG from source. Do not substitute RC5, RC6, or an unfrozen
+RC7 Human Gate C is **STOP** at Approve & Prepare. Do not Continue / Apply that
+session, rebuild RC7, or substitute RC7 for current-main Human Gate C.
+
+Current RC8 candidate coordinates (**authorization pending ledger merge**):
+
+| Field | Value |
+|---|---|
+| candidate_id | `gate-c-rc8-8382de2ed1d2` |
+| source commit | `8382de2ed1d2ce7323ed17c1a8833da267abc635` |
+| source tree | `4ce5c7c2697611464cdd14be82918bb336a6a89b` |
+| workflow run ID | `34453265057` |
+| draft release ID | `386101842` |
+| artifact filename | `Masta-Octa_0.1.0_gate-c-rc8_8382de2ed1d2_aarch64.dmg` |
+| DMG SHA256 | `sha256:5497b2b50619f73a732b1eb906cf3e3858a893e83f9a88bb3ab9696badcf0e63` |
+| checksum manifest SHA256 | `sha256:475f9c310f015d94b64ff5bd51baeaca0b3bfd811125a4290f085cf03d25b2d5` |
+| candidate evidence SHA256 | `sha256:166d599f06a3b65c266fd562048e6a7c704033d2051e11e6934f2b25722b3bd8` |
+| inner app binary SHA256 | `sha256:60cac60d7b019d9029795ab6d8adfc25752101e6078ee015e5b643eb6c6ccc0a` |
+| access boundary verdict | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
+| public distribution | `NOT AUTHORIZED` |
+
+RC8 is the post-#116 current-main candidate. Human Gate C on RC8 is **NOT
+AUTHORIZED** until the RC8 freeze ledger PR merges to `main`. Do not rebuild
+the RC8 DMG from source. Do not substitute RC5, RC6, RC7, or an unfrozen
 later-main build for current-main Human Gate C.
 
 Historical RC5 candidate coordinates (not for current-main Human Gate C):
@@ -204,13 +233,15 @@ RC5 is a historical frozen candidate only. Current-main Human Gate C on RC5 is
 **FORBIDDEN**. Do not substitute the RC5 DMG, a later-main build, or any RC5
 bytes for current-main Human Gate C.
 
-Do not reuse the RC2, RC3, RC4, RC5, RC6, or RC7 run, their candidate IDs, or any
-in-progress DMG as later candidate evidence. RC6 and RC7 dispatch are one-shot. Do not
-rerun run `34182724485`, redispatch `gate-c-rc6-3485118e9a19`, rerun run
-`34438615252`, redispatch `gate-c-rc7-31107ae4ae21`, or reopen pull requests #103,
-#104, or #105. A successful workflow run alone does not freeze the candidate.
-Human Gate C starts only after the RC7 freeze ledger PR merges to `main` (see
-GATE_C_RC_LEDGER.md §RC7).
+Do not reuse the RC2, RC3, RC4, RC5, RC6, RC7, or RC8 run, their candidate IDs,
+or any in-progress DMG as later candidate evidence. RC6, RC7, and RC8 dispatch
+are one-shot. Do not rerun run `34182724485`, redispatch
+`gate-c-rc6-3485118e9a19`, rerun run `34438615252`, redispatch
+`gate-c-rc7-31107ae4ae21`, rerun run `34453265057`, redispatch
+`gate-c-rc8-8382de2ed1d2`, or reopen pull requests #103, #104, or #105. A
+successful workflow run alone does not freeze the candidate. Human Gate C
+starts only after the RC8 freeze ledger PR merges to `main` (see
+GATE_C_RC_LEDGER.md §RC8).
 
 ## Byte-manifest commands
 

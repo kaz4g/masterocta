@@ -103,9 +103,11 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Gate C post-#109/#111 rebaseline: **MERGED**（#114）
 - Gate C RC7 candidate build: **COMPLETE**（run `34438615252`、draft release `386014076`）
 - Gate C RC7 freeze ledger: **MERGED**（#115）
-- 観測した origin/main（2026-09-10）: `af04f793cba1c229e30ede4aedeb4f697583c327`
-- Human Gate C: **STOP** at RC7 Prepare (`ArtifactTampered`)。正本は
+- Gate C RC7 Human Gate C: **STOP** at Prepare (`ArtifactTampered`)。正本は
   `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`
+- Prepare artifact fix: **MERGED**（#116）
+- Gate C RC8 candidate build: **COMPLETE**（run `34453265057`、draft release `386101842`）
+- Gate C RC8 freeze ledger: **MERGED**（#117）
 - RC8 Human Gate C: **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1
   with old PATH in device LOG after passing Apply verification)。調査正本は
   `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。対照試験手順（未実行）は
@@ -114,6 +116,7 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - 次作業: RC8 static-slot 調査 PR の review。実機対照試験は **NOT_RUN**。
   RAM / last-used 自動オープンは **未確定**。製品 PATH/Bank 修正は根拠不足。
   RC7 の再ビルド・再利用・当該セッションの Continue/Apply はしない。
+  RC7 アプリと RC8 を同時起動しない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -319,9 +322,10 @@ RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH 
 `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md` に計画のみ記載（**NOT_RUN**）。
 RAM / last-used 自動オープンは未確定。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
 
-**履歴:** `MO-GATE-C-RC7-PREPARE-ARTIFACT-1` — RC7 Human Gate C は Prepare で
+**履歴:** `MO-GATE-C-RC8-FREEZE-1` — RC8 freeze ledger **MERGED**（#117）。
+`MO-GATE-C-RC7-PREPARE-ARTIFACT-1` — RC7 Human Gate C は Prepare で
 `ArtifactTampered` により STOP（`docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`）。
-RC7 凍結 identity は保持。再ビルド・Continue/Apply はしない。
+RC7 / RC8 凍結 identity は保持。RC7 再ビルド・Continue/Apply はしない。
 
 以下は完了済みマイルストーンの履歴であり、現在の着手点ではない。
 
