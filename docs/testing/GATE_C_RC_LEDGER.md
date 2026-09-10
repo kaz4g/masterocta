@@ -492,9 +492,15 @@ Phase 3 merge
 → draft candidate retrieved
 → local SHA256 re-verification PASS
 → provenance / access boundary confirmation PASS
-→ docs-only freeze ledger PR (this branch)
+→ docs-only freeze ledger PR (#108) merged
 → ledger merge
-→ Human Gate C on the frozen RC6 candidate
+→ #109 / #111 shared Project + contract fixes merged to main
+→ post-#109/#111 rebaseline docs PR merged
+  (see GATE_C_POST109_111_REBASELINE.md)
+→ operator preflight on new main tip for next candidate (RC7 identity UNSET)
+→ Gate C Candidate Build dispatched once per ledger one-shot rules
+→ next RC freeze ledger PR merged
+→ Human Gate C on that new frozen candidate only
 → M5 closure PR
 ```
 
@@ -508,7 +514,8 @@ attempts as later candidate evidence. RC5 and RC6 dispatch are one-shot. Do
 not rerun run `34182724485`, redispatch `gate-c-rc6-3485118e9a19`, or create
 RC7 without a new operator sequence.
 
-After this RC6 ledger merge and before Human Gate C:
+After RC6 freeze (#108) and post-#109/#111 rebaseline (see
+[GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)):
 
 ```text
 RC1 = FROZEN_FAILED
@@ -516,11 +523,12 @@ RC2 = NOT_CREATED / identity UNSET
 RC3 = NOT_CREATED / historical pre-freeze failure
 RC4 = NOT_CREATED / historical pre-freeze failure
 RC5 = FROZEN (historical). current-main Human Gate C = FORBIDDEN
-RC6 = FROZEN
+RC6 = FROZEN (historical). current-main Human Gate C = FORBIDDEN after #109/#111
+next candidate (expected RC7) = NOT_CREATED / identity UNSET
 Human Gate C = NOT_RUN
 Gate C = NOT_PASS
 M5 = INCOMPLETE
-remaining M5 blocker = Human Gate C
+remaining M5 blocker = operator preflight + next RC freeze + Human Gate C
 public distribution = NOT AUTHORIZED
 ```
 
@@ -875,8 +883,9 @@ complementary evidence:
 - local access-verdict SHA256 recorded above
 
 Do not rerun run `34077117176` or redispatch `gate-c-rc5-7b5b740d1db1`. Do
-not use RC5 for current-main Human Gate C. RC6 is the current-main Human Gate C
-candidate. Do not rebuild the RC5 artifact from source for Human Gate C. RC5 is
+not use RC5 for current-main Human Gate C. After #109 / #111, RC6 is also
+**FORBIDDEN** for current-main Human Gate C (see
+[GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)). Do not rebuild the RC5 artifact from source for Human Gate C. RC5 is
 a personal/local evaluation candidate and a historical freeze record, not a
 public release and not the current-main Gate C target. Human Gate C remains
 `NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
@@ -995,10 +1004,56 @@ local access-verdict SHA256 = sha256:1d529aa324636830b849d0125d8e0eceeb79c6f4c81
 
 Do not rerun run `34182724485` or redispatch `gate-c-rc6-3485118e9a19`. Do
 not rebuild the RC6 artifact from source for Human Gate C. Do not substitute
-the RC5 DMG or a later-main build. Pull requests #103, #104, and #105 remain
-closed until M5 closure; do not reopen, rebase, or merge them into RC6.
-RC6 is a personal/local evaluation candidate, not a public release. Human
-Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+the RC5 DMG, the RC6 DMG, or a later-main build for current-main Human Gate C
+after #109 / #111. Pull requests #103, #104, and #105 remain closed until M5
+closure; do not reopen, rebase, or merge them into a new candidate.
+RC6 is a personal/local evaluation candidate and a **historical** freeze, not a
+public release and not the current-main authorization target after #109 / #111.
+Human Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`. M5 remains
+`INCOMPLETE`.
+
+## Post-#109 / #111 rebaseline
+
+Assessment: [GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)
+(`MO-GATE-C-POST109-111-REBASELINE-1`).
+
+| Field | Value |
+|---|---|
+| evaluation commit | `2cbb4a38c9b0df9801859a63a1763e7bbd2289cb` |
+| evaluation tree | `a91b64765fcf138e2a7d5c5647e2dac973d574aa` |
+| #109 merge | `2be490aecae4fd8602fade638d253699ca136ca1` |
+| #111 merge | `2cbb4a38c9b0df9801859a63a1763e7bbd2289cb` |
+| RC6 current-main Human Gate C | **FORBIDDEN** (code changed after RC6 source) |
+| Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` |
+| rebaseline verdict | `MO_GATE_C_REBASELINE_CODE_READY` |
+| next candidate number (uncreated) | 7 — identity **UNSET** until operator preflight + dispatch |
+
+Do not record RC7 source commit, tree, DMG hash, binary hash, workflow run, or
+release ID until a successful one-shot candidate build and a separate freeze
+ledger PR record them together.
+
+## Next candidate (RC7 expected, identity UNSET)
+
+| Field | Value |
+|---|---|
+| status | `NOT_CREATED` |
+| candidate_id | `UNSET` |
+| source commit | `UNSET` |
+| source tree | `UNSET` |
+| artifact | `UNSET` |
+| artifact SHA256 | `UNSET` |
+| app binary SHA256 | `UNSET` |
+| workflow run ID | `UNSET` |
+| draft release ID | `UNSET` |
+| Human Gate C | `NOT_RUN` |
+| public distribution | `NOT AUTHORIZED` |
+
+Preflight prerequisites after rebaseline docs merge:
+
+1. Fix source commit/tree on current `main` (post-rebaseline merge tip).
+2. Confirm main CI `push` success on that tip (not PR-head CI alone).
+3. Dispatch `Gate C Candidate Build` once per one-shot rules.
+4. Record freeze evidence in a docs-only ledger PR before Human Gate C.
 
 ## Gate C safety boundary
 
