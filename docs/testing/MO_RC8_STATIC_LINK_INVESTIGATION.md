@@ -20,10 +20,16 @@ repository in an operator-local preserved copy.
 
 ## Code baseline
 
-Code references in section B target **RC8 source**
-`8382de2ed1d2ce7323ed17c1a8833da267abc635`. At the time of this PR, `origin/main`
-points at the same commit. If `main` advances later, line numbers and symbols may
-diverge; re-resolve against the frozen RC8 SHA before citing implementation facts.
+| Role | SHA | Meaning |
+|---|---|---|
+| Code investigation baseline (section B) | `8382de2ed1d2ce7323ed17c1a8833da267abc635` | Frozen RC8 source. PATH codec / prepare / committed-verify citations resolve here |
+| This PR merge base (`main` after #117) | `2300cfda84d2d0b7806a149c89f30a8aa03faca9` | RC8 freeze ledger merge. **Not** the same commit as the RC8 source SHA |
+
+`origin/main` after #117 is **not** identical to the RC8 source SHA. #117 added
+ledger and Gate C documentation on top of `8382de2`. Product PATH rewrite code
+cited in section B remains the RC8 source tree; line numbers are those of
+`8382de2` and may drift if `main` later changes those files. Re-resolve against
+the frozen RC8 SHA before citing implementation facts.
 
 Synthetic tests live on branch `docs/mo-rc8-static-link-investigation-pr-1`.
 
@@ -106,11 +112,15 @@ Tests: `src-tauri/crates/ot-codec/src/tests/rc8_static_slot_investigation.rs`
 | `rc8_static_slot_same_directory_basename_patch_changes_only_path_bytes` | Static slot 001 PATH basename patch changes only PATH bytes | Real WAV files; catalog rescan |
 | `rc8_working_and_saved_documents_patch_independently` | `project.work` and `project.strd` can be patched independently | Device SAVE/RELOAD choice at boot |
 | `rc8_states_drift_after_path_patch_leaves_sample_path_resolved_to_new_name` | `[STATES]` drift after patch leaves inspected PATH at new name | MkII autosave caused the drift |
-| `rc8_project_path_codec_does_not_touch_bank_blob` | Project PATH codec does not mutate unrelated bank-like bytes | Real `bank01.work` layout or checksum fields |
 | `rc8_verification_blind_spot_old_path_absent_from_inspect_after_successful_patch` | Codec inspect reports new PATH, not old PATH, after patch | `v2_api` integration verify; device RAM |
 
-These tests reproduce **on-disk PATH codec semantics only**. They do **not**
+Four tests. They reproduce **on-disk PATH codec semantics only**. They do **not**
 reproduce MkII RAM, last-used auto-open, or autosave behavior.
+
+Bank immutability is **not** a synthetic-test claim. `apply_path_patches` is not
+given bank bytes; a prior fixture that compared an unused local copy could not
+detect a Bank write bug and was removed. Preserved-media bank observations remain
+in section A only.
 
 Run:
 

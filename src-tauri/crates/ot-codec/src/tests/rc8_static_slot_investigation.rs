@@ -146,29 +146,6 @@ fn rc8_states_drift_after_path_patch_leaves_sample_path_resolved_to_new_name() {
         .contains(OLD_BASENAME));
 }
 
-/// M5-B non-scope: bank bytes are not inputs to project PATH codec.
-#[test]
-fn rc8_project_path_codec_does_not_touch_bank_blob() {
-    let bank_like = vec![0x46u8, 0x4F, 0x52, 0x4D, 0x00, 0x00, 0x00, 0x00]; // FORM....
-    let bank_before = bank_like.clone();
-
-    let _ = codec()
-        .apply_path_patches(
-            &gate_c_like_project_document(OLD_PATH),
-            &[SlotPathPatch {
-                slot: slot(SampleSlotKind::Static, 1),
-                from_raw_path: OLD_PATH.to_owned(),
-                to_raw_path: NEW_PATH.to_owned(),
-            }],
-        )
-        .unwrap();
-
-    assert_eq!(
-        bank_like, bank_before,
-        "bank-like blob must remain untouched by project PATH codec"
-    );
-}
-
 /// Codec inspect sees on-disk PATH only after patch (not device RAM).
 #[test]
 fn rc8_verification_blind_spot_old_path_absent_from_inspect_after_successful_patch() {

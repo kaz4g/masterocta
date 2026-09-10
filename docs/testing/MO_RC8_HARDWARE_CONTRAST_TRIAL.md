@@ -69,11 +69,13 @@ Do **not** treat forum posts or third-party summaries as primary evidence.
 flowchart LR
   postApply["Verified POST copy"]
   trialA["Trial A: power OFF boot auto-open"]
-  trialB["Trial B: explicit LOAD CHANGE"]
-  trialC["Trial C: RELOAD after prior SAVE only if checkpoint semantics confirmed"]
+  trialB["Trial B: switch away then CHANGE back"]
+  trialCexist["Trial C-existing: RELOAD without new SAVE"]
+  trialCsave["Trial C-new-save: SAVE on a separate copy"]
   postApply --> trialA
   postApply --> trialB
-  postApply --> trialC
+  postApply --> trialCexist
+  postApply --> trialCsave
 ```
 
 ### Trial A — power off, boot auto-open
@@ -87,34 +89,92 @@ flowchart LR
 **Records:** auto-open occurred yes/no; Static Slot 1 error yes/no; old vs new PATH
 symptoms in LOG.
 
-### Trial B — explicit LOAD (CHANGE)
+### Trial B — explicit LOAD (CHANGE), including a project switch
 
-1. From Trial A’s **fresh POST copy** (not Trial A’s autosaved return state), repeat
-   power-off insert if required by procedure.
-2. Use PROJECT menu → CHANGE → select the target project explicitly (manual LOAD).
-3. Test Static Slot 1 without manual reassignment.
+Selecting CHANGE while the rename-target Project is **already auto-opened is not
+a defined LOAD**. The menu may be a no-op, may re-select the same entry, or may
+not re-read card documents. Trial B therefore **must** cause a real CHANGE by
+leaving the target and returning to it.
 
-**Records:** LOAD steps performed; slot display; playback result; LOG lines.
+**Requires:** the disposable POST copy contains at least one **other** Project in
+the same set that is not the rename target. If no such Project exists, Trial B is
+**BLOCKED** (do not invent a LOAD by staying on the auto-opened Project).
 
-### Trial C — explicit RELOAD (conditional)
+1. Start from a **fresh POST copy** (not Trial A’s autosaved return state). Repeat
+   power-off insert if required by procedure. Boot may auto-open the last-used
+   (rename-target) Project; record that, but do not treat it as the LOAD under test.
+2. PROJECT menu → CHANGE → select a **different** Project in the same set.
+3. Record any SAVE / unsaved-changes prompt when leaving the auto-opened target:
+   - For Trial B, **decline** writing a new SAVE checkpoint of the auto-opened
+     session. The question is whether an explicit LOAD of the **existing POST
+     documents** resolves the slot, not whether a new device SAVE rewrites them.
+   - If the device **refuses to leave** the Project without SAVE, stop that copy.
+     Record **BLOCKED: SAVE required to switch**. Do **not** SAVE to force the
+     switch; that would overwrite the POST comparison target. Use a new POST copy
+     and do not continue Trial B on the contaminated card.
+4. After the other Project is loaded, PROJECT menu → CHANGE → select the
+   **rename-target** Project. This CHANGE-back is the LOAD under test.
+5. Test Static Slot 1 without manual reassignment. Do not SAVE between CHANGE-back
+   and the slot observation unless a prompt must be recorded as a blocker.
 
-Run only when trial design requires testing **saved checkpoint** semantics:
+**Records:** other-Project identity (sanitized); SAVE prompt yes/no and whether
+it was declined; CHANGE-back steps; slot display; playback result; LOG lines.
 
-1. Operator must first establish what SAVE checkpoint exists on the disposable copy
-   (SAVE is a distinct manual action; external rename Apply does not substitute).
-2. Perform Project RELOAD per manual definition (restore saved state, not CHANGE list load).
-3. Observe Static Slot 1.
+Do **not** treat “CHANGE while already on the target” as Trial B success.
 
-**Records:** whether SAVE preceded RELOAD; whether RELOAD reverted to pre-rename or
-post-rename PATH in `.strd` vs `.work` on returned media.
+### Trial C — RELOAD: existing checkpoint vs new SAVE (separate copies)
 
-Trial C is **not** a substitute for Trial B. LOAD and RELOAD answer different questions.
+LOAD (Trial B) and RELOAD answer different questions. Trial C is **not** a
+substitute for Trial B.
+
+MkII **SAVE** writes a rollback checkpoint (`.strd` per the manual). MasterOCTa
+Apply also rewrote `project.strd` on the POST copy; that is **not** a device SAVE.
+Do **not** perform a trial-eve device SAVE on the copy whose existing checkpoint
+you intend to compare against POST.
+
+#### C-existing — RELOAD the checkpoint already on the POST copy
+
+Use a **fresh POST copy**. Do **not** SAVE on this copy before RELOAD.
+
+1. Identify the existing checkpoint without rewriting it: POST `project.strd`
+   hash must still match the verified POST manifest. Record that this checkpoint
+   was produced by Apply (and any earlier device SAVE history unknown to this
+   trial), not by a SAVE performed in this trial.
+2. Boot / insert per procedure. If a SAVE prompt appears before RELOAD, decline
+   it. If SAVE is required to proceed, **BLOCKED** on this copy (same rule as
+   Trial B step 3).
+3. Perform Project RELOAD per the manual (restore **saved** state, not CHANGE
+   list load).
+4. Observe Static Slot 1. Capture a read-only return manifest.
+
+**Records:** pre-RELOAD `project.strd` hash still equals POST; RELOAD performed
+yes/no; slot / LOG; whether `.work` / `.strd` hashes changed after return.
+
+**Does not answer:** what happens after the operator creates a **new** SAVE.
+
+#### C-new-save — new device SAVE, then RELOAD (different copy)
+
+Use a **second fresh POST copy**. Never reuse the C-existing card after any SAVE.
+
+1. Boot / insert. Optionally complete Trial B’s CHANGE-back first if the
+   operator needs the target Project explicitly loaded; record that sequence.
+2. Perform MkII **SAVE**. This **replaces** the SAVE checkpoint. From this moment
+   the copy is **not** comparable to original POST `.strd`. Record post-SAVE
+   `project.strd` / `.work` hashes as the **new** comparison baseline for this
+   branch only.
+3. Perform RELOAD. Observe Static Slot 1. Capture return manifest vs the
+   **post-SAVE** baseline, not vs original POST.
+
+**Records:** that a new SAVE occurred; new baseline hashes; RELOAD result; LOG.
+
+Do **not** SAVE on a copy and then claim the result still represents the original
+POST checkpoint.
 
 ## Per-trial recording template (operator-local)
 
 Record outside the repository:
 
-- MkII OS version; host OS; trial ID (A/B/C)
+- MkII OS version; host OS; trial ID (`A` / `B` / `C-existing` / `C-new-save`)
 - Disposable copy manifest SHA256 and entry count (pre-trial)
 - Power and card insertion sequence with timestamps
 - Operator actions (auto-open / LOAD / RELOAD / SAVE / SYNC TO CARD if any)
@@ -127,6 +187,11 @@ Record outside the repository:
 ## Judgment rules
 
 - Trial B success **alone** does **not** resolve Trial A auto-open failure.
+- Trial B requires a CHANGE **away** then CHANGE **back**. Staying on an
+  auto-opened target is not a LOAD.
+- C-existing success does **not** answer C-new-save, and vice versa.
+- A device SAVE performed for C-new-save **invalidates** original POST `.strd`
+  as the comparison target for that copy.
 - Manual reassignment that makes sound play is **not** Rename gate success.
 - Any unexplained media change vs POST baseline is **STOP** for that trial branch.
 - Hardware contrast results update investigation records; they do **not** retroactively
