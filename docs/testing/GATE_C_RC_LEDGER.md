@@ -1196,6 +1196,20 @@ current-main authorization target **only after this freeze ledger PR merges to
 Continue/Apply that session, rebuild RC7, or reuse this candidate after the
 Prepare fix. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 
+## Investigation records (do not alter RC freeze tuples)
+
+These documents record Gate C investigation and planned hardware contrast trials.
+They do **not** change frozen RC artifact identity, workflow run IDs, or historical
+Human Gate C outcomes on this ledger.
+
+| Work ID | Document | Status |
+|---|---|---|
+| `MO-RC8-STATIC-LINK-INVESTIGATION-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) | Investigation complete; Human Gate C **STOP** on RC8 hardware FILE NOT FOUND |
+| `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1` | [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md) | Contrast trial plan **NOT_RUN** |
+
+RC8 freeze tuple and candidate coordinates remain on branch `docs/gate-c-rc8-freeze`
+until merged separately. This section does not authorize RC8 rebuild or redispatch.
+
 ## Gate C safety boundary
 
 - Original CF/SD media stay disconnected for the entire Gate C run.

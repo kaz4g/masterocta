@@ -730,5 +730,6 @@ mod tests {
 
     mod contract_tests;
     mod project_document_tests;
+    mod rc8_static_slot_investigation;
     mod structure_contract_tests;
 }

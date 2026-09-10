@@ -106,8 +106,13 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - 観測した origin/main（2026-09-10）: `af04f793cba1c229e30ede4aedeb4f697583c327`
 - Human Gate C: **STOP** at RC7 Prepare (`ArtifactTampered`)。正本は
   `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`
+- RC8 Human Gate C: **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1
+  with old PATH in device LOG after passing Apply verification)。調査正本は
+  `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。対照試験手順（未実行）は
+  `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md`
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: Prepare artifact 修正の merge 後に **新しい** Gate C 候補を凍結する。
+- 次作業: RC8 static-slot 調査 PR の review。実機対照試験は **NOT_RUN**。
+  RAM / last-used 自動オープンは **未確定**。製品 PATH/Bank 修正は根拠不足。
   RC7 の再ビルド・再利用・当該セッションの Continue/Apply はしない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
@@ -304,14 +309,19 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ## 6. 次のCodex作業
 
-### 6.0 現在の次作業（2026-09-10）
+### 6.0 現在の次作業（2026-09-11）
 
-**作業ID:** `MO-GATE-C-RC7-PREPARE-ARTIFACT-1`
+**作業ID:** `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
 
-RC7 Human Gate C は Approve & Prepare で `ArtifactTampered` により STOP。
-正本は `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`。RC7 凍結 identity は保持し、
-再ビルド・Continue/Apply・#103/#104/#105 再開はしない。Human Gate C 再開は
-この修正の merge、新しい preflight、新候補の freeze の後。
+RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH の
+`FILE NOT FOUND` となり **STOP**。調査正本は
+`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。実機対照試験は
+`docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md` に計画のみ記載（**NOT_RUN**）。
+RAM / last-used 自動オープンは未確定。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+
+**履歴:** `MO-GATE-C-RC7-PREPARE-ARTIFACT-1` — RC7 Human Gate C は Prepare で
+`ArtifactTampered` により STOP（`docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`）。
+RC7 凍結 identity は保持。再ビルド・Continue/Apply はしない。
 
 以下は完了済みマイルストーンの履歴であり、現在の着手点ではない。
 

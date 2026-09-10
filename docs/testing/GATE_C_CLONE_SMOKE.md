@@ -326,6 +326,12 @@ shasum -a 256 \
 15. Safely eject the clone, load it on Octatrack MkII hardware, and confirm the
     renamed sample and Project references behave as expected in a minimal
     playback/smoke pattern chosen by the operator.
+    Boot auto-open of the last-used Project is **not** sufficient evidence for
+    this step. Record power state and perform an explicit Project LOAD when the
+    operator procedure requires it. See
+    [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
+    for the RC8 FILE NOT FOUND contrast design (procedure only; not executed in
+    that document's authoring task).
 16. Retain the disposable clone or discard it according to the external test
     plan; do not use MasterOCTa to mutate the original removable media.
 
