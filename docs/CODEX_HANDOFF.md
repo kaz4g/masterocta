@@ -1,6 +1,6 @@
 # Codex引継ぎ — MasterOCTa
 
-更新日: 2026-09-01
+更新日: 2026-09-10
 
 ## 1. 目的
 
@@ -95,7 +95,16 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Gate B smoke macOS移植: #55マージ済み
 - Project compatibility policy: #58／#59マージ済み
 - Gate B human sign-off: **PASS**（personal/local use、source `a10437f`）
-- 現在のmain基準SHA: `87c1368`（M5-C5 R4 #82 merge後）
+- 評価基準 origin/main（2026-09-10）: `2cbb4a38c9b0df9801859a63a1763e7bbd2289cb`
+  （tree `a91b64765fcf138e2a7d5c5647e2dac973d574aa`）
+- #109 shared Project parser / reference contracts: **MERGED**（`2be490a`）
+- #111 shared contract tests / remaining product blockers: **MERGED**（`2cbb4a3`）
+- Gate C RC6 freeze: **MERGED**（#108）。RC6 は歴史的凍結。current-main Human Gate C 対象外（#109/#111 後）
+- Gate C post-#109/#111 rebaseline: **docs PR pending merge**
+  （`docs/testing/GATE_C_POST109_111_REBASELINE.md`、verdict `MO_GATE_C_REBASELINE_CODE_READY`）
+- Human Gate C: **NOT_RUN**。Gate C: **NOT_PASS**。M5: **INCOMPLETE**
+- 次候補: RC7 想定、identity **UNSET**（preflight + dispatch は別工程）
+- 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
 - M5-C5 R2 — prepared rename plan snapshot / restart continuation: **COMPLETE**（#79）
@@ -158,12 +167,15 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - M5-C2 rename Mac staging: **完了**
 - M5-C3 rename clone apply / rollback: **#69 マージ済み**（`373a755`）
 - M5-C4 Gate C automated clone-rescan proof: **#70 マージ済み**（`15eef67`）
-- SQLite schema: v6（compatibility evidence を含む）
+- SQLite schema: **v11**（`ot-catalog` `LATEST_SCHEMA_VERSION`。0010 observational trust、0011 projection-trust repair を含む。v6 compatibility evidence はその履歴）
 - Developer ID signing / notarization / public distribution は別release gate
 - M5-A contract 正本: `docs/planning/M5_A_SAMPLE_RENAME_IMPACT.md`
 - M5-B contract 正本: `docs/planning/M5_B_REFERENCE_REWRITE.md`
 - M5-C contract 正本: `docs/planning/M5_C_RENAME_TRANSACTION.md`
 - M5-C5 operator harness 正本: `docs/planning/M5_C5_OPERATOR_HARNESS.md`
+- Gate C post-#109/#111 評価正本: `docs/testing/GATE_C_POST109_111_REBASELINE.md`
+- Gate C 候補台帳: `docs/testing/GATE_C_RC_LEDGER.md`
+- Gate C Human smoke: `docs/testing/GATE_C_CLONE_SMOKE.md`
 - Node基準: 22（`>=22.13.0`、`.nvmrc`）
 - package manager: `pnpm@11.24.0`
 - `ot-tools-io`はコミット
@@ -286,6 +298,22 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 - 実カードしかテスト対象がない
 
 ## 6. 次のCodex作業
+
+### 6.0 現在の次作業（2026-09-10）
+
+**Gate C post-#109/#111 rebaseline**（`MO-GATE-C-POST109-111-REBASELINE-1`）は
+docs PR で提出中。merge 後の次段階:
+
+1. **Operator preflight** — merged main tip 上で次候補（想定 RC7）の source commit/tree を固定
+2. **Main CI push success** — preflight 基準 commit で CI green（PR CI のみ不可）
+3. **One-shot Gate C Candidate Build** — ledger 手順どおり dispatch（この agent 作業外）
+4. **RC freeze ledger PR** — DMG/binary/run 証拠を docs-only で凍結
+5. **Human Gate C** — 新凍結候補のみ、`GATE_C_CLONE_SMOKE.md` に従う
+
+Bank checksum role-specific fixtures は rename gate を阻害しない（`NON_BLOCKING`）。
+未実装のまま将来の Bank write 用に残す。
+
+以下は完了済みマイルストーンの履歴であり、現在の着手点ではない。
 
 ベースラインPR #1、PR-0、PR-1、pnpm移行#5、fork Pages修正#6、依存監査#7、
 PR-2 RootRegistry read-only vertical slice #8はマージ済みで、M2は完了した。

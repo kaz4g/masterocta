@@ -78,6 +78,25 @@ successfully for evidence head
 
 RC2 remains `NOT_CREATED` because FAT-HASH-1 is only one RC2 start condition.
 
+## Post-#109 / #111 rebaseline note (2026-09-10)
+
+This assessment is **not** revoked by
+[GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md).
+
+| Field | Value |
+|---|---|
+| prior assessed tree | `713c0187d29b828737e7a3252e187fe1cc654a0b` |
+| post-#109/#111 evaluation commit | `2cbb4a38c9b0df9801859a63a1763e7bbd2289cb` |
+| prior verdict | `ASSESSED` / `ACCEPTED_WITH_EVIDENCE` (unchanged) |
+| reassessment scope | Gate C rename Apply on evaluation commit must not rely on catalog hash reuse for write-safety proof |
+
+Evidence on evaluation commit: CT-01 harness requires post-apply rescan completion;
+byte-manifest tooling hashes file bytes directly for Human Gate C unrelated-byte
+proof. No finding that rename gate judgments consume coarse mtime/size hash reuse
+for committed apply verification on evaluation commit. Full FAT-HASH hardening
+remains a separate backlog item; it is not a blocker for post-rebaseline candidate
+preflight per rebaseline assessment.
+
 ## Problem definition
 
 Incremental catalog inventory can reuse a previous content hash when the live
