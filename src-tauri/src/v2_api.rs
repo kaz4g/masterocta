@@ -53,6 +53,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::State;
 
+#[cfg(test)]
+#[path = "initial_contract_tests.rs"]
+mod initial_contract_tests;
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiError {
@@ -1819,7 +1823,7 @@ fn open_regular_file_nofollow(path: &Path) -> Result<File, ApiError> {
     }
 }
 
-fn enable_write_sync(
+pub(crate) fn enable_write_sync(
     registry: &RootRegistry,
     catalog: &SharedCatalog,
     write: &SharedWriteRuntime,

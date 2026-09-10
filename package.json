@@ -23,6 +23,7 @@
     "test:gate-c-candidate": "node --test scripts/gate-c-candidate-contract.test.mjs",
     "test:e2e": "playwright test",
     "test:rust": "cd src-tauri && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace",
+    "test:initial-contracts": "node scripts/run-initial-contracts.mjs",
     "docs:watch": "pnpm --dir user-guide run start",
     "check:containment": "node scripts/check-containment.mjs"
   },

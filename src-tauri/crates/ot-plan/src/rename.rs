@@ -1001,7 +1001,11 @@ fn collect_unresolved_usage_edges(
         .usage_edges
         .iter()
         .filter(|edge| {
-            edge.referenced_file_relative_path.as_ref() == Some(&facts.source.live_relative_path)
+            edge.referenced_file_relative_path
+                .as_ref()
+                .is_some_and(|path| {
+                    paths_case_insensitive_equal(path, &facts.source.live_relative_path)
+                })
         })
         .filter(|edge| edge.reference_status != SampleReferenceStatus::Resolved)
         .collect()
@@ -2510,6 +2514,27 @@ mod tests {
                     .unwrap(),
                 slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
                 referenced_file_relative_path: Some(RootRelativePath::parse(source_path).unwrap()),
+                reference_status: SampleReferenceStatus::Ambiguous,
+            }],
+        );
+        let intent = base_intent(&facts.source, destination_path);
+        assert_blocked(facts, intent, RenameBlockReason::UnresolvedReference);
+    }
+
+    #[test]
+    fn ambiguous_syntax_path_with_different_case_blocks_rename() {
+        let source_path = "SET/AUDIO/Kick.wav";
+        let destination_path = "SET/AUDIO/KickRenamed.wav";
+        let facts = base_facts(
+            source_path,
+            destination_path,
+            vec![RenameSlotAssignmentObservation {
+                project_document_relative_path: RootRelativePath::parse("SET/PROJECT/project.work")
+                    .unwrap(),
+                slot: SampleSlotId::new(SampleSlotKind::Static, 1).unwrap(),
+                referenced_file_relative_path: Some(
+                    RootRelativePath::parse("SET/AUDIO/KICK.wav").unwrap(),
+                ),
                 reference_status: SampleReferenceStatus::Ambiguous,
             }],
         );

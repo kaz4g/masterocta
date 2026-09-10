@@ -2373,6 +2373,9 @@ fn migration_error(version: u64, error: rusqlite::Error) -> CatalogError {
 }
 
 #[cfg(test)]
+mod migration_contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use ot_domain::RootId;
@@ -2694,10 +2697,11 @@ mod tests {
         let path = database_path(&directory, "future.sqlite3");
         let connection = Connection::open(&path).unwrap();
         connection
-            .execute_batch(
+            .execute_batch(&format!(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); \
-                 INSERT INTO schema_migrations VALUES (12, 'future');",
-            )
+                 INSERT INTO schema_migrations VALUES ({}, 'future');",
+                LATEST_SCHEMA_VERSION + 1
+            ))
             .unwrap();
         drop(connection);
 
@@ -2705,7 +2709,7 @@ mod tests {
         assert_eq!(
             error,
             CatalogError::UnsupportedSchema {
-                found: 12,
+                found: LATEST_SCHEMA_VERSION + 1,
                 supported: LATEST_SCHEMA_VERSION,
             }
         );

@@ -1796,6 +1796,24 @@ mod tests {
         assert!(
             raw_path_resolves_to_relative("kick.wav", WORK_PATH, "SET/PROJECT/kick.wav").is_ok()
         );
+        assert!(raw_path_resolves_to_relative(
+            "../AUDIO/kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/Kick.wav"
+        )
+        .is_ok());
+        assert!(raw_path_resolves_to_relative(
+            "../audio/kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/Kick.wav"
+        )
+        .is_ok());
+        assert!(raw_path_resolves_to_relative(
+            "../AUDIO/Kick.wav",
+            WORK_PATH,
+            "SET/AUDIO/other.wav"
+        )
+        .is_err());
         let project_directory = RootRelativePath::parse("SET/PROJECT").unwrap();
         assert!(
             ot_domain::resolve_project_reference_syntax(&project_directory, "../AUDIO/kick.wav")
