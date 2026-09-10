@@ -21,7 +21,9 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 7;
+const LATEST_SCHEMA_VERSION: u64 = 11;
+const PROJECTION_REPAIR_META_KEY: &str = "observational_projection_repair_applied";
+const MIGRATION_REQUIRES_FOREIGN_KEYS_OFF: u64 = 8;
 const MIGRATIONS: &[(u64, &str)] = &[
     // Entries are applied in ascending version order.
     (1, include_str!("../migrations/0001_catalog_foundation.sql")),
@@ -43,6 +45,22 @@ const MIGRATIONS: &[(u64, &str)] = &[
         include_str!("../migrations/0006_project_compatibility_evidence.sql"),
     ),
     (7, include_str!("../migrations/0007_slice_drafts.sql")),
+    (
+        8,
+        include_str!("../migrations/0008_reference_ambiguous.sql"),
+    ),
+    (
+        9,
+        include_str!("../migrations/0009_has_saved_checkpoint.sql"),
+    ),
+    (
+        10,
+        include_str!("../migrations/0010_observational_projection_trust.sql"),
+    ),
+    (
+        11,
+        include_str!("../migrations/0011_projection_trust_repair.sql"),
+    ),
 ];
 
 type StateProjection = (
@@ -64,6 +82,43 @@ impl SqliteCatalog {
         configure_connection(&connection)?;
         migrate(&mut connection)?;
         Ok(Self { connection })
+    }
+
+    /// Returns whether the catalog's observational projection may have been
+    /// damaged by a pre-remediation schema migration and still requires rescan.
+    pub fn observational_projection_untrusted(
+        &self,
+        identity: &CatalogRootIdentity,
+    ) -> Result<bool, CatalogError> {
+        let Some(root_row_id) = self.root_row_id(identity)? else {
+            return Ok(false);
+        };
+        let untrusted: i64 = self
+            .connection
+            .query_row(
+                "SELECT observational_projection_untrusted FROM roots WHERE id = ?1",
+                params![root_row_id],
+                |row| row.get(0),
+            )
+            .map_err(unavailable)?;
+        Ok(untrusted != 0)
+    }
+
+    /// Marks one root's observational projection untrusted until the next successful rescan.
+    pub fn mark_observational_projection_untrusted(
+        &self,
+        identity: &CatalogRootIdentity,
+    ) -> Result<(), CatalogError> {
+        let Some(root_row_id) = self.root_row_id(identity)? else {
+            return Ok(());
+        };
+        self.connection
+            .execute(
+                "UPDATE roots SET observational_projection_untrusted = 1 WHERE id = ?1",
+                params![root_row_id],
+            )
+            .map_err(unavailable)?;
+        Ok(())
     }
 
     fn root_row_id(&self, identity: &CatalogRootIdentity) -> Result<Option<i64>, CatalogError> {
@@ -129,9 +184,28 @@ impl SqliteCatalog {
         scan: &CatalogScan,
         snapshot: &LibrarySnapshot,
     ) -> Result<(), rusqlite::Error> {
+        self.connection
+            .pragma_update(None, "foreign_keys", true)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "DELETE FROM usage_edges WHERE state_document_id IN (\
+                SELECT id FROM state_documents WHERE root_id = ?1\
+            )",
+            [root_row_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM slot_assignments WHERE state_document_id IN (\
+                SELECT id FROM state_documents WHERE root_id = ?1\
+            )",
+            [root_row_id],
+        )?;
+        transaction.execute(
+            "DELETE FROM state_documents WHERE root_id = ?1",
+            [root_row_id],
+        )?;
         transaction.execute("DELETE FROM projects WHERE root_id = ?1", [root_row_id])?;
         transaction.execute("DELETE FROM sets WHERE root_id = ?1", [root_row_id])?;
 
@@ -256,6 +330,10 @@ impl SqliteCatalog {
         transaction.execute(
             "UPDATE roots SET latest_completed_scan_revision = ?1 WHERE id = ?2",
             params![scan_revision_to_i64(scan.revision)?, root_row_id],
+        )?;
+        transaction.execute(
+            "UPDATE roots SET observational_projection_untrusted = 0 WHERE id = ?1",
+            params![root_row_id],
         )?;
         transaction.commit()
     }
@@ -589,7 +667,7 @@ impl SqliteCatalog {
     ) -> Result<Vec<LibraryProject>, CatalogError> {
         let (sql, standalone) = if parent_set.is_some() {
             (
-                "SELECT relative_path, display_name, has_project_file, has_banks \
+                "SELECT relative_path, display_name, has_project_file, has_saved_checkpoint, has_banks \
                  FROM projects \
                  WHERE root_id = ?1 AND scan_session_id = ?2 \
                    AND is_standalone = 0 AND parent_set_relative_path = ?3 \
@@ -598,7 +676,7 @@ impl SqliteCatalog {
             )
         } else {
             (
-                "SELECT relative_path, display_name, has_project_file, has_banks \
+                "SELECT relative_path, display_name, has_project_file, has_saved_checkpoint, has_banks \
                  FROM projects \
                  WHERE root_id = ?1 AND scan_session_id = ?2 \
                    AND is_standalone = 1 AND parent_set_relative_path IS NULL \
@@ -613,6 +691,7 @@ impl SqliteCatalog {
                 row.get::<_, String>(1)?,
                 row.get::<_, bool>(2)?,
                 row.get::<_, bool>(3)?,
+                row.get::<_, bool>(4)?,
             ))
         };
         let mut projects = Vec::new();
@@ -1071,8 +1150,8 @@ fn insert_project(
     transaction.execute(
         "INSERT INTO projects \
          (root_id, scan_session_id, relative_path, display_name, is_standalone, \
-          parent_set_relative_path, has_project_file, has_banks, sort_order) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+          parent_set_relative_path, has_project_file, has_saved_checkpoint, has_banks, sort_order) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             root_row_id,
             scan_id,
@@ -1081,6 +1160,7 @@ fn insert_project(
             parent_set.is_none(),
             parent_set,
             project.has_project_file,
+            project.has_saved_checkpoint,
             project.has_banks,
             sort_order as i64,
         ],
@@ -1440,7 +1520,7 @@ fn validate_snapshot(snapshot: &LibrarySnapshot) -> Result<(), CatalogError> {
             SampleReferenceStatus::Resolved => {
                 assignment.referenced_file_relative_path.is_some() && target_exists
             }
-            SampleReferenceStatus::Missing => {
+            SampleReferenceStatus::Missing | SampleReferenceStatus::Ambiguous => {
                 assignment.referenced_file_relative_path.is_some() && !target_exists
             }
             SampleReferenceStatus::InvalidPath => {
@@ -1686,13 +1766,14 @@ fn validate_unique_path(
 }
 
 fn project_from_database(
-    row: (String, String, bool, bool),
+    row: (String, String, bool, bool, bool),
 ) -> Result<LibraryProject, CatalogError> {
     Ok(LibraryProject {
         relative_path: stored_path(row.0)?,
         display_name: row.1,
         has_project_file: row.2,
-        has_banks: row.3,
+        has_saved_checkpoint: row.3,
+        has_banks: row.4,
     })
 }
 
@@ -1937,6 +2018,7 @@ fn reference_status_to_database(status: SampleReferenceStatus) -> &'static str {
         SampleReferenceStatus::Resolved => "resolved",
         SampleReferenceStatus::Missing => "missing",
         SampleReferenceStatus::InvalidPath => "invalid_path",
+        SampleReferenceStatus::Ambiguous => "ambiguous",
         SampleReferenceStatus::UnassignedSlot => "unassigned_slot",
     }
 }
@@ -1946,6 +2028,7 @@ fn reference_status_from_database(value: &str) -> Result<SampleReferenceStatus, 
         "resolved" => Ok(SampleReferenceStatus::Resolved),
         "missing" => Ok(SampleReferenceStatus::Missing),
         "invalid_path" => Ok(SampleReferenceStatus::InvalidPath),
+        "ambiguous" => Ok(SampleReferenceStatus::Ambiguous),
         "unassigned_slot" => Ok(SampleReferenceStatus::UnassignedSlot),
         _ => Err(CatalogError::InvalidStoredData {
             field: "reference_status",
@@ -2018,12 +2101,124 @@ fn migrate(connection: &mut Connection) -> Result<(), CatalogError> {
         });
     }
 
+    let version_before = current_version;
+
     for (version, sql) in MIGRATIONS {
         if *version > current_version {
-            apply_migration(connection, *version, sql)?;
+            if *version == 11 {
+                apply_migration_11_with_projection_repair(
+                    connection,
+                    *version,
+                    sql,
+                    version_before,
+                )?;
+            } else {
+                apply_migration(connection, *version, sql)?;
+            }
         }
     }
+
+    backfill_project_discovery_flags(connection)?;
+
+    configure_connection(connection)?;
     Ok(())
+}
+
+fn backfill_project_discovery_flags(connection: &Connection) -> Result<(), CatalogError> {
+    let has_column: bool = connection
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM pragma_table_info('projects')
+                WHERE name = 'has_saved_checkpoint'
+            )",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(unavailable)?;
+    if !has_column {
+        return Ok(());
+    }
+    connection
+        .execute_batch(
+            "UPDATE projects SET has_saved_checkpoint = 1
+             WHERE has_saved_checkpoint = 0 AND EXISTS (
+                SELECT 1 FROM state_documents sd
+                WHERE sd.root_id = projects.root_id
+                  AND sd.scan_session_id = projects.scan_session_id
+                  AND sd.project_relative_path = projects.relative_path
+                  AND sd.document_kind = 'project'
+                  AND sd.document_role = 'saved_checkpoint'
+             );",
+        )
+        .map_err(unavailable)?;
+    Ok(())
+}
+
+fn apply_migration_11_with_projection_repair(
+    connection: &mut Connection,
+    version: u64,
+    sql: &str,
+    version_before: u64,
+) -> Result<(), CatalogError> {
+    let migration_result = (|| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .execute_batch(sql)
+            .map_err(|error| migration_error(version, error))?;
+        let repair_applied: i64 = transaction
+            .query_row(
+                "SELECT CAST(value AS INTEGER) FROM catalog_meta WHERE key = ?1",
+                params![PROJECTION_REPAIR_META_KEY],
+                |row| row.get(0),
+            )
+            .map_err(|error| migration_error(version, error))?;
+        if repair_applied == 0 {
+            if version_before >= MIGRATION_REQUIRES_FOREIGN_KEYS_OFF {
+                let has_column: bool = transaction
+                    .query_row(
+                        "SELECT EXISTS(
+                            SELECT 1 FROM pragma_table_info('roots')
+                            WHERE name = 'observational_projection_untrusted'
+                        )",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| migration_error(version, error))?;
+                if has_column {
+                    transaction
+                        .execute(
+                            "UPDATE roots SET observational_projection_untrusted = 1",
+                            [],
+                        )
+                        .map_err(|error| migration_error(version, error))?;
+                }
+            }
+            transaction
+                .execute(
+                    "UPDATE catalog_meta SET value = '1' WHERE key = ?1",
+                    params![PROJECTION_REPAIR_META_KEY],
+                )
+                .map_err(|error| migration_error(version, error))?;
+        }
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations (version, applied_at) \
+                 VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                params![
+                    i64::try_from(version).map_err(|error| CatalogError::Migration {
+                        version,
+                        message: error.to_string(),
+                    })?
+                ],
+            )
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .commit()
+            .map_err(|error| migration_error(version, error))
+    })();
+    migration_result
 }
 
 fn apply_migration(
@@ -2031,27 +2226,77 @@ fn apply_migration(
     version: u64,
     sql: &str,
 ) -> Result<(), CatalogError> {
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(|error| migration_error(version, error))?;
-    transaction
-        .execute_batch(sql)
-        .map_err(|error| migration_error(version, error))?;
-    transaction
-        .execute(
-            "INSERT INTO schema_migrations (version, applied_at) \
-             VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-            params![
-                i64::try_from(version).map_err(|error| CatalogError::Migration {
-                    version,
-                    message: error.to_string(),
-                })?
-            ],
-        )
-        .map_err(|error| migration_error(version, error))?;
-    transaction
-        .commit()
-        .map_err(|error| migration_error(version, error))
+    let foreign_keys_off = version == MIGRATION_REQUIRES_FOREIGN_KEYS_OFF;
+    let previous_foreign_keys = if foreign_keys_off {
+        Some(set_foreign_keys(connection, false)?)
+    } else {
+        None
+    };
+
+    let migration_result = (|| {
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .execute_batch(sql)
+            .map_err(|error| migration_error(version, error))?;
+        if foreign_keys_off {
+            set_foreign_keys(&transaction, true)?;
+            assert_foreign_key_check(&transaction)?;
+        }
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations (version, applied_at) \
+                 VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                params![
+                    i64::try_from(version).map_err(|error| CatalogError::Migration {
+                        version,
+                        message: error.to_string(),
+                    })?
+                ],
+            )
+            .map_err(|error| migration_error(version, error))?;
+        transaction
+            .commit()
+            .map_err(|error| migration_error(version, error))
+    })();
+
+    if let Some(previous) = previous_foreign_keys {
+        restore_foreign_keys(connection, previous)?;
+    }
+
+    migration_result
+}
+
+fn set_foreign_keys(connection: &Connection, enabled: bool) -> Result<bool, CatalogError> {
+    let previous: bool = connection
+        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+        .map_err(unavailable)?;
+    connection
+        .pragma_update(None, "foreign_keys", enabled)
+        .map_err(unavailable)?;
+    Ok(previous)
+}
+
+fn restore_foreign_keys(connection: &Connection, previous: bool) -> Result<(), CatalogError> {
+    set_foreign_keys(connection, previous)?;
+    if previous {
+        configure_connection(connection)?;
+    }
+    Ok(())
+}
+
+fn assert_foreign_key_check(connection: &Connection) -> Result<(), CatalogError> {
+    let mut foreign_keys = connection
+        .prepare("PRAGMA foreign_key_check")
+        .map_err(unavailable)?;
+    let mut rows = foreign_keys.query([]).map_err(unavailable)?;
+    if rows.next().map_err(unavailable)?.is_some() {
+        return Err(CatalogError::Integrity {
+            message: "foreign key check failed after migration".into(),
+        });
+    }
+    Ok(())
 }
 
 fn scan_from_database(
@@ -2157,6 +2402,7 @@ mod tests {
             display_name: name.into(),
             relative_path: RootRelativePath::parse(path).unwrap(),
             has_project_file: true,
+            has_saved_checkpoint: false,
             has_banks: true,
         }
     }
@@ -2375,7 +2621,7 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, LATEST_SCHEMA_VERSION as i64);
         drop(catalog);
 
         let reopened = SqliteCatalog::open(&path).unwrap();
@@ -2385,13 +2631,13 @@ mod tests {
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(count, 7);
+        assert_eq!(count, LATEST_SCHEMA_VERSION as i64);
         drop(reopened);
         drop(directory);
     }
 
     #[test]
-    fn schema_v1_database_migrates_to_v7_without_losing_existing_projection() {
+    fn schema_v1_database_migrates_to_latest_without_losing_existing_projection() {
         let directory = TempDir::new().unwrap();
         let path = database_path(&directory, "v1.sqlite3");
         let mut connection = Connection::open(&path).unwrap();
@@ -2430,14 +2676,18 @@ mod tests {
             })
             .unwrap();
 
-        assert_eq!(versions, 7);
+        assert_eq!(versions, LATEST_SCHEMA_VERSION as i64);
         assert_eq!(snapshot.sets[0].display_name, "Existing Set");
         assert_eq!(
             snapshot.sets[0].projects[0].display_name,
             "Existing Project"
         );
         assert!(snapshot.file_instances.is_empty());
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('a'))
+            .unwrap());
     }
+
     #[test]
     fn unknown_newer_schema_version_is_rejected() {
         let directory = TempDir::new().unwrap();
@@ -2446,7 +2696,7 @@ mod tests {
         connection
             .execute_batch(
                 "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); \
-                 INSERT INTO schema_migrations VALUES (8, 'future');",
+                 INSERT INTO schema_migrations VALUES (12, 'future');",
             )
             .unwrap();
         drop(connection);
@@ -2455,10 +2705,438 @@ mod tests {
         assert_eq!(
             error,
             CatalogError::UnsupportedSchema {
-                found: 8,
-                supported: 7,
+                found: 12,
+                supported: LATEST_SCHEMA_VERSION,
             }
         );
+    }
+
+    fn apply_migrations_through_version(connection: &mut Connection, version: u64) {
+        for (migration_version, sql) in MIGRATIONS {
+            if *migration_version <= version {
+                apply_migration(connection, *migration_version, sql).unwrap();
+            }
+        }
+    }
+
+    fn insert_populated_v7_projection(connection: &Connection) {
+        let root_fingerprint =
+            "rootfp:v1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let content_hash = format!("sha256:{}", "c".repeat(64));
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision) \
+                 VALUES (1, '{root_fingerprint}', \
+                         1, 'V7 Root', 1, 'now', 1); \
+                 INSERT INTO scan_sessions \
+                   (id, root_id, revision, status, started_at, completed_at) \
+                 VALUES (1, 1, 1, 'completed', 'now', 'now'); \
+                 INSERT INTO sets \
+                   (root_id, scan_session_id, relative_path, display_name, has_audio_pool, sort_order) \
+                 VALUES (1, 1, 'SET', 'Set', 1, 0); \
+                 INSERT INTO projects \
+                   (root_id, scan_session_id, relative_path, display_name, is_standalone, \
+                    parent_set_relative_path, has_project_file, has_banks, sort_order) \
+                 VALUES (1, 1, 'SET/PROJECT', 'Project', 0, 'SET', 1, 1, 0); \
+                 INSERT INTO audio_assets (id, content_hash, byte_size) \
+                 VALUES (1, '{content_hash}', 4); \
+                 INSERT INTO file_instances \
+                   (id, root_id, scan_session_id, relative_path, audio_asset_id, byte_size, \
+                    modified_at_unix_ns, storage_scope, hash_freshness) \
+                 VALUES (1, 1, 1, 'SET/AUDIO/kick.wav', 1, 4, 1, 'set_audio_pool', 'computed_this_scan'); \
+                 INSERT INTO state_documents \
+                   (id, root_id, scan_session_id, project_relative_path, source_relative_path, \
+                    document_kind, document_role, bank_index, parse_status, parser_name, \
+                    parser_revision, source_version) \
+                 VALUES \
+                   (1, 1, 1, 'SET/PROJECT', 'SET/PROJECT/project.work', 'project', 'working', NULL, \
+                    'parsed', 'masterocta/ot-codec-project', 'v1', '1.40'), \
+                   (2, 1, 1, 'SET/PROJECT', 'SET/PROJECT/bank01.work', 'bank', 'working', 0, \
+                    'parsed', 'masterocta/bank-validation', 'v1', 'bank:23'); \
+                 INSERT INTO slot_assignments \
+                   (id, state_document_id, slot_kind, slot_number, referenced_relative_path, reference_status) \
+                 VALUES (1, 1, 'static', 1, 'SET/AUDIO/kick.wav', 'resolved'); \
+                 INSERT INTO usage_edges \
+                   (id, state_document_id, project_document_id, slot_assignment_id, slot_kind, slot_number, \
+                    usage_kind, track_index, part_index, pattern_index, step_index, audible, \
+                    referenced_relative_path, reference_status) \
+                 VALUES (1, 2, 1, 1, 'static', 1, 'machine', 0, 0, NULL, NULL, 1, \
+                         'SET/AUDIO/kick.wav', 'resolved'); \
+                 INSERT INTO sample_settings \
+                   (id, root_id, scan_session_id, owner_kind, source_relative_path, slot_assignment_id, \
+                    parse_status, parser_name, parser_revision, evidence, gain) \
+                 VALUES (1, 1, 1, 'slot_assignment', 'SET/PROJECT/project.work', 1, 'parsed', \
+                         'masterocta/sample-settings', 'v1', 'legacy_implementation_observation', 48); \
+                 INSERT INTO sample_slices \
+                   (sample_settings_id, slice_index, trim_start, trim_end, loop_start) \
+                 VALUES (1, 0, 0, 1000, 0); \
+                 INSERT INTO tags (id, name, created_at) VALUES (1, 'kick-tag', 'now'); \
+                 INSERT INTO tag_assignments (audio_asset_id, tag_id, source, assigned_at) \
+                 VALUES (1, 1, 'user', 'now'); \
+                 INSERT INTO notes (audio_asset_id, body, source, created_at, updated_at) \
+                 VALUES (1, 'manual note', 'user', 'now', 'now');"
+            ))
+            .unwrap();
+    }
+
+    #[test]
+    fn schema_v7_database_migrates_to_latest_without_losing_projection_data() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v7-populated.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        let counts: (i64, i64, i64, i64, i64, i64, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT \
+                    (SELECT COUNT(*) FROM slot_assignments), \
+                    (SELECT COUNT(*) FROM usage_edges), \
+                    (SELECT COUNT(*) FROM sample_settings), \
+                    (SELECT COUNT(*) FROM sample_slices), \
+                    (SELECT COUNT(*) FROM tag_assignments), \
+                    (SELECT COUNT(*) FROM notes), \
+                    (SELECT COUNT(*) FROM schema_migrations)",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(counts, (1, 1, 1, 1, 1, 1, LATEST_SCHEMA_VERSION as i64));
+        let slot_path: String = catalog
+            .connection
+            .query_row(
+                "SELECT referenced_relative_path FROM slot_assignments WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(slot_path, "SET/AUDIO/kick.wav");
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('b'))
+            .unwrap());
+    }
+
+    #[test]
+    fn existing_v9_database_marks_projection_untrusted_until_rescan() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v9-existing.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 9);
+        let root_fingerprint = format!("rootfp:v1:{}", "d".repeat(64));
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision) \
+                 VALUES (1, '{root_fingerprint}', \
+                         1, 'V9 Root', 1, 'now', 1);"
+            ))
+            .unwrap();
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('d'))
+            .unwrap());
+    }
+
+    fn insert_trusted_v10_root(connection: &Connection, hex_digit: char) {
+        let root_fingerprint = format!("rootfp:v1:{}", hex_digit.to_string().repeat(64));
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision, \
+                    observational_projection_untrusted) \
+                 VALUES (1, '{root_fingerprint}', \
+                         1, 'Trusted Root', 1, 'now', 1, 0);"
+            ))
+            .unwrap();
+    }
+
+    fn repair_applied_flag(connection: &Connection) -> i64 {
+        connection
+            .query_row(
+                "SELECT CAST(value AS INTEGER) FROM catalog_meta WHERE key = ?1",
+                params![PROJECTION_REPAIR_META_KEY],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn existing_v10_database_marks_projection_untrusted_once_on_upgrade() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-trusted.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'e');
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('e'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&catalog.connection), 1);
+        drop(catalog);
+
+        let reopened = SqliteCatalog::open(&path).unwrap();
+        assert!(reopened
+            .observational_projection_untrusted(&identity('e'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&reopened.connection), 1);
+    }
+
+    #[test]
+    fn projection_repair_rescan_and_reopen_preserves_trust() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-rescan-trust.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'f');
+        drop(connection);
+
+        let mut catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('f'))
+            .unwrap());
+        catalog
+            .store_snapshot(&observation('f', "Rescanned"), &populated_snapshot())
+            .unwrap();
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('f'))
+            .unwrap());
+        drop(catalog);
+
+        for _ in 0..2 {
+            let reopened = SqliteCatalog::open(&path).unwrap();
+            assert!(!reopened
+                .observational_projection_untrusted(&identity('f'))
+                .unwrap());
+        }
+    }
+
+    #[test]
+    fn projection_repair_untrusts_roots_independently() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-ab-independent.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        let identity_a = identity('a');
+        let identity_b = identity('b');
+        let fp_a = identity_a.as_str();
+        let fp_b = identity_b.as_str();
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO roots \
+                   (id, fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                    last_observed_at, latest_completed_scan_revision, \
+                    observational_projection_untrusted) \
+                 VALUES \
+                   (1, '{fp_a}', 1, 'Root A', 1, 'now', 1, 0), \
+                   (2, '{fp_b}', 1, 'Root B', 1, 'now', 1, 0);"
+            ))
+            .unwrap();
+        drop(connection);
+
+        let mut catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('a'))
+            .unwrap());
+        assert!(catalog
+            .observational_projection_untrusted(&identity('b'))
+            .unwrap());
+        catalog
+            .store_snapshot(&observation('a', "Root A"), &populated_snapshot())
+            .unwrap();
+        assert!(!catalog
+            .observational_projection_untrusted(&identity('a'))
+            .unwrap());
+        assert!(catalog
+            .observational_projection_untrusted(&identity('b'))
+            .unwrap());
+    }
+
+    #[test]
+    fn projection_repair_failure_can_be_retried_on_reopen() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v10-repair-retry.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 10);
+        insert_trusted_v10_root(&connection, 'c');
+        drop(connection);
+
+        let migration_11 = include_str!("../migrations/0011_projection_trust_repair.sql");
+        let failing_sql = format!("{migration_11}\nTHIS IS NOT SQL;");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        let error =
+            apply_migration_11_with_projection_repair(&mut connection, 11, &failing_sql, 10)
+                .unwrap_err();
+        assert!(matches!(error, CatalogError::Migration { version: 11, .. }));
+        assert_eq!(max_schema_version(&connection), 10);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_schema WHERE type = 'table' AND name = 'catalog_meta'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        assert!(catalog
+            .observational_projection_untrusted(&identity('c'))
+            .unwrap());
+        assert_eq!(repair_applied_flag(&catalog.connection), 1);
+    }
+
+    #[test]
+    fn foreign_keys_are_restored_after_migration_0008() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "fk-restore.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+        drop(connection);
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        let enabled: bool = catalog
+            .connection
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap();
+        assert!(enabled);
+        let mut foreign_keys = catalog
+            .connection
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap();
+        assert!(foreign_keys.query([]).unwrap().next().unwrap().is_none());
+    }
+
+    fn foreign_keys_enabled(connection: &Connection) -> bool {
+        connection
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .unwrap()
+    }
+
+    fn max_schema_version(connection: &Connection) -> i64 {
+        connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    }
+
+    fn slot_assignment_count(connection: &Connection) -> i64 {
+        connection
+            .query_row("SELECT COUNT(*) FROM slot_assignments", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn migration_8_success_restores_foreign_keys_after_outside_transaction_toggle() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let assignments_before = slot_assignment_count(&connection);
+        assert_eq!(assignments_before, 1);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        apply_migration(&mut connection, 8, migration_8).unwrap();
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 8);
+        assert_eq!(slot_assignment_count(&connection), assignments_before);
+        let mut foreign_keys = connection.prepare("PRAGMA foreign_key_check").unwrap();
+        assert!(foreign_keys.query([]).unwrap().next().unwrap().is_none());
+    }
+
+    #[test]
+    fn migration_8_failure_restores_foreign_keys_and_preserves_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let assignments_before = slot_assignment_count(&connection);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        let failing_sql = format!("{migration_8}\nTHIS IS NOT SQL;");
+        let error = apply_migration(&mut connection, 8, &failing_sql).unwrap_err();
+        assert!(matches!(error, CatalogError::Migration { version: 8, .. }));
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        assert_eq!(slot_assignment_count(&connection), assignments_before);
+    }
+
+    #[test]
+    fn migration_8_foreign_key_check_blocks_commit_and_preserves_schema() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        configure_connection(&connection).unwrap();
+        apply_migrations_through_version(&mut connection, 7);
+        insert_populated_v7_projection(&connection);
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+
+        let migration_8 = include_str!("../migrations/0008_reference_ambiguous.sql");
+        let orphan_insert = "
+INSERT INTO slot_assignments (
+    id, state_document_id, slot_kind, slot_number,
+    referenced_relative_path, reference_status
+) VALUES (99999, 99999, 'static', 99, 'SET/AUDIO/orphan.wav', 'resolved');";
+        let violating_sql = format!("{migration_8}{orphan_insert}");
+        let error = apply_migration(&mut connection, 8, &violating_sql).unwrap_err();
+        assert!(matches!(
+            error,
+            CatalogError::Migration { version: 8, .. } | CatalogError::Integrity { .. }
+        ));
+
+        assert!(foreign_keys_enabled(&connection));
+        assert_eq!(max_schema_version(&connection), 7);
+        let orphan_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM slot_assignments WHERE id = 99999)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!orphan_exists);
+        assert_eq!(slot_assignment_count(&connection), 1);
     }
 
     #[cfg(unix)]

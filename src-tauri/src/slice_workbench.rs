@@ -898,9 +898,12 @@ mod tests {
         });
         *workbench.current.lock().unwrap() = Some(Arc::clone(&job));
         let directory = tempfile::tempdir().unwrap();
-        let catalog = Arc::new(Mutex::new(
-            SqliteCatalog::open(directory.path().join("catalog.sqlite3")).unwrap(),
-        ));
+        let catalog_path = directory
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("catalog.sqlite3");
+        let catalog = Arc::new(Mutex::new(SqliteCatalog::open(catalog_path).unwrap()));
         (workbench, job, catalog, directory)
     }
     fn range(start: &str, end: &str) -> SliceRangeDto {

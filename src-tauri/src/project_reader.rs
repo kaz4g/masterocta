@@ -1103,19 +1103,29 @@ pub fn compute_sample_usage(project_path: &str) -> Result<SampleSlotUsage, Strin
                 let is_audible = audible.contains(&(part_id, t));
                 // Untrigged factory default (static machine, slot == track):
                 // pure noise, present on every track of every untouched bank.
-                if !is_audible && machine_type == 0 && slot_id as usize == t {
-                    continue;
+                if !is_audible && machine_type == 0 {
+                    if let Some(index) =
+                        crate::bank_validation::bank_machine_slot_to_usage_index(slot_id)
+                    {
+                        if index == t {
+                            continue;
+                        }
+                    }
                 }
-                if let Some(entries) = pool.get_mut(slot_id as usize) {
-                    entries.push(SlotUsageEntry {
-                        bank: bank_idx,
-                        kind: "machine".to_string(),
-                        track: t as u8,
-                        part: Some(part_id as u8),
-                        pattern: None,
-                        step: None,
-                        audible: is_audible,
-                    });
+                if let Some(index) =
+                    crate::bank_validation::bank_machine_slot_to_usage_index(slot_id)
+                {
+                    if let Some(entries) = pool.get_mut(index) {
+                        entries.push(SlotUsageEntry {
+                            bank: bank_idx,
+                            kind: "machine".to_string(),
+                            track: t as u8,
+                            part: Some(part_id as u8),
+                            pattern: None,
+                            step: None,
+                            audible: is_audible,
+                        });
+                    }
                 }
             }
         }
@@ -1142,19 +1152,20 @@ pub fn compute_sample_usage(project_path: &str) -> Result<SampleSlotUsage, Strin
                 .min(64) as usize;
                 for (s, plock) in track.plocks.0.iter().enumerate().take(track_len) {
                     let slot_id = plock.flex_slot_id;
-                    if slot_id == 255 {
-                        continue;
-                    }
-                    if let Some(entries) = pool.get_mut(slot_id as usize) {
-                        entries.push(SlotUsageEntry {
-                            bank: bank_idx,
-                            kind: "lock".to_string(),
-                            track: t as u8,
-                            part: None,
-                            pattern: Some(p_idx as u8),
-                            step: Some(s as u8),
-                            audible: true,
-                        });
+                    if let Some(index) =
+                        crate::bank_validation::bank_machine_slot_to_usage_index(slot_id)
+                    {
+                        if let Some(entries) = pool.get_mut(index) {
+                            entries.push(SlotUsageEntry {
+                                bank: bank_idx,
+                                kind: "lock".to_string(),
+                                track: t as u8,
+                                part: None,
+                                pattern: Some(p_idx as u8),
+                                step: Some(s as u8),
+                                audible: true,
+                            });
+                        }
                     }
                 }
             }
@@ -1180,6 +1191,8 @@ pub(crate) fn compute_sample_usage_for_documents(
     let skip_master = decoded.lines().any(|line| line.trim() == "MASTER_TRACK=1");
     let bank = BankFile::from_data_file(bank_file_path)
         .map_err(|error| format!("failed to parse bank state: {error:?}"))?;
+    crate::bank_validation::validate_bank_file(&bank)
+        .map_err(|error| format!("bank validation failed: {error:?}"))?;
     let mut static_usage: Vec<Vec<SlotUsageEntry>> = vec![Vec::new(); 128];
     let mut flex_usage: Vec<Vec<SlotUsageEntry>> = vec![Vec::new(); 128];
 
@@ -1208,19 +1221,27 @@ pub(crate) fn compute_sample_usage_for_documents(
                 _ => continue,
             };
             let is_audible = audible.contains(&(part_index, track_index));
-            if !is_audible && machine_type == 0 && slot_id as usize == track_index {
-                continue;
+            if !is_audible && machine_type == 0 {
+                if let Some(index) =
+                    crate::bank_validation::bank_machine_slot_to_usage_index(slot_id)
+                {
+                    if index == track_index {
+                        continue;
+                    }
+                }
             }
-            if let Some(entries) = pool.get_mut(slot_id as usize) {
-                entries.push(SlotUsageEntry {
-                    bank: bank_index,
-                    kind: "machine".into(),
-                    track: track_index as u8,
-                    part: Some(part_index as u8),
-                    pattern: None,
-                    step: None,
-                    audible: is_audible,
-                });
+            if let Some(index) = crate::bank_validation::bank_machine_slot_to_usage_index(slot_id) {
+                if let Some(entries) = pool.get_mut(index) {
+                    entries.push(SlotUsageEntry {
+                        bank: bank_index,
+                        kind: "machine".into(),
+                        track: track_index as u8,
+                        part: Some(part_index as u8),
+                        pattern: None,
+                        step: None,
+                        audible: is_audible,
+                    });
+                }
             }
         }
     }
@@ -1245,19 +1266,20 @@ pub(crate) fn compute_sample_usage_for_documents(
             for (step_index, parameter_lock) in track.plocks.0.iter().enumerate().take(track_length)
             {
                 let slot_id = parameter_lock.flex_slot_id;
-                if slot_id == 255 {
-                    continue;
-                }
-                if let Some(entries) = pool.get_mut(slot_id as usize) {
-                    entries.push(SlotUsageEntry {
-                        bank: bank_index,
-                        kind: "lock".into(),
-                        track: track_index as u8,
-                        part: None,
-                        pattern: Some(pattern_index as u8),
-                        step: Some(step_index as u8),
-                        audible: true,
-                    });
+                if let Some(index) =
+                    crate::bank_validation::bank_machine_slot_to_usage_index(slot_id)
+                {
+                    if let Some(entries) = pool.get_mut(index) {
+                        entries.push(SlotUsageEntry {
+                            bank: bank_index,
+                            kind: "lock".into(),
+                            track: track_index as u8,
+                            part: None,
+                            pattern: Some(pattern_index as u8),
+                            step: Some(step_index as u8),
+                            audible: true,
+                        });
+                    }
                 }
             }
         }

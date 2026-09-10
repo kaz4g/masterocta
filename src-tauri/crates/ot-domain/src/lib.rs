@@ -3,8 +3,14 @@
 use std::fmt;
 
 pub mod onsets;
+pub mod reference_identity;
 pub mod slice_draft;
 pub mod slicing;
+
+pub use reference_identity::{
+    inventory_paths_equivalent, raw_path_matches_inventory_reference, resolve_against_inventory,
+    resolve_project_reference_syntax, ProjectReferenceSyntaxError,
+};
 
 const FILE_INSTANCE_ID_PREFIX: &str = "fileinst:v1:";
 
@@ -278,7 +284,56 @@ pub enum SampleReferenceStatus {
     Resolved,
     Missing,
     InvalidPath,
+    Ambiguous,
     UnassignedSlot,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct RecorderBufferId {
+    buffer_number: u8,
+}
+
+impl RecorderBufferId {
+    pub fn new(flex_slot: u16) -> Result<Self, InvalidRecorderBufferId> {
+        if !(129..=136).contains(&flex_slot) {
+            return Err(InvalidRecorderBufferId { flex_slot });
+        }
+        Ok(Self {
+            buffer_number: (flex_slot - 128) as u8,
+        })
+    }
+
+    pub fn buffer_number(self) -> u8 {
+        self.buffer_number
+    }
+
+    pub fn flex_slot(self) -> u16 {
+        self.buffer_number as u16 + 128
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InvalidRecorderBufferId {
+    flex_slot: u16,
+}
+
+impl fmt::Display for InvalidRecorderBufferId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "flex slot {} is not a recorder buffer (expected 129-136)",
+            self.flex_slot
+        )
+    }
+}
+
+impl std::error::Error for InvalidRecorderBufferId {}
+
+pub fn slot_kind_rank(kind: SampleSlotKind) -> u8 {
+    match kind {
+        SampleSlotKind::Static => 0,
+        SampleSlotKind::Flex => 1,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -537,6 +592,7 @@ pub struct LibraryProject {
     pub display_name: String,
     pub relative_path: RootRelativePath,
     pub has_project_file: bool,
+    pub has_saved_checkpoint: bool,
     pub has_banks: bool,
 }
 
@@ -776,6 +832,15 @@ mod tests {
     }
 
     #[test]
+    fn recorder_buffer_ids_map_flex_slots_129_to_136() {
+        assert_eq!(RecorderBufferId::new(129).unwrap().buffer_number(), 1);
+        assert_eq!(RecorderBufferId::new(136).unwrap().buffer_number(), 8);
+        assert_eq!(RecorderBufferId::new(136).unwrap().flex_slot(), 136);
+        assert!(RecorderBufferId::new(128).is_err());
+        assert!(RecorderBufferId::new(137).is_err());
+    }
+
+    #[test]
     fn sample_slot_ids_enforce_octatrack_pool_ranges() {
         assert!(SampleSlotId::new(SampleSlotKind::Static, 1).is_ok());
         assert!(SampleSlotId::new(SampleSlotKind::Static, 128).is_ok());
@@ -847,4 +912,6 @@ mod tests {
             "SET/AUDIO/new-kick.wav"
         );
     }
+
+    include!("reference_identity.test.rs");
 }

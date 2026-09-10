@@ -17,9 +17,9 @@ use ot_executor::{
     RenameSampleExecutor,
 };
 use ot_plan::{
-    PlanError, PlanId, RenameImpactPlan, RenamePlanningWarning, RenameReferenceUpdate,
-    RenameSidecarImpact, RenameStateDocumentImpact, RenameUnresolvedReference,
-    RenameUsageEdgeImpact,
+    matches_legacy_rename_plan_id, PlanError, PlanId, RenameImpactPlan, RenamePlanningWarning,
+    RenameReferenceUpdate, RenameSidecarImpact, RenameStateDocumentImpact,
+    RenameUnresolvedReference, RenameUsageEdgeImpact,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -190,6 +190,7 @@ pub enum PreparedRenameRuntimeError {
     CloneEvidenceUnavailable,
     CloneNotVerified,
     PlanIntegrityMismatch,
+    PlanSchemaMismatch,
     ContinuationRequired,
     ContinuationMismatch,
     ContinuationExpired,
@@ -552,8 +553,13 @@ impl PreparedRenameRuntime {
         if OperationId::for_rename_plan(&plan).as_str() != snapshot.operation_id {
             return Err(PreparedRenameRuntimeError::SnapshotTampered);
         }
-        plan.validate_integrity()
-            .map_err(PreparedRenameRuntimeError::Plan)?;
+        match plan.validate_integrity() {
+            Ok(()) => {}
+            Err(PlanError::IntegrityMismatch) if matches_legacy_rename_plan_id(&plan) => {
+                return Err(PreparedRenameRuntimeError::PlanSchemaMismatch);
+            }
+            Err(error) => return Err(PreparedRenameRuntimeError::Plan(error)),
+        }
         Ok(())
     }
 
@@ -1112,6 +1118,7 @@ fn encode_reference_status(status: SampleReferenceStatus) -> String {
         SampleReferenceStatus::Resolved => "resolved".to_owned(),
         SampleReferenceStatus::Missing => "missing".to_owned(),
         SampleReferenceStatus::InvalidPath => "invalid_path".to_owned(),
+        SampleReferenceStatus::Ambiguous => "ambiguous".to_owned(),
         SampleReferenceStatus::UnassignedSlot => "unassigned_slot".to_owned(),
     }
 }
@@ -1123,6 +1130,7 @@ fn decode_reference_status(
         "resolved" => Ok(SampleReferenceStatus::Resolved),
         "missing" => Ok(SampleReferenceStatus::Missing),
         "invalid_path" => Ok(SampleReferenceStatus::InvalidPath),
+        "ambiguous" => Ok(SampleReferenceStatus::Ambiguous),
         "unassigned_slot" => Ok(SampleReferenceStatus::UnassignedSlot),
         _ => Err(PreparedRenameRuntimeError::PlanIntegrityMismatch),
     }
@@ -1198,6 +1206,7 @@ impl PreparedRenameRuntimeError {
             Self::CloneEvidenceUnavailable => "CLONE_EVIDENCE_UNAVAILABLE",
             Self::CloneNotVerified => "CLONE_NOT_VERIFIED",
             Self::PlanIntegrityMismatch => "PLAN_INTEGRITY_MISMATCH",
+            Self::PlanSchemaMismatch => "PLAN_SCHEMA_MISMATCH",
             Self::ContinuationRequired => "CONTINUATION_REQUIRED",
             Self::ContinuationMismatch => "CONTINUATION_MISMATCH",
             Self::ContinuationExpired => "CONTINUATION_EXPIRED",
@@ -1230,6 +1239,9 @@ impl std::fmt::Display for PreparedRenameRuntimeError {
             Self::CloneEvidenceUnavailable => "clone baseline evidence is unavailable",
             Self::CloneNotVerified => "clone verification is required before continuation",
             Self::PlanIntegrityMismatch => "prepared rename plan failed integrity validation",
+            Self::PlanSchemaMismatch => {
+                "prepared rename plan uses an obsolete schema and must be re-planned"
+            }
             Self::ContinuationRequired => {
                 "process restart requires explicit continuation before apply"
             }

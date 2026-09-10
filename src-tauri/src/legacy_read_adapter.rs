@@ -1,7 +1,10 @@
 use crate::device_detection::{scan_directory_strict, DeviceScanError, OctatrackProject};
 use crate::host_metadata_policy::is_ignored_host_metadata;
-use crate::project_compatibility::{evaluate_project_compatibility, ProjectCompatibility};
 use crate::project_reader::{compute_sample_usage_for_documents, read_raw_sample_fields};
+use ot_codec::{
+    parse_os_version, parse_project_document, resolve_against_inventory,
+    upstream_candidate_release, PROJECT_PARSER_NAME, PROJECT_PARSER_REVISION,
+};
 use ot_domain::{
     AudioAsset, ContentHash, ContentHashFreshness, FileInstance, LibraryProject, LibrarySet,
     LibrarySnapshot, ParserProvenance, ProjectCompatibilityEvidence, RootId, RootRelativePath,
@@ -11,7 +14,6 @@ use ot_domain::{
     StateDocumentParseStatus, StateDocumentRole,
 };
 use ot_storage_ports::{ReadOnlyLibrary, StorageError};
-use ot_tools_io::banks::BANK_FILE_VERSION;
 use ot_tools_io::{
     BankFile, HasChecksumField, HasFileVersionField, HasHeaderField, MarkersFile, OctatrackFileIO,
     ProjectFile, SampleSettingsFile,
@@ -21,7 +23,54 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Component, Path, PathBuf};
+#[cfg(feature = "test-seams")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::UNIX_EPOCH;
+
+#[cfg(feature = "test-seams")]
+static UPSTREAM_VERIFY_TEMP_DIR_FAIL: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "test-seams")]
+static UPSTREAM_VERIFY_WRITE_FAIL: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum UpstreamProjectVerify {
+    NotRequired,
+    Confirmed,
+    DocumentRejected,
+    Unavailable,
+}
+
+#[cfg(feature = "test-seams")]
+#[allow(dead_code)]
+pub fn set_upstream_verify_temp_dir_fail(fail: bool) {
+    UPSTREAM_VERIFY_TEMP_DIR_FAIL.store(fail, Ordering::SeqCst);
+}
+
+#[cfg(feature = "test-seams")]
+#[allow(dead_code)]
+pub fn set_upstream_verify_write_fail(fail: bool) {
+    UPSTREAM_VERIFY_WRITE_FAIL.store(fail, Ordering::SeqCst);
+}
+
+#[cfg(feature = "test-seams")]
+fn upstream_verify_temp_dir_fail_enabled() -> bool {
+    UPSTREAM_VERIFY_TEMP_DIR_FAIL.load(Ordering::SeqCst)
+}
+
+#[cfg(feature = "test-seams")]
+fn upstream_verify_write_fail_enabled() -> bool {
+    UPSTREAM_VERIFY_WRITE_FAIL.load(Ordering::SeqCst)
+}
+
+#[cfg(not(feature = "test-seams"))]
+fn upstream_verify_temp_dir_fail_enabled() -> bool {
+    false
+}
+
+#[cfg(not(feature = "test-seams"))]
+fn upstream_verify_write_fail_enabled() -> bool {
+    false
+}
 
 pub struct RegisteredLegacyLibrary {
     root_id: RootId,
@@ -405,8 +454,15 @@ fn classify_storage_scope(
     SampleStorageScope::Unclassified
 }
 
-const STATE_PARSER_NAME: &str = "masterocta/ot-tools-io";
-const STATE_PARSER_REVISION: &str = "cd246d8a595647364eb4cc78211033b2d1302526";
+const BANK_PARSER_NAME: &str = crate::bank_validation::BANK_VALIDATOR_NAME;
+const BANK_PARSER_REVISION: &str = crate::bank_validation::BANK_VALIDATOR_REVISION;
+const BANK_DECODER_NAME: &str = "masterocta/ot-tools-io-bank";
+const BANK_DECODER_REVISION: &str = "v1";
+const SAMPLE_SETTINGS_PARSER_NAME: &str = "masterocta/sample-settings";
+const SAMPLE_SETTINGS_PARSER_REVISION: &str = "v1";
+
+const STATE_PARSER_NAME: &str = PROJECT_PARSER_NAME;
+const STATE_PARSER_REVISION: &str = PROJECT_PARSER_REVISION;
 
 type StateInventory = (
     Vec<StateDocument>,
@@ -457,7 +513,7 @@ fn scan_state_inventory(
                     &project_source,
                     &project_file,
                     &inventory_paths,
-                );
+                )?;
                 if parse_status == StateDocumentParseStatus::Parsed {
                     parsed_project_source = Some(project_source.clone());
                     for assignment in assignments {
@@ -624,7 +680,7 @@ fn scan_slot_local_settings(
             let mut sample_settings = empty_sample_settings(
                 SampleSettingsOwner::SlotAssignment,
                 document.source_relative_path.clone(),
-                document.parser_provenance.clone(),
+                sample_settings_provenance(None),
                 document.parser_provenance.source_version.clone(),
             );
             sample_settings.project_document_relative_path =
@@ -778,7 +834,7 @@ fn parse_sidecar_settings(
             let mut settings = empty_sample_settings(
                 SampleSettingsOwner::FileInstanceSidecar,
                 sidecar_relative,
-                parser_provenance(None, None),
+                sample_settings_provenance(None),
                 None,
             );
             settings.file_instance_relative_path = Some(file_instance_relative);
@@ -790,7 +846,7 @@ fn parse_sidecar_settings(
     let mut settings = empty_sample_settings(
         SampleSettingsOwner::FileInstanceSidecar,
         sidecar_relative,
-        parser_provenance(source_version, None),
+        sample_settings_provenance(source_version),
         None,
     );
     settings.file_instance_relative_path = Some(file_instance_relative);
@@ -907,119 +963,176 @@ fn parse_project_state(
     source_relative_path: &RootRelativePath,
     source_file: &Path,
     inventory_paths: &HashSet<String>,
-) -> (
-    StateDocumentParseStatus,
-    ParserProvenance,
-    Vec<SlotAssignment>,
-) {
-    let parsed = match ProjectFile::from_data_file(source_file) {
-        Ok(parsed) => parsed,
-        Err(_) => {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(None, None),
-                Vec::new(),
-            )
-        }
-    };
-    let source_version = Some(parsed.metadata.os_version.clone());
-    let decision = evaluate_project_compatibility(&parsed);
-    let compatibility_evidence = match decision.compatibility {
-        ProjectCompatibility::Supported { evidence } => Some(evidence),
-        ProjectCompatibility::UnsupportedVersion | ProjectCompatibility::Malformed => None,
-    };
-    match decision.compatibility {
-        ProjectCompatibility::Supported { .. } => {}
-        ProjectCompatibility::UnsupportedVersion => {
-            return (
-                StateDocumentParseStatus::UnsupportedVersion,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
-        ProjectCompatibility::Malformed => {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
-    }
-    let raw_fields = match read_raw_sample_fields(source_file) {
-        Ok(fields) => fields,
-        Err(_) => {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            )
-        }
-    };
-    let mut fields = raw_fields.into_iter().collect::<Vec<_>>();
-    fields.sort_by(|left, right| left.0.cmp(&right.0));
-    let mut assignments = Vec::new();
-    for ((slot_type, slot_number), fields) in fields {
-        let Some(path) = fields.get("PATH").filter(|path| !path.is_empty()) else {
-            continue;
-        };
-        let Some(slot_kind) = parse_slot_kind(&slot_type) else {
-            return (
-                StateDocumentParseStatus::Malformed,
-                parser_provenance(source_version, compatibility_evidence),
-                Vec::new(),
-            );
-        };
-        let slot = match SampleSlotId::new(slot_kind, slot_number) {
-            Ok(slot) => slot,
-            Err(_) => {
-                return (
-                    StateDocumentParseStatus::Malformed,
-                    parser_provenance(source_version, compatibility_evidence),
-                    Vec::new(),
-                )
-            }
-        };
-        let (referenced_file_relative_path, reference_status) =
-            match resolve_project_reference(project_relative_path, path) {
-                Ok(target) if inventory_paths.contains(target.as_str()) => {
-                    (Some(target), SampleReferenceStatus::Resolved)
-                }
-                Ok(target) => (Some(target), SampleReferenceStatus::Missing),
-                Err(()) => (None, SampleReferenceStatus::InvalidPath),
-            };
-        assignments.push(SlotAssignment {
-            project_document_relative_path: source_relative_path.clone(),
-            slot,
-            referenced_file_relative_path,
-            reference_status,
-        });
-    }
+) -> Result<
     (
+        StateDocumentParseStatus,
+        ParserProvenance,
+        Vec<SlotAssignment>,
+    ),
+    StorageError,
+> {
+    let bytes = match fs::read(source_file) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Ok((
+                StateDocumentParseStatus::Malformed,
+                project_parser_provenance(None, None),
+                Vec::new(),
+            ));
+        }
+    };
+    let parsed = parse_project_document(&bytes);
+    let source_version = parsed.source_version.clone();
+    let mut compatibility_evidence = parsed.compatibility_evidence;
+    let parse_status = parsed.parse_status;
+    if parse_status != StateDocumentParseStatus::Parsed {
+        return Ok((
+            parse_status,
+            project_parser_provenance(source_version, compatibility_evidence),
+            Vec::new(),
+        ));
+    }
+
+    match verify_upstream_project_compatibility(&bytes, &parsed) {
+        UpstreamProjectVerify::NotRequired => {}
+        UpstreamProjectVerify::Confirmed => {
+            compatibility_evidence = Some(ProjectCompatibilityEvidence::UpstreamLibrary);
+        }
+        UpstreamProjectVerify::DocumentRejected => {
+            return Ok((
+                StateDocumentParseStatus::Malformed,
+                project_parser_provenance(source_version, None),
+                Vec::new(),
+            ));
+        }
+        UpstreamProjectVerify::Unavailable => {
+            return Err(StorageError::new(
+                "VERIFY_UNAVAILABLE: upstream project compatibility verification failed",
+            ));
+        }
+    }
+
+    let assignments = parsed
+        .regular_assignments
+        .into_iter()
+        .map(|assignment| {
+            let (referenced_file_relative_path, reference_status) = resolve_against_inventory(
+                project_relative_path,
+                &assignment.raw_path,
+                inventory_paths,
+            );
+            SlotAssignment {
+                project_document_relative_path: source_relative_path.clone(),
+                slot: assignment.slot,
+                referenced_file_relative_path,
+                reference_status,
+            }
+        })
+        .collect();
+
+    Ok((
         StateDocumentParseStatus::Parsed,
-        parser_provenance(source_version, compatibility_evidence),
+        project_parser_provenance(source_version, compatibility_evidence),
         assignments,
-    )
+    ))
+}
+
+fn verify_upstream_project_compatibility(
+    bytes: &[u8],
+    parsed: &ot_codec::ProjectDocumentParseResult,
+) -> UpstreamProjectVerify {
+    if parsed.compatibility_evidence
+        == Some(ProjectCompatibilityEvidence::VerifiedMasterOctaFixture)
+    {
+        return UpstreamProjectVerify::NotRequired;
+    }
+    let Some(release) = parsed
+        .source_version
+        .as_deref()
+        .and_then(parse_os_version)
+        .map(|os| os.release)
+    else {
+        return UpstreamProjectVerify::NotRequired;
+    };
+    if !upstream_candidate_release(&release) {
+        return UpstreamProjectVerify::NotRequired;
+    }
+    let temp = match create_upstream_verify_temp_dir() {
+        Ok(temp) => temp,
+        Err(()) => return UpstreamProjectVerify::Unavailable,
+    };
+    let verify_path = temp.path().join("project.work");
+    if write_upstream_verify_bytes(&verify_path, bytes).is_err() {
+        return UpstreamProjectVerify::Unavailable;
+    }
+    match ProjectFile::from_data_file(&verify_path) {
+        Ok(_) => UpstreamProjectVerify::Confirmed,
+        Err(_) => UpstreamProjectVerify::DocumentRejected,
+    }
+}
+
+fn create_upstream_verify_temp_dir() -> Result<tempfile::TempDir, ()> {
+    if upstream_verify_temp_dir_fail_enabled() {
+        return Err(());
+    }
+    tempfile::TempDir::new().map_err(|_| ())
+}
+
+fn write_upstream_verify_bytes(path: &Path, bytes: &[u8]) -> Result<(), ()> {
+    if upstream_verify_write_fail_enabled() {
+        return Err(());
+    }
+    fs::write(path, bytes).map_err(|_| ())
 }
 
 fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProvenance) {
     match BankFile::from_data_file(source_file) {
         Ok(bank) => {
             let source_version = Some(format!("bank:{}", bank.datatype_version));
-            let status = if bank.datatype_version == BANK_FILE_VERSION {
-                StateDocumentParseStatus::Parsed
-            } else {
-                StateDocumentParseStatus::UnsupportedVersion
+            let status = match crate::bank_validation::validate_bank_file(&bank) {
+                Ok(()) => StateDocumentParseStatus::Parsed,
+                Err(crate::bank_validation::BankValidationError::UnsupportedVersion) => {
+                    StateDocumentParseStatus::UnsupportedVersion
+                }
+                Err(_) => StateDocumentParseStatus::Malformed,
             };
-            (status, parser_provenance(source_version, None))
+            (status, bank_validation_provenance(source_version))
         }
         Err(_) => (
             StateDocumentParseStatus::Malformed,
-            parser_provenance(None, None),
+            bank_decode_failure_provenance(),
         ),
     }
 }
 
-fn parser_provenance(
+fn bank_validation_provenance(source_version: Option<String>) -> ParserProvenance {
+    ParserProvenance {
+        parser_name: BANK_PARSER_NAME.into(),
+        parser_revision: BANK_PARSER_REVISION.into(),
+        source_version,
+        compatibility_evidence: None,
+    }
+}
+
+fn bank_decode_failure_provenance() -> ParserProvenance {
+    ParserProvenance {
+        parser_name: BANK_DECODER_NAME.into(),
+        parser_revision: BANK_DECODER_REVISION.into(),
+        source_version: None,
+        compatibility_evidence: None,
+    }
+}
+
+fn sample_settings_provenance(source_version: Option<String>) -> ParserProvenance {
+    ParserProvenance {
+        parser_name: SAMPLE_SETTINGS_PARSER_NAME.into(),
+        parser_revision: SAMPLE_SETTINGS_PARSER_REVISION.into(),
+        source_version,
+        compatibility_evidence: None,
+    }
+}
+
+fn project_parser_provenance(
     source_version: Option<String>,
     compatibility_evidence: Option<ProjectCompatibilityEvidence>,
 ) -> ParserProvenance {
@@ -1028,14 +1141,6 @@ fn parser_provenance(
         parser_revision: STATE_PARSER_REVISION.into(),
         source_version,
         compatibility_evidence,
-    }
-}
-
-fn parse_slot_kind(value: &str) -> Option<SampleSlotKind> {
-    match value.to_ascii_uppercase().as_str() {
-        "STATIC" => Some(SampleSlotKind::Static),
-        "FLEX" => Some(SampleSlotKind::Flex),
-        _ => None,
     }
 }
 
@@ -1087,37 +1192,6 @@ fn append_usage_edges(
     }
 }
 
-fn resolve_project_reference(
-    project_relative_path: &RootRelativePath,
-    raw_reference: &str,
-) -> Result<RootRelativePath, ()> {
-    let bytes = raw_reference.as_bytes();
-    if raw_reference.starts_with(['/', '\\'])
-        || (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
-        || raw_reference.contains('\0')
-    {
-        return Err(());
-    }
-    let mut components = project_relative_path
-        .as_str()
-        .split('/')
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    for component in raw_reference.split(['/', '\\']) {
-        match component {
-            "" => return Err(()),
-            "." => {}
-            ".." => {
-                if components.pop().is_none() {
-                    return Err(());
-                }
-            }
-            component => components.push(component.to_owned()),
-        }
-    }
-    RootRelativePath::from_components(components).map_err(|_| ())
-}
-
 fn join_relative(parent: &RootRelativePath, child: &str) -> Result<RootRelativePath, StorageError> {
     RootRelativePath::from_components(parent.as_str().split('/').chain([child]))
         .map_err(|error| StorageError::new(format!("PATH_ESCAPE: {error}")))
@@ -1158,6 +1232,7 @@ fn map_project(
         display_name: project.name,
         relative_path: checked_relative_path(canonical_root, Path::new(&project.path))?,
         has_project_file: project.has_project_file,
+        has_saved_checkpoint: project.has_saved_checkpoint,
         has_banks: project.has_banks,
     })
 }
@@ -1218,6 +1293,7 @@ pub(crate) fn resolve_relative_for_read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ot_codec::resolve_project_reference_syntax;
     use std::collections::BTreeMap;
     use tempfile::TempDir;
 
@@ -1325,6 +1401,7 @@ mod tests {
                     display_name: "PROJECT".into(),
                     relative_path: RootRelativePath::parse("SET/PROJECT").unwrap(),
                     has_project_file: true,
+                    has_saved_checkpoint: false,
                     has_banks: true,
                 }],
             }],
@@ -1332,6 +1409,7 @@ mod tests {
                 display_name: "STANDALONE".into(),
                 relative_path: RootRelativePath::parse("STANDALONE").unwrap(),
                 has_project_file: true,
+                has_saved_checkpoint: false,
                 has_banks: true,
             }],
             ..LibrarySnapshot::default()
@@ -1352,7 +1430,7 @@ mod tests {
                 role: StateDocumentRole::Working,
                 bank_index: None,
                 parse_status: StateDocumentParseStatus::Parsed,
-                parser_provenance: parser_provenance(Some("1.40A".into()), None),
+                parser_provenance: project_parser_provenance(Some("1.40A".into()), None),
             }],
             slot_assignments: vec![SlotAssignment {
                 project_document_relative_path: source,
@@ -1443,7 +1521,12 @@ mod tests {
         assert_eq!(documents.len(), 4);
         assert!(documents.iter().all(|document| {
             document.parse_status == StateDocumentParseStatus::Parsed
-                && document.parser_provenance.parser_revision == STATE_PARSER_REVISION
+                && document.parser_provenance.parser_revision
+                    == if document.kind == StateDocumentKind::Bank {
+                        BANK_PARSER_REVISION
+                    } else {
+                        STATE_PARSER_REVISION
+                    }
         }));
         assert!(documents.iter().any(|document| {
             document.kind == StateDocumentKind::Project
@@ -1701,7 +1784,7 @@ mod tests {
     fn project_reference_resolution_rejects_absolute_and_root_escape_paths() {
         let project = RootRelativePath::parse("SET/PROJECT").unwrap();
         assert_eq!(
-            resolve_project_reference(&project, "../AUDIO/kick.wav")
+            resolve_project_reference_syntax(&project, "../AUDIO/kick.wav")
                 .unwrap()
                 .as_str(),
             "SET/AUDIO/kick.wav"
@@ -1713,7 +1796,7 @@ mod tests {
             r"..\\..\\..\\outside.wav",
             "nested//sample.wav",
         ] {
-            assert!(resolve_project_reference(&project, invalid).is_err());
+            assert!(resolve_project_reference_syntax(&project, invalid).is_err());
         }
     }
 
@@ -2129,5 +2212,268 @@ mod tests {
         })
         .unwrap_err();
         assert!(error.message().starts_with("LIBRARY_SCAN_FAILED:"));
+    }
+
+    #[test]
+    fn bank_decode_failure_records_bank_decoder_provenance() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/real_device_os_1_40/project.work");
+        fs::copy(&fixture, project_directory.join("project.work")).unwrap();
+        fs::write(project_directory.join("bank01.work"), b"not a bank").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, _, _) = scan_state_inventory(&canonical, &topology).unwrap();
+        let bank = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+
+        assert_eq!(bank.parse_status, StateDocumentParseStatus::Malformed);
+        assert_eq!(bank.parser_provenance.parser_name, BANK_DECODER_NAME);
+        assert_eq!(
+            bank.parser_provenance.parser_revision,
+            BANK_DECODER_REVISION
+        );
+        assert!(bank.parser_provenance.source_version.is_none());
+        assert!(bank.parser_provenance.compatibility_evidence.is_none());
+        assert_ne!(bank.parser_provenance.parser_name, STATE_PARSER_NAME);
+    }
+
+    #[test]
+    fn sidecar_settings_use_sample_settings_parser_not_project_parser() {
+        let root = TempDir::new().unwrap();
+        let audio = root.path().join("SET/AUDIO/kick.wav");
+        fs::create_dir_all(audio.parent().unwrap()).unwrap();
+        fs::write(&audio, b"kick").unwrap();
+        fs::write(audio.with_extension("ot"), b"not a sidecar").unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.file_instances.push(FileInstance {
+            relative_path: RootRelativePath::parse("SET/AUDIO/kick.wav").unwrap(),
+            content_hash: ContentHash::parse(format!("sha256:{}", "a".repeat(64))).unwrap(),
+            byte_size: 4,
+            modified_at_unix_ns: Some(1),
+            storage_scope: SampleStorageScope::SetAudioPool,
+            hash_freshness: ContentHashFreshness::ComputedThisScan,
+        });
+
+        let settings = scan_file_sidecar_settings(&canonical, &topology).unwrap();
+        assert_eq!(settings.len(), 1);
+        assert_eq!(
+            settings[0].parser_provenance.parser_name,
+            SAMPLE_SETTINGS_PARSER_NAME
+        );
+        assert_eq!(
+            settings[0].parser_provenance.parser_revision,
+            SAMPLE_SETTINGS_PARSER_REVISION
+        );
+        assert!(settings[0].parser_provenance.source_version.is_none());
+        assert_ne!(settings[0].parser_provenance.parser_name, STATE_PARSER_NAME);
+    }
+
+    #[test]
+    fn unknown_machine_type_bank_is_not_parsed() {
+        use ot_tools_io::OctatrackFileIO;
+
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        let mut bank = BankFile::from_data_file(&fixture_directory.join("bank01.work")).unwrap();
+        bank.parts.unsaved.0[0].audio_track_machine_types[0] = 42;
+        bank.to_data_file(&project_directory.join("bank01.work"))
+            .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        let bank = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+
+        assert_eq!(bank.parse_status, StateDocumentParseStatus::Malformed);
+        assert_eq!(bank.parser_provenance.parser_name, BANK_PARSER_NAME);
+        assert!(
+            !assignments.is_empty(),
+            "project assignments may still parse"
+        );
+        assert!(usage_edges.is_empty());
+    }
+
+    #[test]
+    fn state_document_provenance_round_trips_through_catalog_store_and_reopen() {
+        use ot_catalog::SqliteCatalog;
+        use ot_storage_ports::{CatalogRootIdentity, CatalogRootObservation, LibraryCatalog};
+
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        fs::copy(
+            fixture_directory.join("bank01.work"),
+            project_directory.join("bank01.work"),
+        )
+        .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        topology.state_documents = documents;
+        topology.slot_assignments = assignments;
+        topology.usage_edges = usage_edges;
+        topology.sample_settings = scan_sample_settings(&canonical, &topology).unwrap();
+
+        let catalog_path = root.path().canonicalize().unwrap().join("catalog.sqlite3");
+        let identity = CatalogRootIdentity::new(format!("rootfp:v1:{}", "c".repeat(64))).unwrap();
+        let observation = CatalogRootObservation {
+            identity: identity.clone(),
+            identity_is_stable: true,
+            display_name: "Provenance".into(),
+            observed_revision: 1,
+        };
+        {
+            let mut catalog = SqliteCatalog::open(&catalog_path).unwrap();
+            catalog.store_snapshot(&observation, &topology).unwrap();
+        }
+        let catalog = SqliteCatalog::open(&catalog_path).unwrap();
+        let loaded = catalog.load_latest_snapshot(&identity).unwrap().unwrap();
+
+        let project = loaded
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+        assert_eq!(project.parser_provenance.parser_name, STATE_PARSER_NAME);
+        assert_eq!(
+            project.parser_provenance.parser_revision,
+            STATE_PARSER_REVISION
+        );
+        let bank = loaded
+            .state_documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Bank)
+            .unwrap();
+        assert_eq!(bank.parser_provenance.parser_name, BANK_PARSER_NAME);
+        assert!(loaded.sample_settings.iter().all(|settings| {
+            settings.parser_provenance.parser_name == SAMPLE_SETTINGS_PARSER_NAME
+        }));
+    }
+
+    fn upstream_rejected_project_fixture() -> (TempDir, PathBuf) {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device/project.work");
+        let source = String::from_utf8(fs::read(&fixture).unwrap()).unwrap();
+        let rejected = source.replace("TEMPOx24=3027", "TEMPOx24=not_a_number");
+        let project_file = project_directory.join("project.work");
+        fs::write(&project_file, rejected.as_bytes()).unwrap();
+        let verify_path = project_directory.join("verify.work");
+        fs::write(&verify_path, rejected.as_bytes()).unwrap();
+        assert!(
+            ProjectFile::from_data_file(&verify_path).is_err(),
+            "fixture mutation must be rejected by pinned ProjectFile"
+        );
+        (root, project_file)
+    }
+
+    #[test]
+    fn gate_c_r2_t1_upstream_document_rejection_is_malformed_without_assignments() {
+        let (root, project_file) = upstream_rejected_project_fixture();
+        let before = snapshot_files(root.path());
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, assignments, usage_edges) =
+            scan_state_inventory(&canonical, &topology).unwrap();
+        let project = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+
+        assert_eq!(project.parse_status, StateDocumentParseStatus::Malformed);
+        assert!(project.parser_provenance.compatibility_evidence.is_none());
+        assert!(assignments.is_empty());
+        assert!(usage_edges.is_empty());
+        assert_eq!(snapshot_files(root.path()), before);
+        assert!(
+            parse_project_document(&fs::read(project_file).unwrap()).parse_status
+                == StateDocumentParseStatus::Parsed
+        );
+    }
+
+    #[test]
+    fn gate_c_r2_t3_upstream_verify_uses_held_bytes_not_source_reread() {
+        let fixture =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device/project.work");
+        let bytes = fs::read(&fixture).unwrap();
+        let parsed = parse_project_document(&bytes);
+        assert_eq!(parsed.parse_status, StateDocumentParseStatus::Parsed);
+
+        let root = TempDir::new().unwrap();
+        let corrupt_path = root.path().join("project.work");
+        fs::write(&corrupt_path, b"corrupted on disk").unwrap();
+        assert!(ProjectFile::from_data_file(&corrupt_path).is_err());
+
+        assert_eq!(
+            verify_upstream_project_compatibility(&bytes, &parsed),
+            UpstreamProjectVerify::Confirmed
+        );
+    }
+
+    #[test]
+    fn gate_c_r2_t4_real_device_1_40b_fixture_keeps_upstream_library_evidence() {
+        let root = TempDir::new().unwrap();
+        let project_directory = root.path().join("SET/PROJECT");
+        fs::create_dir_all(&project_directory).unwrap();
+        let fixture_directory =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        fs::copy(
+            fixture_directory.join("project.work"),
+            project_directory.join("project.work"),
+        )
+        .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let mut topology = inventory_topology();
+        topology.standalone_projects.clear();
+
+        let (documents, _, _) = scan_state_inventory(&canonical, &topology).unwrap();
+        let project = documents
+            .iter()
+            .find(|document| document.kind == StateDocumentKind::Project)
+            .unwrap();
+
+        assert_eq!(project.parse_status, StateDocumentParseStatus::Parsed);
+        assert_eq!(
+            project.parser_provenance.compatibility_evidence,
+            Some(ProjectCompatibilityEvidence::UpstreamLibrary)
+        );
+        assert_eq!(
+            project.parser_provenance.source_version.as_deref(),
+            Some("R0177     1.40B")
+        );
     }
 }

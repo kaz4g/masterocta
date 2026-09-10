@@ -52,6 +52,7 @@ pub struct OctatrackProject {
     pub name: String,
     pub path: String,
     pub has_project_file: bool,
+    pub has_saved_checkpoint: bool,
     pub has_banks: bool,
 }
 
@@ -131,31 +132,30 @@ pub(crate) fn is_octatrack_set(path: &Path) -> bool {
     }
 }
 
-/// Checks if a directory is an Octatrack Project (contains .work files)
+fn has_any_bank_state_file(path: &Path) -> bool {
+    (1..=16).any(|bank_index| {
+        let bank_name = format!("bank{:02}", bank_index);
+        is_real_file(&path.join(format!("{bank_name}.work")))
+            || is_real_file(&path.join(format!("{bank_name}.strd")))
+    })
+}
+
+fn project_file_flags(path: &Path) -> (bool, bool, bool) {
+    let has_project_file = is_real_file(&path.join("project.work"));
+    let has_saved_checkpoint = is_real_file(&path.join("project.strd"));
+    let has_banks = has_any_bank_state_file(path);
+    (has_project_file, has_saved_checkpoint, has_banks)
+}
+
+/// Checks if a directory is an Octatrack Project.
 fn is_octatrack_project(path: &Path) -> bool {
     if !is_real_directory(path) {
         return false;
     }
 
-    // Look for .work files which indicate Octatrack projects
-    if let Ok(entries) = fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let is_file = entry
-                .file_type()
-                .map(|file_type| file_type.is_file())
-                .unwrap_or(false);
-            if !is_file {
-                continue;
-            }
-            if let Some(ext) = entry.path().extension() {
-                if ext == "work" {
-                    return true;
-                }
-            }
-        }
-    }
-
-    false
+    is_real_file(&path.join("project.work"))
+        || is_real_file(&path.join("project.strd"))
+        || has_any_bank_state_file(path)
 }
 
 /// Scans a Set directory for Projects
@@ -173,8 +173,7 @@ pub(crate) fn scan_for_projects(set_path: &Path) -> Vec<OctatrackProject> {
             }
 
             if is_real_directory(&path) && is_octatrack_project(&path) {
-                let has_project_file = is_real_file(&path.join("project.work"));
-                let has_banks = is_real_file(&path.join("bank01.work"));
+                let (has_project_file, has_saved_checkpoint, has_banks) = project_file_flags(&path);
 
                 projects.push(OctatrackProject {
                     name: path
@@ -184,6 +183,7 @@ pub(crate) fn scan_for_projects(set_path: &Path) -> Vec<OctatrackProject> {
                         .to_string(),
                     path: path.to_string_lossy().to_string(),
                     has_project_file,
+                    has_saved_checkpoint,
                     has_banks,
                 });
             }
@@ -274,8 +274,7 @@ fn scan_for_sets(
 
             // Only add if it's NOT a Set and NOT part of a Set
             if !is_set_or_part_of_set {
-                let has_project_file = is_real_file(&path.join("project.work"));
-                let has_banks = is_real_file(&path.join("bank01.work"));
+                let (has_project_file, has_saved_checkpoint, has_banks) = project_file_flags(path);
 
                 standalone_projects.push(OctatrackProject {
                     name: path
@@ -285,6 +284,7 @@ fn scan_for_sets(
                         .to_string(),
                     path: path.to_string_lossy().to_string(),
                     has_project_file,
+                    has_saved_checkpoint,
                     has_banks,
                 });
             }
@@ -565,21 +565,31 @@ fn is_octatrack_project_strict(root: &Path, path: &Path) -> Result<bool, DeviceS
     if !is_real_directory_strict(path)? {
         return Ok(false);
     }
-    let entries = fs::read_dir(path).map_err(map_io_to_scan_error)?;
-    for entry in entries {
-        let entry = entry.map_err(map_io_to_scan_error)?;
-        fail_if_injected_unreadable(root, &entry.path())?;
-        if is_ignored_host_metadata(&entry.path()) {
-            continue;
-        }
-        if !entry.file_type().map_err(map_io_to_scan_error)?.is_file() {
-            continue;
-        }
-        if entry.path().extension().is_some_and(|ext| ext == "work") {
+    Ok(is_real_file_strict(&path.join("project.work"))?
+        || is_real_file_strict(&path.join("project.strd"))?
+        || has_any_bank_state_file_strict(path)?)
+}
+
+fn has_any_bank_state_file_strict(path: &Path) -> Result<bool, DeviceScanError> {
+    for bank_index in 1..=16 {
+        let bank_name = format!("bank{:02}", bank_index);
+        if is_real_file_strict(&path.join(format!("{bank_name}.work")))?
+            || is_real_file_strict(&path.join(format!("{bank_name}.strd")))?
+        {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+fn project_file_flags_strict(
+    _root: &Path,
+    path: &Path,
+) -> Result<(bool, bool, bool), DeviceScanError> {
+    let has_project_file = is_real_file_strict(&path.join("project.work"))?;
+    let has_saved_checkpoint = is_real_file_strict(&path.join("project.strd"))?;
+    let has_banks = has_any_bank_state_file_strict(path)?;
+    Ok((has_project_file, has_saved_checkpoint, has_banks))
 }
 
 fn has_valid_audio_pool_strict(root: &Path, audio_path: &Path) -> Result<bool, DeviceScanError> {
@@ -628,6 +638,8 @@ fn scan_for_projects_strict(
             continue;
         }
         if is_real_directory_strict(&path)? && is_octatrack_project_strict(root, &path)? {
+            let (has_project_file, has_saved_checkpoint, has_banks) =
+                project_file_flags_strict(root, &path)?;
             projects.push(OctatrackProject {
                 name: path
                     .file_name()
@@ -635,8 +647,9 @@ fn scan_for_projects_strict(
                     .unwrap_or("Unknown")
                     .to_string(),
                 path: path.to_string_lossy().to_string(),
-                has_project_file: is_real_file_strict(&path.join("project.work"))?,
-                has_banks: is_real_file_strict(&path.join("bank01.work"))?,
+                has_project_file,
+                has_saved_checkpoint,
+                has_banks,
             });
         }
     }
@@ -705,6 +718,8 @@ fn scan_for_sets_strict(
                 return Err(DeviceScanError::Io);
             };
             if !is_set_or_part_of_set {
+                let (has_project_file, has_saved_checkpoint, has_banks) =
+                    project_file_flags_strict(location_path, path)?;
                 standalone_projects.push(OctatrackProject {
                     name: path
                         .file_name()
@@ -712,8 +727,9 @@ fn scan_for_sets_strict(
                         .unwrap_or("Unknown")
                         .to_string(),
                     path: path.to_string_lossy().to_string(),
-                    has_project_file: is_real_file_strict(&path.join("project.work"))?,
-                    has_banks: is_real_file_strict(&path.join("bank01.work"))?,
+                    has_project_file,
+                    has_saved_checkpoint,
+                    has_banks,
                 });
             }
         }
@@ -1280,6 +1296,7 @@ mod tests {
             name: "MyProject".to_string(),
             path: "/path/to/project".to_string(),
             has_project_file: true,
+            has_saved_checkpoint: false,
             has_banks: true,
         };
 
@@ -1298,6 +1315,7 @@ mod tests {
                 name: "Project1".to_string(),
                 path: "/path/to/set/Project1".to_string(),
                 has_project_file: true,
+                has_saved_checkpoint: false,
                 has_banks: true,
             }],
         };
@@ -1488,5 +1506,63 @@ mod tests {
         let strict =
             with_injected_unreadable_paths(&["unknown-dir"], || scan_directory_strict(temp.path()));
         assert!(strict.is_err());
+    }
+
+    #[test]
+    fn project_file_flags_distinguish_working_saved_and_banks() {
+        let temp = TempDir::new().unwrap();
+        let project = temp.path().join("PROJECT");
+        fs::create_dir_all(&project).unwrap();
+
+        fs::write(project.join("project.strd"), b"x").unwrap();
+        fs::write(project.join("bank02.work"), b"x").unwrap();
+        let (has_working, has_saved, has_banks) = project_file_flags(&project);
+        assert!(!has_working);
+        assert!(has_saved);
+        assert!(has_banks);
+
+        fs::write(project.join("project.work"), b"x").unwrap();
+        let (has_working, has_saved, has_banks) = project_file_flags(&project);
+        assert!(has_working);
+        assert!(has_saved);
+        assert!(has_banks);
+    }
+
+    #[test]
+    fn scan_discovers_bank02_without_project_work() {
+        let temp = TempDir::new().unwrap();
+        let set_path = create_set(temp.path(), "SET", false);
+        let project_path = set_path.join("BANKONLY");
+        fs::create_dir_all(&project_path).unwrap();
+        fs::write(project_path.join("bank02.work"), b"x").unwrap();
+
+        let result = scan_directory(&temp.path().to_string_lossy());
+        let project = result.locations[0].sets[0]
+            .projects
+            .iter()
+            .find(|entry| entry.name == "BANKONLY")
+            .expect("bank-only project discovered");
+        assert!(!project.has_project_file);
+        assert!(!project.has_saved_checkpoint);
+        assert!(project.has_banks);
+    }
+
+    #[test]
+    fn strd_only_project_reports_saved_checkpoint_without_working_flag() {
+        let temp = TempDir::new().unwrap();
+        let set_path = create_set(temp.path(), "SET", false);
+        let project_path = set_path.join("STRDONLY");
+        fs::create_dir_all(&project_path).unwrap();
+        fs::write(project_path.join("project.strd"), b"x").unwrap();
+
+        let result = scan_directory(&temp.path().to_string_lossy());
+        let project = result.locations[0].sets[0]
+            .projects
+            .iter()
+            .find(|entry| entry.name == "STRDONLY")
+            .expect("strd-only project discovered");
+        assert!(!project.has_project_file);
+        assert!(project.has_saved_checkpoint);
+        assert!(!project.has_banks);
     }
 }
