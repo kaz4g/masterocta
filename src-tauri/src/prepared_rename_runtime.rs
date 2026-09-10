@@ -248,6 +248,14 @@ impl PreparedRenameRuntime {
         (self.clock)()
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_create_once_intercept(
+        &self,
+        intercept: crate::local_artifact::CreateOnceIntercept,
+    ) {
+        self.artifact_store.set_create_once_intercept(intercept);
+    }
+
     pub fn persist_after_prepare(
         &self,
         plan: &RenameImpactPlan,
@@ -1536,6 +1544,94 @@ mod tests {
             PreparedRenameRuntimeError::ContinuationExpired
                 | PreparedRenameRuntimeError::ContinuationNotFound
         ),);
+    }
+
+    #[test]
+    fn persist_concurrent_persist_does_not_treat_in_progress_write_as_tamper() {
+        use crate::local_artifact::CreateOnceIntercept;
+        use std::sync::mpsc;
+        use std::thread;
+
+        let fixture = persist_fixture();
+        let (created_tx, created_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let created_tx = Mutex::new(Some(created_tx));
+        let resume_rx = Mutex::new(resume_rx);
+        fixture
+            .runtime
+            .set_create_once_intercept(CreateOnceIntercept {
+                before_lock: None,
+                after_exclusive_create: Some(Arc::new(move || {
+                    if let Some(tx) = created_tx.lock().expect("created sender").take() {
+                        tx.send(())
+                            .expect("first persist created the snapshot file");
+                    }
+                    resume_rx
+                        .lock()
+                        .expect("resume receiver")
+                        .recv()
+                        .expect("resume first persist after the second persist has entered write");
+                })),
+            });
+
+        thread::scope(|scope| {
+            let first_handle = scope.spawn(|| {
+                fixture.runtime.persist_prepared_snapshot(
+                    &fixture.plan,
+                    &fixture.operation_id,
+                    &fixture.backup,
+                    CLONE_BASELINE,
+                )
+            });
+            created_rx
+                .recv()
+                .expect("first persist reached exclusive create before JSON write");
+
+            fixture.clock.store(1_700_000_042, Ordering::SeqCst);
+            let (entered_tx, entered_rx) = mpsc::channel();
+            let entered_tx = Mutex::new(Some(entered_tx));
+            fixture
+                .runtime
+                .set_create_once_intercept(CreateOnceIntercept {
+                    before_lock: Some(Arc::new(move || {
+                        if let Some(tx) = entered_tx.lock().expect("entered sender").take() {
+                            tx.send(()).expect(
+                                "second persist entered create-once before taking the stem lock",
+                            );
+                        }
+                    })),
+                    after_exclusive_create: None,
+                });
+
+            let second_handle = scope.spawn(|| {
+                fixture.runtime.persist_prepared_snapshot(
+                    &fixture.plan,
+                    &fixture.operation_id,
+                    &fixture.backup,
+                    CLONE_BASELINE,
+                )
+            });
+            entered_rx.recv().expect(
+                "second persist started while the first snapshot write was still in progress",
+            );
+            resume_tx
+                .send(())
+                .expect("resume first persist JSON write after the second persist started");
+
+            let first = first_handle.join().expect("first persist thread").unwrap();
+            let second = second_handle
+                .join()
+                .expect("second persist thread")
+                .unwrap();
+            assert_eq!(first.created_at_unix, 1_700_000_000);
+            assert_eq!(second.created_at_unix, first.created_at_unix);
+            assert_eq!(second.content_binding, first.content_binding);
+            let loaded = fixture
+                .runtime
+                .load_prepared_snapshot(&fixture.operation_id)
+                .unwrap();
+            assert_eq!(loaded, first);
+        });
     }
 
     #[test]

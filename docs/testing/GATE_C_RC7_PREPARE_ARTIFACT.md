@@ -91,6 +91,10 @@ Clock-controlled tests cover:
 - a mutated existing artifact is still rejected
 - journal-without-snapshot remains `PREPARED_ARTIFACT_INCOMPLETE` until persist
 - persist after a missing snapshot creates a new create-once file
+- same-operation concurrent persist started after exclusive create and before
+  JSON write completion returns the same saved snapshot, not a tamper rejection
+  of the in-progress write. Create-once still rejects a divergent binding,
+  a leftover incomplete file, and a symlink.
 
 ## Resume conditions (not this work)
 
