@@ -501,9 +501,13 @@ Phase 3 merge
 → post-#109/#111 rebaseline docs PR merged
   (see GATE_C_POST109_111_REBASELINE.md)
 → operator preflight on new main tip for next candidate (RC7 identity UNSET)
-→ Gate C Candidate Build dispatched once per ledger one-shot rules
-→ next RC freeze ledger PR merged
-→ Human Gate C on that new frozen candidate only
+→ Gate C Candidate Build dispatched once as gate-c-rc7-31107ae4ae21
+→ RC7 dispatch attempt 34438615252 SUCCESS recorded
+→ draft candidate retrieved
+→ local SHA256 re-verification PASS
+→ provenance / access boundary confirmation PASS
+→ RC7 freeze ledger PR (this docs PR; merge pending)
+→ Human Gate C on RC7 frozen candidate only after ledger merge
 → M5 closure PR
 ```
 
@@ -514,9 +518,10 @@ historical candidate. After #109 / #111, current-main Human Gate C on RC6 is
 **FORBIDDEN**. RC5 is frozen as a historical candidate only. Current-main
 Human Gate C on RC5 is **FORBIDDEN**. Do not reuse RC2 run `34016038137`,
 RC3 run `34061897324`, RC4 run `34068535069`, RC5 run `34077117176`, or any
-in-progress DMG from those attempts as later candidate evidence. RC5 and RC6
-dispatch are one-shot. Do not rerun run `34182724485`, redispatch
-`gate-c-rc6-3485118e9a19`, or create RC7 without a new operator sequence.
+in-progress DMG from those attempts as later candidate evidence. RC5, RC6, and
+RC7 dispatch are one-shot. Do not rerun run `34182724485`, redispatch
+`gate-c-rc6-3485118e9a19`, rerun run `34438615252`, or redispatch
+`gate-c-rc7-31107ae4ae21`.
 
 After RC6 freeze (#108) and post-#109/#111 rebaseline (see
 [GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)):
@@ -528,11 +533,12 @@ RC3 = NOT_CREATED / historical pre-freeze failure
 RC4 = NOT_CREATED / historical pre-freeze failure
 RC5 = FROZEN (historical). current-main Human Gate C = FORBIDDEN
 RC6 = FROZEN (historical). current-main Human Gate C = FORBIDDEN after #109/#111
-next candidate (expected RC7) = NOT_CREATED / identity UNSET
+RC7 = FROZEN (recorded by this docs PR; effective on main only after merge)
+current-main Human Gate C on RC7 = NOT AUTHORIZED until this freeze ledger PR merges
 Human Gate C = NOT_RUN
 Gate C = NOT_PASS
 M5 = INCOMPLETE
-remaining M5 blocker = operator preflight + next RC freeze + Human Gate C
+remaining M5 blocker = RC7 freeze ledger merge + Human Gate C on RC7 only
 public distribution = NOT AUTHORIZED
 ```
 
@@ -540,10 +546,12 @@ RC1 remains `FROZEN_FAILED` with its recorded identity unchanged. RC2 source
 commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. RC3 official identity fields remain `UNSET`. RC4 official
 identity fields remain `UNSET`. RC5 official identity is recorded as a
-historical freeze only. Human Gate C remains `NOT_RUN`; Gate C remains
-`NOT_PASS`; M5 remains `INCOMPLETE`. The remaining M5 blocker is operator
-preflight, next-RC freeze, and Human Gate C on that new frozen candidate.
-Signing, notarization, and public distribution remain separate gates.
+historical freeze only. RC6 remains a historical freeze only. RC7 identity is
+recorded by this docs PR; it is **not** the effective `main` ledger until merge.
+Human Gate C remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains
+`INCOMPLETE`. The remaining M5 blocker is RC7 freeze ledger merge and Human
+Gate C on the RC7 frozen candidate only. Signing, notarization, and public
+distribution remain separate gates.
 
 ## RC3
 
@@ -1031,34 +1039,160 @@ Assessment: [GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)
 | RC6 current-main Human Gate C | **FORBIDDEN** (code changed after RC6 source) |
 | Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` |
 | rebaseline verdict | `MO_GATE_C_REBASELINE_CODE_READY` |
-| next candidate number (uncreated) | 7 — identity **UNSET** until operator preflight + dispatch |
+| RC7 candidate build | run [`34438615252`](https://github.com/kaz4g/masterocta/actions/runs/34438615252) `completed` / `success` |
+| RC7 freeze ledger | **this docs PR** (merge pending; not effective on `main` until merge) |
 
-Do not record RC7 source commit, tree, DMG hash, binary hash, workflow run, or
-release ID until a successful one-shot candidate build and a separate freeze
-ledger PR record them together.
+RC7 source commit, tree, DMG hash, binary hash, workflow run, and release ID are
+recorded together in §RC7 below. They are **not** effective on `main` until this
+freeze ledger PR merges.
 
-## Next candidate (RC7 expected, identity UNSET)
+## RC7
 
 | Field | Value |
 |---|---|
-| status | `NOT_CREATED` |
-| candidate_id | `UNSET` |
-| source commit | `UNSET` |
-| source tree | `UNSET` |
-| artifact | `UNSET` |
-| artifact SHA256 | `UNSET` |
-| app binary SHA256 | `UNSET` |
-| workflow run ID | `UNSET` |
-| draft release ID | `UNSET` |
-| Human Gate C | `NOT_RUN` |
+| status | `FROZEN` (recorded by this docs PR; effective on `main` only after merge) |
+| requirement | `SATISFIED` (run `34438615252` + local verification). Human Gate C **NOT AUTHORIZED until merge** |
+| candidate_id | `gate-c-rc7-31107ae4ae21` |
+| source commit | `31107ae4ae21fc5445cdb153cfaf9310fc7d474d` |
+| source tree | `b33434d874868b38ede838ae241080afe5d0f26e` |
+| workflow name | `Gate C Candidate Build` |
+| workflow file | `.github/workflows/gate-c-candidate.yml` |
+| workflow run ID | `34438615252` |
+| workflow run attempt | `1` |
+| workflow run URL | [`34438615252`](https://github.com/kaz4g/masterocta/actions/runs/34438615252) |
+| workflow result | `completed` / `success` |
+| workflow checkout SHA | `31107ae4ae21fc5445cdb153cfaf9310fc7d474d` |
+| main push CI for source | [`34436846381`](https://github.com/kaz4g/masterocta/actions/runs/34436846381) `push` / `success` |
+| draft release ID | `386014076` |
+| draft release tag | `gate-c-rc7-31107ae4ae21` |
+| draft | `true` |
+| prerelease | `true` |
+| published | `false` |
+| target commitish | `31107ae4ae21fc5445cdb153cfaf9310fc7d474d` |
+| candidate storage | `GitHub draft release` |
+| candidate access boundary | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
 | public distribution | `NOT AUTHORIZED` |
+| artifact filename | `Masta-Octa_0.1.0_gate-c-rc7_31107ae4ae21_aarch64.dmg` |
+| artifact SHA256 | `sha256:aa99cb00d7f39b1686a3fa3cba21d460fe9c6c0510914dc92bfc28e533d3b5b0` |
+| enclosed binary relative path | `Masta-Octa.app/Contents/MacOS/masterocta` |
+| app binary SHA256 | `sha256:8c44c909f4d46295c0be3bcc7b519a083795c5514ad8333cf4f157bdf10295b0` |
+| in-run checksum manifest identity | `gate-c-rc7-31107ae4ae21-checksum-manifest.json` |
+| in-run checksum manifest SHA256 | `sha256:1a39386ea00695c9953e2bd436015fa5199ffc2149895a8b63019618303cea0d` |
+| in-run checksum manifest storage | `GitHub draft release 386014076` |
+| in-run checksum manifest retrieval | `authenticated draft release asset download` |
+| candidate evidence identity | `gate-c-rc7-31107ae4ae21-evidence.json` |
+| candidate evidence SHA256 | `sha256:2a5a687342e70ec7f1679da439881a202fc04c508279b715ba0ae0710c0612de` |
+| target architecture | `aarch64-apple-darwin` |
+| build environment | `github-actions-macos-arm64` |
+| Node version | `v22.23.2` |
+| pnpm version | `11.24.0` |
+| Rust version | `1.98.1` |
+| Cargo version | `1.98.1` |
+| Xcode version | `26.6` |
+| runner OS | `macOS` |
+| runner architecture | `ARM64` |
+| runner image | `macos-26@20260831.0337.3` |
+| DMG verification | `PASS` |
+| codesign classification | `AD_HOC_VERIFIED` |
+| codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
+| spctl result | `rejected_expected` |
+| Human Gate C | `NOT_RUN` (not authorized until this freeze ledger PR merges to `main`) |
+| Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` (unchanged) |
 
-Preflight prerequisites after rebaseline docs merge:
+RC7 source-to-artifact provenance chain:
 
-1. Fix source commit/tree on current `main` (post-rebaseline merge tip).
-2. Confirm main CI `push` success on that tip (not PR-head CI alone).
-3. Dispatch `Gate C Candidate Build` once per one-shot rules.
-4. Record freeze evidence in a docs-only ledger PR before Human Gate C.
+```text
+frozen source commit/tree
+  31107ae4ae21fc5445cdb153cfaf9310fc7d474d /
+  b33434d874868b38ede838ae241080afe5d0f26e
+→ main push CI 34436846381 success on that SHA
+→ run 34438615252 attempt 1 checkout of that SHA
+→ same run builds DMG
+→ same run writes checksum manifest + evidence
+→ stored as draft release 386014076 with exact 3 assets
+→ authenticated retrieval
+→ local SHA256 / DMG / binary / codesign re-verification
+→ anonymous access denial
+→ RC7 freeze tuple (this docs PR; merge pending)
+```
+
+Exact draft release asset set (3 assets):
+
+```text
+Masta-Octa_0.1.0_gate-c-rc7_31107ae4ae21_aarch64.dmg
+  sha256:aa99cb00d7f39b1686a3fa3cba21d460fe9c6c0510914dc92bfc28e533d3b5b0
+gate-c-rc7-31107ae4ae21-checksum-manifest.json
+  sha256:1a39386ea00695c9953e2bd436015fa5199ffc2149895a8b63019618303cea0d
+gate-c-rc7-31107ae4ae21-evidence.json
+  sha256:2a5a687342e70ec7f1679da439881a202fc04c508279b715ba0ae0710c0612de
+```
+
+Local re-verification after authenticated draft release retrieval:
+
+| Check | Result | Performed by |
+|---|---|---|
+| authenticated release identity | `PASS` | operator + agent |
+| exact asset set | `PASS` / exactly 3 assets | operator + agent |
+| downloaded asset digest comparison | `PASS` | operator + agent |
+| candidate evidence contract (`validateEvidence`) | `PASS` | agent |
+| candidate evidence identity binding | `PASS` | agent |
+| checksum manifest binding | `PASS` | agent |
+| DMG SHA256 comparison | `PASS` | operator + agent |
+| `hdiutil verify` | `PASS` / VALID | operator + agent |
+| readonly attach | `PASS` | operator + agent |
+| unique enclosed `.app` | `PASS` | operator + agent |
+| enclosed binary SHA256 comparison | `PASS` | operator + agent |
+| codesign classification comparison | `PASS` / `AD_HOC_VERIFIED` | operator + agent |
+| spctl result comparison | `PASS` / `rejected_expected` (exit 3) | operator + agent |
+| clean detach | `PASS` | operator + agent |
+| anonymous API denial | `PASS` / `NOT_FOUND` | operator + agent |
+| anonymous Web tag denial | `PASS` / `NOT_FOUND` | operator + agent |
+| all anonymous asset denial | `PASS` / `ALL_NOT_FOUND` | operator + agent |
+| access-boundary evaluator | `PASS` | agent |
+
+Access boundary (formal record):
+
+```text
+access boundary verdict = AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED
+anonymous REST API = NOT_FOUND
+anonymous Web release tag = NOT_FOUND
+anonymous assets = ALL_NOT_FOUND
+draft = true
+prerelease = true
+published = false
+local access-boundary-input SHA256 = sha256:4cd4fbf6a360b6e5b65d2f7daa3445a0dbf068f84f03cc900d1012fc7f24db1f
+local access-boundary-verdict SHA256 = sha256:592288df270c019261d30bc784029f78f659133ddb0f8d0ec86af6394d43aaf4
+contract script git blob (source commit) = dbbb3a147a1d645a7646cb7c4e9fc278e1d986ae
+```
+
+The workflow `Publish workflow summary` step rendered
+`access_boundary_verdict` blank for run `34438615252`. That blank is a **summary
+rendering gap**, not a successful verdict string and not a reason to treat
+access boundary as undetermined. The verdict above was fixed by complementary
+evidence:
+
+- authenticated draft confirmation in the workflow — `PASS`
+- anonymous API probe — `NOT_FOUND`
+- anonymous Web tag probe — `NOT_FOUND`
+- anonymous asset probes — `ALL_NOT_FOUND`
+- `Finalize access-boundary verdict` step — `PASS`
+- local re-evaluation with `scripts/gate-c-candidate-contract.mjs` at git blob
+  `dbbb3a147a1d645a7646cb7c4e9fc278e1d986ae` on the frozen source commit
+
+The local access-boundary input and verdict JSON hashes above record **operator
+captured observations evaluated by the contract**. They do **not** restore or
+recreate missing workflow summary output.
+
+Do not rerun run `34438615252` or redispatch `gate-c-rc7-31107ae4ae21`. Do not
+rebuild the RC7 artifact from source for Human Gate C. Do not substitute the
+RC5 DMG, the RC6 DMG, or an unfrozen later-main build for current-main Human
+Gate C. RC6 remains **FORBIDDEN** for current-main Human Gate C after #109 /
+#111 even after RC7 freezes. Pull requests #103, #104, and #105 remain closed
+until M5 closure; do not reopen, rebase, or merge them into a new candidate.
+RC7 is a personal/local evaluation candidate and the post-rebaseline
+current-main authorization target **only after this freeze ledger PR merges to
+`main`**. Human Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`. M5
+remains `INCOMPLETE`.
 
 ## Gate C safety boundary
 
