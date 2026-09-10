@@ -8382,8 +8382,8 @@ mod tests {
                 (Ok(prepared), Err(error)) | (Err(error), Ok(prepared)) => {
                     assert_eq!(prepared.operation_id, expected_operation_id);
                     assert_eq!(prepared.state, "prepared");
-                    assert!(
-                        error.code == "ROOT_BUSY" || error.code == "PREPARED_ARTIFACT_UNAVAILABLE",
+                    assert_eq!(
+                        error.code, "ROOT_BUSY",
                         "unexpected concurrent prepare loser: {}",
                         error.code
                     );
@@ -8393,6 +8393,48 @@ mod tests {
                 }
             }
         });
+    }
+
+    #[test]
+    fn rename_prepare_retry_is_idempotent_for_the_same_plan() {
+        let fixture = setup_rename_through_backup();
+        let first = prepare_rename_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.clone_runtime,
+            &fixture.write,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.plan_id,
+            &fixture.authority_id,
+            &fixture.snapshot_id,
+        )
+        .unwrap();
+        let second = prepare_rename_sync(
+            &fixture.registry,
+            &fixture.catalog,
+            &fixture.clone_runtime,
+            &fixture.write,
+            &fixture.rename_runtime,
+            &fixture.prepared_runtime,
+            &fixture.root_id,
+            &fixture.plan_id,
+            &fixture.authority_id,
+            &fixture.snapshot_id,
+        )
+        .unwrap();
+        assert_eq!(first.operation_id, fixture.operation_id);
+        assert_eq!(second.operation_id, first.operation_id);
+        assert_eq!(first.state, "prepared");
+        assert_eq!(second.state, "prepared");
+        let snapshot = fixture
+            .prepared_runtime
+            .load_prepared_snapshot(
+                &ot_executor::OperationId::parse(first.operation_id.clone()).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(snapshot.operation_id, first.operation_id);
     }
 
     fn prepare_fixture_rename(fixture: &RenameThroughBackupFixture) {

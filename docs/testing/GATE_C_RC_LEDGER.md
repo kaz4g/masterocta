@@ -1050,8 +1050,8 @@ freeze ledger PR merges.
 
 | Field | Value |
 |---|---|
-| status | `FROZEN` (recorded by this docs PR; effective on `main` only after merge) |
-| requirement | `SATISFIED` (run `34438615252` + local verification). Human Gate C **NOT AUTHORIZED until merge** |
+| status | `FROZEN` (identity unchanged after #115 merge). Human Gate C `STOP` at Prepare; do not rebuild or reuse RC7 |
+| requirement | `SATISFIED` for freeze identity (run `34438615252` + local verification). Human Gate C **STOP** — [`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md) |
 | candidate_id | `gate-c-rc7-31107ae4ae21` |
 | source commit | `31107ae4ae21fc5445cdb153cfaf9310fc7d474d` |
 | source tree | `b33434d874868b38ede838ae241080afe5d0f26e` |
@@ -1096,7 +1096,7 @@ freeze ledger PR merges.
 | codesign classification | `AD_HOC_VERIFIED` |
 | codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
 | spctl result | `rejected_expected` |
-| Human Gate C | `NOT_RUN` (not authorized until this freeze ledger PR merges to `main`) |
+| Human Gate C | `STOP` at Approve & Prepare (`ArtifactTampered`). See [`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md). Not Gate C PASS |
 | Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` (unchanged) |
 
 RC7 source-to-artifact provenance chain:
@@ -1191,8 +1191,10 @@ Gate C. RC6 remains **FORBIDDEN** for current-main Human Gate C after #109 /
 until M5 closure; do not reopen, rebase, or merge them into a new candidate.
 RC7 is a personal/local evaluation candidate and the post-rebaseline
 current-main authorization target **only after this freeze ledger PR merges to
-`main`**. Human Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`. M5
-remains `INCOMPLETE`.
+`main`**. Human Gate C on RC7 is `STOP` at Prepare (`ArtifactTampered`;
+[`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md)). Do not
+Continue/Apply that session, rebuild RC7, or reuse this candidate after the
+Prepare fix. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 
 ## Gate C safety boundary
 

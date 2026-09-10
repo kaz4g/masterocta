@@ -15,6 +15,8 @@ Read `docs/CODEX_HANDOFF.md` before planning or implementing work.
 For new architecture, API boundaries, data ownership, and migration order, also
 read `docs/NEXT_GENERATION_ARCHITECTURE.md`. New code must not bypass its
 Intent -> Plan -> Apply write boundary.
+Current M5 next work is
+`docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`.
 
 ## Non-negotiable data-safety rules
 
