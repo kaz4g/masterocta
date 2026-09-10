@@ -1259,7 +1259,7 @@ current-main Human Gate C. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 | codesign classification | `AD_HOC_VERIFIED` |
 | codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
 | spctl result | `rejected_expected` |
-| Human Gate C | `NOT_RUN` (not authorized until this freeze ledger PR merges to `main`) |
+| Human Gate C | `STOP` (MkII hardware FILE NOT FOUND; [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)) |
 | Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` (unchanged) |
 
 RC8 source-to-artifact provenance chain:
@@ -1353,9 +1353,25 @@ current-main Human Gate C. RC7 Human Gate C remains `STOP` at Prepare; do not
 Continue/Apply that session or reuse RC7 runtime state. Pull requests #103,
 #104, and #105 remain closed until M5 closure; do not reopen, rebase, or merge
 them into a new candidate. RC8 is a personal/local evaluation candidate and the
-post-#116 current-main authorization target **only after this freeze ledger PR
-merges to `main`**. Human Gate C remains `NOT_RUN`. Gate C remains `NOT_PASS`.
-M5 remains `INCOMPLETE`.
+post-#116 current-main authorization target after #117 merge. RC8 Human Gate C
+observed **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1 with
+old PATH in device LOG after Apply verification passed). Investigation:
+[`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md).
+Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+
+## Investigation records (do not alter RC freeze tuples)
+
+These documents record Gate C investigation and planned hardware contrast trials.
+They do **not** change frozen RC artifact identity, workflow run IDs, or historical
+Human Gate C outcomes on this ledger.
+
+| Work ID | Document | Status |
+|---|---|---|
+| `MO-RC8-STATIC-LINK-INVESTIGATION-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) | Investigation complete; Human Gate C **STOP** on RC8 hardware FILE NOT FOUND |
+| `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1` | [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md) | Contrast trial plan **NOT_RUN** |
+
+RC8 freeze tuple and candidate coordinates are recorded in §RC8 above. This
+section does not authorize RC8 rebuild or redispatch.
 
 ## Gate C safety boundary
 
