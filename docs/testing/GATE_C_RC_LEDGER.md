@@ -401,8 +401,10 @@ Phase 2 merge evidence:
 RC2 remains `NOT_CREATED`. The retired candidate ID `gate-c-rc2-c324f048e3b9`
 and run `34016038137` cannot satisfy RC2 freeze conditions. The later-RC freeze
 evidence conditions below are satisfied by RC5 run
-`34077117176` and the recorded local re-verification. They become formally cleared only when this ledger is merged to `main`. RC2 official identity fields
-remain `UNSET`.
+`34077117176` and the recorded local re-verification. Those later-RC freeze
+evidence conditions were formally recorded on `main` by the RC5 freeze
+(#106) and remain historical after the RC6 freeze (#108). RC2 official
+identity fields remain `UNSET`.
 
 Later-RC freeze evidence conditions satisfied by RC5:
 
@@ -420,9 +422,10 @@ Later-RC freeze evidence conditions satisfied by RC5:
 Phase 3 workflow merge (#96 / #97) did **not** clear these blockers by itself.
 Runs `34016038137`, `34061897324`, and `34068535069` failed before a complete
 freeze tuple existed. RC5 run `34077117176` proved the later-RC candidate
-workflow, provenance, storage, and access-boundary mechanics. The current-main
-freeze tuple is RC6 run `34182724485`. It becomes formally `FROZEN` when this
-ledger merges to `main`.
+workflow, provenance, storage, and access-boundary mechanics. The RC6 freeze
+tuple is run `34182724485`. #108 merged that freeze to `main`; RC6 is
+`FROZEN` as a historical candidate. After #109 / #111 it is **not** the
+current-main Human Gate C authorization target.
 
 Adopted Gate C candidate workflow name: **`Gate C Candidate Build`**
 (`.github/workflows/gate-c-candidate.yml`). Do not use
@@ -506,13 +509,14 @@ Phase 3 merge
 
 A successful workflow run alone does **not** freeze an RC. A docs-only ledger
 PR must record the run evidence before that RC may be treated as `FROZEN`.
-Until this ledger merges to `main`, RC6 is not formally frozen on `main`.
-RC5 is frozen as a historical candidate only. Current-main Human Gate C on RC5
-is **FORBIDDEN**. Do not reuse RC2 run `34016038137`, RC3 run `34061897324`,
-RC4 run `34068535069`, RC5 run `34077117176`, or any in-progress DMG from those
-attempts as later candidate evidence. RC5 and RC6 dispatch are one-shot. Do
-not rerun run `34182724485`, redispatch `gate-c-rc6-3485118e9a19`, or create
-RC7 without a new operator sequence.
+#108 merged the RC6 freeze ledger to `main`; RC6 is `FROZEN` as a
+historical candidate. After #109 / #111, current-main Human Gate C on RC6 is
+**FORBIDDEN**. RC5 is frozen as a historical candidate only. Current-main
+Human Gate C on RC5 is **FORBIDDEN**. Do not reuse RC2 run `34016038137`,
+RC3 run `34061897324`, RC4 run `34068535069`, RC5 run `34077117176`, or any
+in-progress DMG from those attempts as later candidate evidence. RC5 and RC6
+dispatch are one-shot. Do not rerun run `34182724485`, redispatch
+`gate-c-rc6-3485118e9a19`, or create RC7 without a new operator sequence.
 
 After RC6 freeze (#108) and post-#109/#111 rebaseline (see
 [GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)):
@@ -537,7 +541,8 @@ commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. RC3 official identity fields remain `UNSET`. RC4 official
 identity fields remain `UNSET`. RC5 official identity is recorded as a
 historical freeze only. Human Gate C remains `NOT_RUN`; Gate C remains
-`NOT_PASS`; M5 remains `INCOMPLETE`. The remaining M5 blocker is Human Gate C.
+`NOT_PASS`; M5 remains `INCOMPLETE`. The remaining M5 blocker is operator
+preflight, next-RC freeze, and Human Gate C on that new frozen candidate.
 Signing, notarization, and public distribution remain separate gates.
 
 ## RC3
@@ -894,8 +899,8 @@ public release and not the current-main Gate C target. Human Gate C remains
 
 | Field | Value |
 |---|---|
-| status | `FROZEN` after this ledger merges to `main`; not formally frozen on `main` until then |
-| requirement | `SATISFIED` after this ledger merges to `main` |
+| status | `FROZEN` (historical after #108). current-main Human Gate C = `FORBIDDEN` after #109/#111 |
+| requirement | `SATISFIED` (#108 merged). not the current-main Human Gate C target after #109/#111 |
 | candidate_id | `gate-c-rc6-3485118e9a19` |
 | source commit | `3485118e9a19413eae9a3203338d0b361660a902` |
 | source tree | `498da55fa04aead01ed13161379d84d8e734beac` |

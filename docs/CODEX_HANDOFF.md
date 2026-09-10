@@ -167,7 +167,7 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - M5-C2 rename Mac staging: **完了**
 - M5-C3 rename clone apply / rollback: **#69 マージ済み**（`373a755`）
 - M5-C4 Gate C automated clone-rescan proof: **#70 マージ済み**（`15eef67`）
-- SQLite schema: v6（compatibility evidence を含む）
+- SQLite schema: **v11**（`ot-catalog` `LATEST_SCHEMA_VERSION`。0010 observational trust、0011 projection-trust repair を含む。v6 compatibility evidence はその履歴）
 - Developer ID signing / notarization / public distribution は別release gate
 - M5-A contract 正本: `docs/planning/M5_A_SAMPLE_RENAME_IMPACT.md`
 - M5-B contract 正本: `docs/planning/M5_B_REFERENCE_REWRITE.md`

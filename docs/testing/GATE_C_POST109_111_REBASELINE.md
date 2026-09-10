@@ -138,8 +138,8 @@ judgments consume catalog hash reuse for write safety on evaluation commit.
 | Code inspection on evaluation commit | PASS |
 | `git diff --check` (docs-only) | run at commit time |
 | Local `cargo test bank_validation` | **not run** — `cargo` not in PATH |
-| Local full CI suite | **not run** — docs-only PR; evaluation commit covered by CI run `34426771538` |
-| GitHub Actions on this docs PR | expected **skipped** (CI paths exclude `docs/**`) |
+| Local full CI suite | **not run** locally. Evaluation commit `2cbb4a3` covered by main `push` CI [`34426771538`](https://github.com/kaz4g/masterocta/actions/runs/34426771538) |
+| GitHub Actions on this docs PR | **expected to run**. `.github/workflows/ci.yml` includes `docs/testing/GATE_C_*.md` and `docs/testing/FAT_HASH_1_ASSESSMENT.md` on `pull_request`. Head `5242058` CI [`34434899136`](https://github.com/kaz4g/masterocta/actions/runs/34434899136) `completed` / `success` (Rust Tests, Gate C Synthetic Smoke ubuntu+macos, Frontend Checks, E2E). Follow-up commits must report their own PR CI run. |
 
 ## Remaining blockers (outside this PR)
 
