@@ -4,7 +4,8 @@
   C3 clone apply / rollback **complete** (`373a755` / #69); C4 automated
   clone-rescan proof **complete** (`15eef67` / #70); C5 operator harness **R0–R4
   complete**; **Phase 4D operator UX complete** on branch `m5c5-phase4d-operator-ux`
-  (Human Gate C clone-load smoke **pending**)
+  (Human Gate C clone-load smoke **PASS** on RC8; Gate C **PASS** personal/local;
+  M5 **COMPLETE** rename/reference-safe; recovery UI polish remains Deferred)
 - Scope of C3: apply a C2 `Prepared` journal to a **temporary/cloned** root;
   re-verify C1 backup + authorization hashes + codec rebuild from backup
   before any clone write; roll the clone back from backup on failure
@@ -301,6 +302,5 @@ does not require a write grant; it uses `RecoveryAuthority` /
 
 ## Deferred
 
-- Gate C real-hardware clone-load human smoke and human sign-off (after M5-C5
-  Phases 1–3)
 - Production recovery UI polish for rename (beyond minimal status/recover commands)
+  — **not** a Gate C or M5 completion blocker

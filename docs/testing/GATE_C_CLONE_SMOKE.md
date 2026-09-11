@@ -8,9 +8,10 @@ Apply that session or rebuild RC7 (see
 [`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8. Human Gate C on RC8 is
 **PASS** for the formal continuous trial
 ([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md);
-operator sign-off 2026-09-12). Do **not** rebuild or redispatch RC8. Do **not**
-treat this checklist as an authorization to repeat Human Gate C on original
-media or to declare Gate C overall PASS.
+operator sign-off 2026-09-12). Gate C on RC8 is **PASS** (personal / local).
+M5 is **COMPLETE** (rename / reference-safe). Do **not** rebuild or redispatch
+RC8. Do **not** treat this checklist as an authorization to repeat Human Gate C
+on original media or to start public distribution.
 
 ## Purpose
 
@@ -211,9 +212,11 @@ Current RC8 candidate coordinates (**Human Gate C PASS**; freeze identity unchan
 | public distribution | `NOT AUTHORIZED` |
 
 RC8 is the post-#116 current-main candidate. Human Gate C on RC8 is **PASS**
-(formal continuous trial; operator sign-off 2026-09-12). Do not rebuild
+(formal continuous trial; operator sign-off 2026-09-12). Gate C is **PASS**
+(personal / local). M5 is **COMPLETE** (rename / reference-safe). Do not rebuild
 the RC8 DMG from source. Do not substitute RC5, RC6, RC7, or an unfrozen
-later-main build for current-main Human Gate C.
+later-main build for current-main Human Gate C. Public distribution remains
+**NOT AUTHORIZED**.
 
 Historical RC5 candidate coordinates (not for current-main Human Gate C):
 
@@ -388,8 +391,9 @@ paths, volume identifiers, personal filenames, or media fingerprints:
 - hardware load result
 - deviations, failures, and whether the disposable clone was retained
 
-Gate C remains incomplete until both the controlled operator harness and this
-human clone-load checklist are executed and signed off.
+Gate C clone-load human smoke on RC8 is **PASS**. Gate C overall is **PASS**
+(personal / local). M5 is **COMPLETE** (rename / reference-safe). Do not repeat
+this checklist on original media. Public distribution remains **NOT AUTHORIZED**.
 
 Automated synthetic-clone smoke (no original media) is available via
 `scripts/gate-c-synthetic-smoke.sh`. Generated reports under `/tmp` are not

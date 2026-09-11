@@ -5,6 +5,10 @@
 - Branch: `docs/gate-c-post109-111-rebaseline`
 - Verdict header: **`MO_GATE_C_REBASELINE_CODE_READY`**
 
+Current-main Gate C / M5 after RC8 closeout is recorded in
+[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8. The snapshot tables below remain
+the 2026-09-10 rebaseline assessment and are **not** rewritten.
+
 Do not record local absolute paths, volume UUIDs, media fingerprints, or personal
 sample names here.
 
