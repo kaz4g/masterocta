@@ -361,8 +361,10 @@ shasum -a 256 \
     this step. Record power state and perform an explicit Project LOAD when the
     operator procedure requires it. See
     [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
-    for the RC8 FILE NOT FOUND contrast design (procedure only; not executed in
-    that document's authoring task).
+    for the RC8 FILE NOT FOUND contrast design. OCTA2 reconstruction Trial A is
+    recorded there; it does **not** satisfy this step on the primary RC8 Apply path.
+    Continuous formal acceptance: [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md)
+    (plan only; not executed).
 16. Retain the disposable clone or discard it according to the external test
     plan; do not use MasterOCTa to mutate the original removable media.
 

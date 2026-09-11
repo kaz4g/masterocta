@@ -1368,7 +1368,9 @@ Human Gate C outcomes on this ledger.
 | Work ID | Document | Status |
 |---|---|---|
 | `MO-RC8-STATIC-LINK-INVESTIGATION-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) | Investigation complete; Human Gate C **STOP** on RC8 hardware FILE NOT FOUND |
-| `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1` | [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md) | Contrast trial plan **NOT_RUN** |
+| `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1` | [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md) | Contrast trial plan; Trial A on OCTA2 reconstruction **EXECUTED**; Trial B **BLOCKED**; Trial C **NOT_RUN** |
+| `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) § OCTA2 reconstruction trial | Preservation count correction (105 vs manifest 60); evidence SHA256 re-verified operator-local |
+| `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` | [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md) | Formal continuous Gate C trial **NOT_RUN** (plan only) |
 
 RC8 freeze tuple and candidate coordinates are recorded in §RC8 above. This
 section does not authorize RC8 rebuild or redispatch.

@@ -108,15 +108,18 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Prepare artifact fix: **MERGED**（#116）
 - Gate C RC8 candidate build: **COMPLETE**（run `34453265057`、draft release `386101842`）
 - Gate C RC8 freeze ledger: **MERGED**（#117）
+- RC8 static-slot 調査 PR: **MERGED**（#118、`dd5fb16`）
 - RC8 Human Gate C: **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1
   with old PATH in device LOG after passing Apply verification)。調査正本は
-  `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。対照試験手順（未実行）は
-  `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md`
+  `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`（OCTA2 reconstruction 試行と
+  保全件数訂正を含む）。対照試験: `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md`
+  — Trial A は OCTA2 reconstruction で **実施済み**（CONTINUE YES 後の再生成功報告）。
+  Trial B **BLOCKED**、Trial C **NOT_RUN**。primary RC8 Apply 連続試験の代替ではない。
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: RC8 static-slot 調査 PR の review。実機対照試験は **NOT_RUN**。
-  RAM / last-used 自動オープンは **未確定**。製品 PATH/Bank 修正は根拠不足。
-  RC7 の再ビルド・再利用・当該セッションの Continue/Apply はしない。
-  RC7 アプリと RC8 を同時起動しない。
+- 次作業: Gate C 連続正式試験 **未実行**（計画のみ:
+  `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`）。Human Gate C **STOP** /
+  M5 **INCOMPLETE** を維持。製品 PATH/Bank 修正は根拠不足。RC7 の再ビルド・再利用・
+  当該セッションの Continue/Apply はしない。RC7 アプリと RC8 を同時起動しない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -314,13 +317,19 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ### 6.0 現在の次作業（2026-09-11）
 
-**作業ID:** `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
+**作業ID:** `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`（**計画のみ・未実行**）
 
 RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH の
-`FILE NOT FOUND` となり **STOP**。調査正本は
-`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。実機対照試験は
-`docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md` に計画のみ記載（**NOT_RUN**）。
-RAM / last-used 自動オープンは未確定。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+`FILE NOT FOUND` となり **STOP**（変更なし）。調査正本は
+`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。OCTA2 reconstruction 上の
+Trial A は実施済みだが、primary RC8 Apply からの連続 disposable clone 試験の
+代替にならない。正式受入計画:
+`docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`。Trial B **BLOCKED**、
+Trial C **NOT_RUN**。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+
+**履歴:** `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` — 保全 105 件 vs manifest 60 件の
+訂正と OCTA2 試行観測の文書化（#118 merge 後 docs PR）。`MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
+— 調査記録 **MERGED**（#118）。
 
 **履歴:** `MO-GATE-C-RC8-FREEZE-1` — RC8 freeze ledger **MERGED**（#117）。
 `MO-GATE-C-RC7-PREPARE-ARTIFACT-1` — RC7 Human Gate C は Prepare で
