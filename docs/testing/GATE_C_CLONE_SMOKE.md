@@ -5,9 +5,12 @@ on RC6. RC7 Human Gate C is **STOP** at Approve & Prepare — do not Continue /
 Apply that session or rebuild RC7 (see
 [`GATE_C_RC7_PREPARE_ARTIFACT.md`](GATE_C_RC7_PREPARE_ARTIFACT.md)). RC8
 (`gate-c-rc8-8382de2ed1d2`) is the post-#116 current-main candidate. Read
-[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8. Human Gate C on RC8 starts
-**only after** the RC8 freeze ledger PR merges to `main`. Until then, this
-checklist is **not** authorized for current-main execution.
+[`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8. Human Gate C on RC8 is
+**PASS** for the formal continuous trial
+([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md);
+operator sign-off 2026-09-12). Do **not** rebuild or redispatch RC8. Do **not**
+treat this checklist as an authorization to repeat Human Gate C on original
+media or to declare Gate C overall PASS.
 
 ## Purpose
 
@@ -142,8 +145,8 @@ RC2 attempt 34016038137 FAILURE recorded
 → RC8 attempt 34453265057 SUCCESS recorded
 → draft candidate retrieved and SHA256 re-verified locally PASS
 → provenance / access boundary confirmed PASS
-→ RC8 freeze ledger PR (merge pending)
-→ Human Gate C on RC8 frozen candidate only after ledger merge
+→ RC8 freeze ledger PR merged (#117)
+→ Human Gate C on RC8 PASS (formal continuous trial; operator sign-off 2026-09-12)
 → M5 closure PR
 ```
 
@@ -190,7 +193,7 @@ current-main use**):
 RC7 Human Gate C is **STOP** at Approve & Prepare. Do not Continue / Apply that
 session, rebuild RC7, or substitute RC7 for current-main Human Gate C.
 
-Current RC8 candidate coordinates (**authorization pending ledger merge**):
+Current RC8 candidate coordinates (**Human Gate C PASS**; freeze identity unchanged):
 
 | Field | Value |
 |---|---|
@@ -207,8 +210,8 @@ Current RC8 candidate coordinates (**authorization pending ledger merge**):
 | access boundary verdict | `AUTHENTICATED_DRAFT_AND_ANONYMOUS_WEB_DENIED` |
 | public distribution | `NOT AUTHORIZED` |
 
-RC8 is the post-#116 current-main candidate. Human Gate C on RC8 is **NOT
-AUTHORIZED** until the RC8 freeze ledger PR merges to `main`. Do not rebuild
+RC8 is the post-#116 current-main candidate. Human Gate C on RC8 is **PASS**
+(formal continuous trial; operator sign-off 2026-09-12). Do not rebuild
 the RC8 DMG from source. Do not substitute RC5, RC6, RC7, or an unfrozen
 later-main build for current-main Human Gate C.
 

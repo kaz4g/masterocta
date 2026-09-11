@@ -1,12 +1,13 @@
 # MO-RC8-STATIC-LINK-INVESTIGATION-1
 
-- Status: **INVESTIGATION COMPLETE** (no product fix; Human Gate C remains **STOP**)
+- Status: **INVESTIGATION COMPLETE** (no product fix; this session remains historical Human Gate C **STOP**)
 - Work ID: `MO-RC8-STATIC-LINK-INVESTIGATION-1`
 - Related PR work: `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
 - Recorded: 2026-09-11
 - Frozen candidate evaluated: RC8 `gate-c-rc8-8382de2ed1d2`
 - Frozen source commit: `8382de2ed1d2ce7323ed17c1a8833da267abc635`
-- Gate C: **NOT_PASS** / Human Gate C: **STOP** / M5: **INCOMPLETE**
+- Subsequent formal trial: [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md) **EXECUTED** / Human Gate C **PASS** (2026-09-12)
+- Gate C: **NOT_PASS** / Human Gate C: **PASS** (formal continuous trial) / this incident: historical **STOP** / M5: **INCOMPLETE**
 
 ## Purpose
 
@@ -249,14 +250,16 @@ Reconciliation detail: operator-local `RECONCILIATION.json` from
 
 - Hardware contrast trial plan and Trial A result:
   [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
-- Gate C formal continuous trial plan (not executed):
+- Gate C formal continuous trial (**EXECUTED**; Human Gate C **PASS**):
   [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md)
 - Gate C smoke checklist:
   [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)
 
 ## Gate status
 
-- RC8 Human Gate C: **STOP** (hardware FILE NOT FOUND after otherwise passing Apply)
+- This incident (non-continuous RC8 FILE NOT FOUND session): Human Gate C **STOP**
+- Subsequent formal continuous trial: Human Gate C **PASS**
+  ([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md))
 - Gate C: **NOT_PASS**
 - M5: **INCOMPLETE**
 - RC8 artifact rebuild / workflow redispatch: **not authorized**
