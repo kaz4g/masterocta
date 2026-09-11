@@ -5,7 +5,7 @@
 - Related investigation: [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
 - Related contrast trials: [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
 - Gate C smoke contract: [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)
-- Gate C: **NOT_PASS** / Human Gate C: **PASS** / M5: **INCOMPLETE**
+- Gate C: **PASS** (personal / local) / Human Gate C: **PASS** / M5: **COMPLETE** (rename / reference-safe)
 
 ## Purpose
 
@@ -315,9 +315,12 @@ investigation.
 
 - This trial: **EXECUTED**
 - RC8 Human Gate C: **PASS** (operator sign-off 2026-09-12)
-- Gate C: **NOT_PASS**
-- M5: **INCOMPLETE**
+- Gate C: **PASS** (personal / local)
+- M5: **COMPLETE** (rename / reference-safe)
 - Historical non-continuous FILE NOT FOUND session: remains **STOP** in
   [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
+- After-MkII 2-byte unrelated Bank working-file delta: recorded; **not** attributed
+  to Apply; **not** certified as normal autosave
 - RC8 artifact rebuild / workflow redispatch / product PATH/Bank fix: **not authorized**
-- Public distribution: **not authorized**
+- Public distribution / signing / notarization: **not authorized**
+- Recovery UI polish: **Deferred**

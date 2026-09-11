@@ -88,5 +88,6 @@ dedicated branches from `main`.
 
 ## Gate C
 
-Synthetic Gate C runs in CI per PR. Human Gate C runs only after all phases merge
-with green CI, using human-verified disposable clone media (not executed by agents).
+Synthetic Gate C runs in CI per PR. Human Gate C on RC8 is recorded **PASS**.
+Gate C is **PASS** (personal / local). M5 is **COMPLETE** (rename / reference-safe).
+Public distribution remains **NOT AUTHORIZED**.

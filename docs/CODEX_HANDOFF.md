@@ -114,10 +114,11 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
   対象外 Bank working file 2 バイト差分は Apply に帰属させない）。
   非連続セッションの FILE NOT FOUND は歴史的 STOP として
   `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。
-- Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: Gate C 全体 PASS / M5 完了は別宣言。公開配布は別 gate。製品 PATH/Bank
-  修正は根拠不足のまま。RC7 の再ビルド・再利用・当該セッションの Continue/Apply
-  はしない。RC8 の再ビルド・redispatch はしない。
+- Gate C: **PASS**（personal / local）。M5: **COMPLETE**（rename / reference-safe）
+- 公開配布 / 署名 / notarization: **NOT AUTHORIZED**（別 gate）
+- 次作業: 公開配布は開始しない。RC7 の再ビルド・再利用・当該セッションの Continue/Apply
+  はしない。RC8 の再ビルド・redispatch はしない。製品 PATH/Bank 修正は根拠不足のまま。
+  元 incident の原因と実機後 2 バイトのフィールド同定は任意調査（必須ブロッカーではない）。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -144,7 +145,7 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
   - `CloneOperatorPanel`（managed/external clone setup + verification）
   - `RenameOperatorPanel`（selection-independent Prepared→Continue→Apply→Verify→Recover operator）
   - Change Drawer 統合、cross-domain visual gate、restart-safe prepared plan review
-  - Gate C automated checks: **PASS pending CI** / Human Gate C: **PENDING**
+  - Gate C automated checks: recorded **PASS** on RC8 source CI `34451860529` / Human Gate C: **PASS**
 - M5-C5 Phase 4A — verified disposable clone authority: **COMPLETE**（#74 に含む）
 - M5-C5 Phase 3 — explicit approval Rename UI: **COMPLETE**（PR #73、`RenameSampleModal` + `src/api/rename.ts`）
   - Inspector 入口、`Approve & Prepare` → `authorize → backup → prepare`
@@ -315,20 +316,24 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ### 6.0 現在の次作業（2026-09-12）
 
-**作業ID:** Gate C / M5 の残条件（Human Gate C は記録済み PASS）
+**作業ID:** `MO-RC8-GATE-C-M5-CLOSEOUT-DOCS-1`（docs 記録。試験は追加しない）
 
-RC8 Human Gate C は正式連続試験
-`docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md` により **PASS**
-（オペレーター承認 2026-09-12）。台帳正本は `docs/testing/GATE_C_RC_LEDGER.md`
-§RC8。Gate C は **NOT_PASS**、M5 は **INCOMPLETE** のまま。Human Gate C PASS は
-公開配布・RC8 再ビルド・製品 PATH/Bank 修正を許可しない。
+RC8 Gate C は **PASS**（personal / local）。M5 は **COMPLETE**（rename /
+reference-safe）。Human Gate C は正式連続試験の **PASS** を維持。台帳正本は
+`docs/testing/GATE_C_RC_LEDGER.md` §RC8。Automated Gate C の根拠は RC8 source
+`8382de2` の push CI `34451860529`。後続 docs commit の CI を RC8 製品証拠に
+置き換えない。
+
+公開配布・署名・notarization は **NOT AUTHORIZED**。RC8 再ビルド・redispatch、
+製品 PATH/Bank 修正、#103 / #104 / #105 の再開はしない。
 
 非連続セッションの FILE NOT FOUND は歴史的 STOP として
-`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。原因調査は未閉鎖。
-Trial B **BLOCKED**、Trial C **NOT_RUN**。RC7 再ビルド・Continue/Apply はしない。
+`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。原因は未解決。
+実機後の対象外 Bank working file 2 バイトは記録済み偏差であり、正常 autosave とはしない。
+Recovery UI polish は Deferred。
 
-**履歴:** `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` — 正式連続試験 **EXECUTED** /
-Human Gate C **PASS**。
+**履歴:** `MO-GATE-C-M5-RESIDUAL-AUDIT-1` — 残条件監査結論 A。
+`MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` — 正式連続試験 **EXECUTED** / Human Gate C **PASS**。
 
 **履歴:** `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` — 保全 105 件 vs manifest 60 件の
 訂正と OCTA2 試行観測の文書化（#118 merge 後 docs PR）。`MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`

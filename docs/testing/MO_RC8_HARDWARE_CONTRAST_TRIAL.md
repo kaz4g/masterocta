@@ -3,7 +3,7 @@
 - Status: **PARTIAL** — Trial A executed on OCTA2 reconstruction media; Trial B **BLOCKED**; Trial C **NOT_RUN**
 - Work ID: `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
 - Related investigation: [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
-- Gate C: **NOT_PASS** / Human Gate C: **PASS** (formal continuous trial; this contrast document does not by itself authorize that PASS) / M5: **INCOMPLETE**
+- Gate C: **PASS** (personal / local) / Human Gate C: **PASS** (formal continuous trial; this contrast document does not by itself authorize that PASS) / M5: **COMPLETE** (rename / reference-safe)
 
 ## Purpose
 

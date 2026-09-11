@@ -197,7 +197,7 @@ Explicitly **not** in Phase 2:
 - `CloneOperatorPanel`（managed clone first, external verification, reverify）
 - `RenameOperatorPanel`（selection-independent Prepared→Continue→Apply→Verify→Recover）
 - Change Drawer integration, cross-domain visual gates, restart-safe prepared plan review
-- Automated Gate C synthetic smoke remains required in CI; Human Gate C clone-load smoke **PENDING**
+- Automated Gate C synthetic smoke remains required in CI; Human Gate C clone-load smoke **PASS** on RC8 (formal continuous trial; operator sign-off 2026-09-12)
 
 ### Phase 4 (legacy heading) — Clone Apply + human Gate C smoke
 
@@ -232,7 +232,7 @@ e2e (`e2e/rename-prepare.spec.ts`).
 
 ## Gate C completion
 
-Gate C sign-off requires Phases 1–4 **and** human clone-load smoke. M5-C4 automated proof remains necessary but not sufficient.
+Gate C sign-off requires Phases 1–4 **and** human clone-load smoke. M5-C4 automated proof remains necessary but not sufficient. RC8 recorded both: Automated Gate C on source `8382de2` (CI `34451860529`) and Human Gate C **PASS**. Gate C is **PASS** (personal / local). M5 is **COMPLETE** (rename / reference-safe).
 
 ## M5-C5 Phase 1 planning freshness (production API)
 

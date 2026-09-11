@@ -7,7 +7,7 @@
 - Frozen candidate evaluated: RC8 `gate-c-rc8-8382de2ed1d2`
 - Frozen source commit: `8382de2ed1d2ce7323ed17c1a8833da267abc635`
 - Subsequent formal trial: [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md) **EXECUTED** / Human Gate C **PASS** (2026-09-12)
-- Gate C: **NOT_PASS** / Human Gate C: **PASS** (formal continuous trial) / this incident: historical **STOP** / M5: **INCOMPLETE**
+- Gate C: **PASS** (personal / local) / Human Gate C: **PASS** (formal continuous trial) / this incident: historical **STOP** / M5: **COMPLETE** (rename / reference-safe)
 
 ## Purpose
 
@@ -260,6 +260,7 @@ Reconciliation detail: operator-local `RECONCILIATION.json` from
 - This incident (non-continuous RC8 FILE NOT FOUND session): Human Gate C **STOP**
 - Subsequent formal continuous trial: Human Gate C **PASS**
   ([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md))
-- Gate C: **NOT_PASS**
-- M5: **INCOMPLETE**
+- Cause of this incident: **unresolved** (does not block Gate C PASS)
+- Gate C: **PASS** (personal / local)
+- M5: **COMPLETE** (rename / reference-safe)
 - RC8 artifact rebuild / workflow redispatch: **not authorized**
