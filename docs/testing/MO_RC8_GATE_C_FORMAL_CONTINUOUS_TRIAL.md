@@ -128,14 +128,19 @@ Keep the original `source/` and all prior RC8 / OCTA2 evidence unchanged.
    must be **PASS** with diffs=0. This is the first complete match of the
    two-Project state. If it fails, **STOP**. Do not record clone source
    evidence. Do not freeze PRE.
-4. **Clone source evidence from the new trial source.** Register the new trial
-   source read-only. Record `CloneSourceEvidence` from **that** source (not from
+4. **Clone source evidence from the new trial source.** Register the **new
+   trial source** read-only. This is a different root from the trial card.
+   Recording source evidence here does **not** count as trial-card root
+   registration. Record `CloneSourceEvidence` from **that** source (not from
    the original one-Project `source/`). The trial card remains a distinct
    device from the source (source-equals-clone is still forbidden).
-5. **PRE freeze, then existing clone verification.** Capture the frozen PRE
-   byte manifest of the trial card (see below). Then run the existing clone
-   verification against the new trial source’s evidence until the card is a
-   **VERIFIED CLONE**. Only then register write intent and proceed to Plan.
+5. **PRE freeze, then trial-card registration.** Capture the frozen PRE byte
+   manifest of the trial card **before any registration of that card**,
+   including read-only registration (same contract as
+   [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)). Then register the trial
+   card and run existing clone verification against the new trial source’s
+   evidence until the card is a **VERIFIED CLONE**. Only then register write
+   intent and proceed to Plan.
 
 Do **not** treat the target-Project subset check as VERIFIED CLONE. Do **not**
 skip full-file compare by attesting the extra Project. Managed-clone copy from
@@ -152,8 +157,11 @@ PRE freeze is the first complete per-file byte manifest of the trial card taken
 - the new two-Project trial source is preserved separately
 - full-file compare of new trial source vs trial card is **PASS** (diffs=0)
 
-That PRE manifest is captured **before** clone-root write registration, Plan,
-Prepare, and Apply. From this point:
+That PRE manifest is captured **before root registration of the trial card**,
+including read-only registration, and before Plan, Prepare, and Apply. This
+matches [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md). Registration of the
+**new trial source** is a separate root and may already have occurred in order
+to record `CloneSourceEvidence`. From this point:
 
 - clone verification uses the new trial source’s `CloneSourceEvidence`
 - expected-only compare treats second-Project files as **unrelated** (must be
@@ -177,10 +185,13 @@ formal trial.
 2. After the operator adds the second Project, confirm rename-target Project
    hashes still match the original `source/`. Preserve the two-Project card as
    a **new** trial source. Full-file compare new trial source vs trial card
-   (PASS, diffs=0). Capture the **frozen PRE** from the trial card.
-3. Record `CloneSourceEvidence` from the **new** trial source and run existing
-   clone verification until the card is **VERIFIED CLONE**. Do not use the
-   original one-Project `source/` for this verify.
+   (PASS, diffs=0). Capture the **frozen PRE** from the trial card **before
+   registering that card** (read-only included). The new trial source may
+   already be registered.
+3. After PRE freeze, register the trial card (read-only first) and run
+   existing clone verification against `CloneSourceEvidence` already recorded
+   from the **new** trial source until the card is **VERIFIED CLONE**. Do not
+   use the original one-Project `source/` for this verify.
 4. Re-verify frozen RC8 artifact and launched binary identity (read-only) for
    **this** trial. Do not cite OCTA2 Trial A for binary identity.
 5. Organize operator-local evidence directories for Plan, Committed, post-Apply
@@ -192,9 +203,11 @@ formal trial.
 
 1. On the disposable clone, create the second Project (see above) **before**
    PRE freeze. Do not proceed if only one Project exists.
-2. After the new two-Project trial source is preserved and full-file compare
-   PASSes, confirm **VERIFIED CLONE** against that new source (existing clone
-   operator flow). Register write intent on the clone only after that.
+2. After PRE freeze of the trial card (no trial-card registration yet, including
+   read-only), register that card and confirm **VERIFIED CLONE** against the
+   new trial source (existing clone operator flow). The new trial source may
+   already be registered. Register write intent on the clone only after
+   VERIFIED CLONE.
 3. Plan → Prepare → application restart → Continue → Apply on the **clone only**.
 4. Confirm `COMMITTED / VERIFIED`, zero Missing / Invalid / Unresolved counts.
 5. Save Committed evidence JSON unchanged outside the clone and repository.
