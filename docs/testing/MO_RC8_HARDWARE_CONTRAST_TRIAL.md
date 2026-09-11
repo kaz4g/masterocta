@@ -1,6 +1,6 @@
 # MO-RC8 Hardware Contrast Trial Plan
 
-- Status: **NOT_RUN** (procedure only; no media writes in this task)
+- Status: **PARTIAL** — Trial A executed on OCTA2 reconstruction media; Trial B **BLOCKED**; Trial C **NOT_RUN**
 - Work ID: `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
 - Related investigation: [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
 - Gate C: **NOT_PASS** / Human Gate C: **STOP** / M5: **INCOMPLETE**
@@ -198,12 +198,54 @@ Record outside the repository:
   PASS RC8 Human Gate C while FILE NOT FOUND on the primary smoke path remains unresolved.
 - Product PATH codec or Bank rewrite changes require a separate fix proposal and candidate.
 
+## Trial A execution record (OCTA2 reconstruction)
+
+Work IDs: `MO-RC8-OCTA2-TRIAL-A-STAGING-1`, `MO-RC8-OCTA2-STAGING-RESUME-1`,
+`MO-RC8-OCTA2-TRIAL-A-POST-CAPTURE-1`, `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1`.
+
+Trial A was executed on **secondary media** using a **reconstruction** disposable
+copy built from operator-local preserved evidence. This is **not** the primary RC8
+Apply card and **not** a continuous PRE→Apply→hardware run on one clone.
+
+| Field | Record |
+|---|---|
+| Initial card state | Reconstruction POST-equivalent manifest; **84 / diffs=0 PASS** vs CARD_POST reference |
+| Power / insert | **Unconfirmed.** Do not treat this session as a verified power-on or power-off trial |
+| Confirmed operator sequence | Compact-card warning → YES → target Project loaded → Static Slot 1 new-name playback without ERROR |
+| Explicit Project LOAD | **No** — warning YES is not CHANGE-away / CHANGE-back |
+| Launched MasterOCTa / Apply | **Did not occur.** Launched-binary identity **N/A** |
+| Pre-trial vs post-trial manifest | **PASS**, diffs=0 |
+| Card root LOG at post-trial capture | **None** |
+| Primary RC8 Human Gate C **STOP** | **Unchanged** |
+
+Trial A on OCTA2 reconstruction media does **not** satisfy Gate C step 15 on the
+primary RC8 Apply path. It does **not** prove unconditional boot auto-open. It does
+**not** substitute for
+[`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md).
+Formal-trial explicit LOAD is defined there: add a second Project **before PRE
+freeze** on a **new** clone; re-baseline clone verification to a new two-Project
+trial source; do not retry PRE→Apply on this one-Project copy.
+
+Preservation count correction (105 vs manifest 60): see
+[`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
+§ OCTA2 reconstruction trial.
+
 ## Execution blockers (current)
 
-- Controlled disposable POST copy availability and manifest verification
-- Operator scheduling for read-only manifest capture after each trial
+| Trial | Status | Blocker |
+|---|---|---|
+| Trial A (primary RC8 POST copy) | **NOT_RUN** | No verified continuous clone from primary Apply remains available for this matrix entry |
+| Trial A (OCTA2 reconstruction) | **EXECUTED** | See execution record above; does not clear primary RC8 STOP |
+| Trial B | **BLOCKED** | Disposable POST copy has no second Project in the same set for CHANGE-away / CHANGE-back |
+| Trial C-existing | **NOT_RUN** | Depends on fresh POST copy and operator scheduling |
+| Trial C-new-save | **NOT_RUN** | Requires separate fresh POST copy |
+
+Additional blockers:
+
 - Power-state documentation from the original RC8 session (off vs hot remove)
 - Device vs host clock alignment for LOG correlation
+- OCTA2 Trial A launched-binary identity is **N/A** (no MasterOCTa Apply).
+  Formal continuous trial must re-verify frozen RC8 binary identity independently
 
-Until trials run with the above, RAM / last-used auto-open remains **undetermined**,
-not confirmed root cause.
+Until primary-path trials run with the above, RAM / last-used auto-open remains
+**undetermined**, not confirmed root cause.

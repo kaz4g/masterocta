@@ -358,11 +358,14 @@ shasum -a 256 \
     renamed sample and Project references behave as expected in a minimal
     playback/smoke pattern chosen by the operator.
     Boot auto-open of the last-used Project is **not** sufficient evidence for
-    this step. Record power state and perform an explicit Project LOAD when the
-    operator procedure requires it. See
+    this step. Record only confirmed power and insert facts. Perform an explicit
+    Project LOAD (CHANGE away, then CHANGE back) as specified in
+    [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md)
+    (second Project present **before PRE freeze**; clone verification uses a
+    **new** two-Project trial source, not the original one-Project `source/`). See
     [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
-    for the RC8 FILE NOT FOUND contrast design (procedure only; not executed in
-    that document's authoring task).
+    for the RC8 FILE NOT FOUND contrast design. OCTA2 reconstruction Trial A is
+    recorded there; it does **not** satisfy this step on the primary RC8 Apply path.
 16. Retain the disposable clone or discard it according to the external test
     plan; do not use MasterOCTa to mutate the original removable media.
 

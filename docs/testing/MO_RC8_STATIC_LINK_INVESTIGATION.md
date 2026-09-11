@@ -157,10 +157,100 @@ rewrite from this investigation alone.
 with MkII later attempting an old PATH that is no longer present in on-media
 project documents searched in section A.
 
+## OCTA2 reconstruction trial (operator-local; sanitized)
+
+Work IDs: `MO-RC8-POST-RECONSTRUCTION-1`, `MO-RC8-OCTA2-TRIAL-A-STAGING-1`,
+`MO-RC8-OCTA2-STAGING-RESUME-1`, `MO-RC8-OCTA2-TRIAL-A-POST-CAPTURE-1`,
+`MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1`.
+
+After the primary RC8 Human Gate C **STOP**, operator preserved evidence was used
+to build a **reconstruction** disposable copy on secondary media (OCTA2). This is
+**not** the original RC8 Apply card, **not** a measured POST copy, and **not** a
+substitute for a continuous Gate C formal trial on one disposable clone.
+
+### Reconstruction and staging (mechanical facts)
+
+| Step | Result |
+|---|---|
+| POST reconstruction from preserved `source/` | CARD_POST-equivalent manifest; **84 entries / diffs=0 PASS** |
+| OCTA2 staging vs CARD_POST capture | **84 entries / diffs=0 PASS** |
+| Trial-before vs trial-after card capture | **84 entries / diffs=0 PASS** (pre-trial manifest equals post-trial manifest) |
+| Static Slot 001 PATH in `project.work` / `project.strd` | Points to `<NEW>` (destination basename) |
+| Destination WAV content hash | Matches baseline from primary RC8 POST evidence |
+| Card root LOG files at post-trial capture | **None observed** |
+
+LOG absence at capture time is **not** independent proof that MkII reported no
+errors during the session.
+
+### MkII session (operator observation; not mechanical proof)
+
+On secondary media, MkII displayed a compact-card warning
+(`WRONG COMPACT FLASH CARD INSERTED / CONTINUE?`). Operator answered **YES**.
+The rename-target Project loaded. Static Slot 1 displayed the **new** sample name
+and played **without ERROR** (operator report).
+
+**Confirmed sequence only:** warning → YES → load → playback. Power state
+(full off vs already on vs hot insert) is **unconfirmed**; do not record this
+session as a verified power-on trial.
+
+MasterOCTa was **not** launched for this reconstruction playback. Apply did
+**not** run. Launched-binary identity for OCTA2 Trial A is **N/A**. Frozen RC8
+binary re-verification belongs to
+[`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md).
+
+This observation does **not** establish:
+
+- unconditional boot auto-open success on a verified POST copy from the primary RC8 Apply path
+- explicit Project **LOAD** or **RELOAD** per [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
+- root cause of the primary RC8 FILE NOT FOUND incident
+- general codec correctness under all operator conditions
+
+Playback success is operator-reported. Byte identity is mechanical comparison only.
+
+### Preservation count correction
+
+Post-trial operator-local preservation selected **105** unique file copies. The Gate C
+manifest scope for the trial card state contains **60** file entries (plus **24**
+directories; **84** total captured entries; **87** capture-time exclusions).
+
+| Set | Count | Meaning |
+|---|---:|---|
+| AFTER_TRIAL_A total entries | 84 | 60 files + 24 directories |
+| Manifest file entries | 60 | Full card file scope for compare |
+| Selected preservation copies | 105 | Unique paths; duplicates **0** |
+| A. Preservation ∩ manifest | 53 | BaseProjct set + destination WAV; size+SHA256 match manifest |
+| B. Preservation with excluded name `._*` | 52 | Host-metadata names excluded from manifest by policy; **not** manifest-identical |
+| C. Duplicate preservation records | 0 | |
+| D. Unclassified preserved entries | 0 | |
+| Manifest files not selected for preservation | 7 | Other AUDIO pool files; intentionally omitted, not missing |
+
+`53 + 7 = 60`. `53 + 52 = 105`. Prior summaries that equated **105** with manifest
+**60** were incorrect. The **87** capture-time exclusions are separate from the **105**
+preservation count.
+
+Category B entries match the manifest exclusion policy name `._*` only. Do **not**
+infer AppleDouble from category B alone. Category B parity between trial-before and
+trial-after is **not** guaranteed.
+
+Evidence SHA256 (recomputed from operator-local preserved copy; matched JSON manifests):
+
+| Artifact | SHA256 (prefix) |
+|---|---|
+| `AFTER_TRIAL_A.json` / pre-trial `CARD_POST.json` | `1a8afb9c…b543e63` |
+| `COMPARE.json` | `3d1d1e18…58a68fbd` |
+| `INSPECTION.json` | `4e105d3e…0410ad3c1` |
+| `FINAL_REPORT.json` | `2a69fef3…536ee71` |
+| `PRESERVE_LOG.json` | `facfc767…b1ef9760` |
+
+Reconciliation detail: operator-local `RECONCILIATION.json` from
+`MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` (not committed to the repository).
+
 ## Related documents
 
-- Hardware contrast trial plan (not executed):
+- Hardware contrast trial plan and Trial A result:
   [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
+- Gate C formal continuous trial plan (not executed):
+  [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md)
 - Gate C smoke checklist:
   [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)
 
