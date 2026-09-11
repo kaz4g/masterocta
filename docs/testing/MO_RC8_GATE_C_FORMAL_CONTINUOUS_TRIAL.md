@@ -298,10 +298,11 @@ section is sanitized (no personal paths, volume names, or sample stems).
 | Plan → Prepare → restart → Continue → Apply | `COMMITTED` / `VERIFIED` |
 | `rename-committed-evidence:v1` / `expected-from-evidence` | Exported; accepted without manual hash completion |
 | Apply-time byte-manifest vs PRE | **PASS**; unrelated entries unchanged (second-Project files unchanged by Apply) |
-| MkII OS | 1.4; no boot Error/warning recorded |
-| Explicit LOAD | Device presented the **second** Project first; operator CHANGE to the rename-target Project. Boot auto-open of the rename-target was **not** used as evidence. SAVE / RELOAD / slot reassignment were **not** performed |
-| Playback | Rename-target Static Slot 1 displayed and played the destination basename without ERROR; no `FILE NOT FOUND`; no card-root LOG at after-hardware capture |
-| After MkII vs post-Apply | One 2-byte change in an **unrelated** Bank working file. Rename-target Project documents and destination WAV hashes unchanged vs post-Apply. Bank checksum field valid before and after; payload field identity **unknown**. **Not** attributed to Apply; **not** certified as normal autosave |
+| MkII OS | 1.4 |
+| Explicit LOAD | Observed: device presented the **second** Project first; operator CHANGE to the rename-target Project. That CHANGE onto the rename-target is the LOAD under test. Boot auto-open of the rename-target was **not** used as evidence. SAVE / RELOAD / slot reassignment were **not** performed |
+| MkII session UI | No boot Error/warning recorded. Rename-target Static Slot 1 displayed and played the destination basename without ERROR and without `FILE NOT FOUND` |
+| After-hardware card-root LOG | None observed at after-hardware capture. LOG absence is **not** the same observation as the session UI having no Error/warning |
+| After MkII vs post-Apply | One 2-byte change in an **unrelated** Bank working file. Rename-target Project documents and destination WAV hashes unchanged vs post-Apply. Bank checksum field matched the payload before and after; that match is **not** proof the file was uncorrupted and **not** proof of normal autosave. Payload field identity **unknown**. **Not** attributed to Apply |
 
 Interpretation used for this PASS: unrelated-bytes versus the pre-run
 manifest are evaluated at Apply time ([`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)

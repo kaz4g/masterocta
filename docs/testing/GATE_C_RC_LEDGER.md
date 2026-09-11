@@ -1361,8 +1361,9 @@ post-#116 current-main authorization target after #117 merge. RC8 Human Gate C i
 ([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md);
 operator sign-off 2026-09-12). Unrelated-bytes versus the pre-run manifest are
 evaluated at Apply time. After MkII, one 2-byte change in an unrelated Bank
-working file is recorded and is **not** attributed to Apply; it is not certified
-as normal autosave. A prior non-continuous session observed **STOP** at MkII
+working file is recorded and is **not** attributed to Apply. Bank checksum
+validity on that file is **not** proof of an uncorrupted payload and **not**
+proof of normal autosave. A prior non-continuous session observed **STOP** at MkII
 hardware load (`FILE NOT FOUND` on static slot 1 with old PATH in device LOG
 after Apply verification passed). That historical STOP remains in
 [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) and
