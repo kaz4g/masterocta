@@ -210,17 +210,20 @@ Apply card and **not** a continuous PRE→Apply→hardware run on one clone.
 | Field | Record |
 |---|---|
 | Initial card state | Reconstruction POST-equivalent manifest; **84 / diffs=0 PASS** vs CARD_POST reference |
-| Power / insert | Operator power-on with reconstruction copy inserted |
-| Explicit Project LOAD | **No** — operator responded YES to compact-card warning, then target Project loaded |
-| Static Slot 1 | Operator report: **new** name displayed; playback **without ERROR** |
+| Power / insert | **Unconfirmed.** Do not treat this session as a verified power-on or power-off trial |
+| Confirmed operator sequence | Compact-card warning → YES → target Project loaded → Static Slot 1 new-name playback without ERROR |
+| Explicit Project LOAD | **No** — warning YES is not CHANGE-away / CHANGE-back |
+| Launched MasterOCTa / Apply | **Did not occur.** Launched-binary identity **N/A** |
 | Pre-trial vs post-trial manifest | **PASS**, diffs=0 |
 | Card root LOG at post-trial capture | **None** |
 | Primary RC8 Human Gate C **STOP** | **Unchanged** |
 
 Trial A on OCTA2 reconstruction media does **not** satisfy Gate C step 15 on the
-primary RC8 Apply path. It does **not** prove unconditional boot auto-open on a
-verified POST copy from that Apply. It does **not** substitute for
+primary RC8 Apply path. It does **not** prove unconditional boot auto-open. It does
+**not** substitute for
 [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md).
+Formal-trial explicit LOAD is defined there: add a second Project **before PRE
+freeze** on a **new** clone; do not retry PRE→Apply on this one-Project copy.
 
 Preservation count correction (105 vs manifest 60): see
 [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
@@ -240,7 +243,8 @@ Additional blockers:
 
 - Power-state documentation from the original RC8 session (off vs hot remove)
 - Device vs host clock alignment for LOG correlation
-- Whether OCTA2 Trial A used the same launched RC8 binary as primary Human Gate C (not re-verified in this record)
+- OCTA2 Trial A launched-binary identity is **N/A** (no MasterOCTa Apply).
+  Formal continuous trial must re-verify frozen RC8 binary identity independently
 
 Until primary-path trials run with the above, RAM / last-used auto-open remains
 **undetermined**, not confirmed root cause.

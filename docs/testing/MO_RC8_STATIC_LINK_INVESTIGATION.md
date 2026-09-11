@@ -184,10 +184,19 @@ errors during the session.
 
 ### MkII session (operator observation; not mechanical proof)
 
-On secondary media after power-on, MkII displayed a compact-card warning
+On secondary media, MkII displayed a compact-card warning
 (`WRONG COMPACT FLASH CARD INSERTED / CONTINUE?`). Operator answered **YES**.
 The rename-target Project loaded. Static Slot 1 displayed the **new** sample name
 and played **without ERROR** (operator report).
+
+**Confirmed sequence only:** warning → YES → load → playback. Power state
+(full off vs already on vs hot insert) is **unconfirmed**; do not record this
+session as a verified power-on trial.
+
+MasterOCTa was **not** launched for this reconstruction playback. Apply did
+**not** run. Launched-binary identity for OCTA2 Trial A is **N/A**. Frozen RC8
+binary re-verification belongs to
+[`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md).
 
 This observation does **not** establish:
 

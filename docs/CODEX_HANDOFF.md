@@ -113,8 +113,10 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
   with old PATH in device LOG after passing Apply verification)。調査正本は
   `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`（OCTA2 reconstruction 試行と
   保全件数訂正を含む）。対照試験: `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md`
-  — Trial A は OCTA2 reconstruction で **実施済み**（CONTINUE YES 後の再生成功報告）。
-  Trial B **BLOCKED**、Trial C **NOT_RUN**。primary RC8 Apply 連続試験の代替ではない。
+  — Trial A は OCTA2 reconstruction で **実施済み**（確認済み: 警告→YES→読み込み→
+  新名再生。電源状態は未確認。起動 binary は Apply 未実施のため **対象外**）。
+  Trial B **BLOCKED**（第二 Project なし）、Trial C **NOT_RUN**。primary RC8 Apply
+  連続試験の代替ではない。
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
 - 次作業: Gate C 連続正式試験 **未実行**（計画のみ:
   `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`）。Human Gate C **STOP** /
@@ -322,10 +324,12 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH の
 `FILE NOT FOUND` となり **STOP**（変更なし）。調査正本は
 `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。OCTA2 reconstruction 上の
-Trial A は実施済みだが、primary RC8 Apply からの連続 disposable clone 試験の
-代替にならない。正式受入計画:
-`docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`。Trial B **BLOCKED**、
-Trial C **NOT_RUN**。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+Trial A は実施済み（確認済みは警告→YES→読み込み→再生。電源未確認。binary 対象外）
+だが、primary RC8 Apply からの連続 disposable clone 試験の代替にならない。
+正式受入計画: `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`
+（明示 LOAD のため第二 Project を **PRE 固定前** に用意。既存 OCTA2 コピーで
+PRE からやり直さない）。Trial B **BLOCKED**、Trial C **NOT_RUN**。
+Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
 
 **履歴:** `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` — 保全 105 件 vs manifest 60 件の
 訂正と OCTA2 試行観測の文書化（#118 merge 後 docs PR）。`MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`
