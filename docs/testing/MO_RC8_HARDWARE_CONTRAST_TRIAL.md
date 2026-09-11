@@ -223,7 +223,8 @@ primary RC8 Apply path. It does **not** prove unconditional boot auto-open. It d
 **not** substitute for
 [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md).
 Formal-trial explicit LOAD is defined there: add a second Project **before PRE
-freeze** on a **new** clone; do not retry PRE→Apply on this one-Project copy.
+freeze** on a **new** clone; re-baseline clone verification to a new two-Project
+trial source; do not retry PRE→Apply on this one-Project copy.
 
 Preservation count correction (105 vs manifest 60): see
 [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)

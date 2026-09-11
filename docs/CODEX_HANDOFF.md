@@ -119,7 +119,8 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
   連続試験の代替ではない。
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
 - 次作業: Gate C 連続正式試験 **未実行**（計画のみ:
-  `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`）。Human Gate C **STOP** /
+  `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`。第二 Project 追加後は
+  新 trial source で clone 検証。元 `source/` は保持）。Human Gate C **STOP** /
   M5 **INCOMPLETE** を維持。製品 PATH/Bank 修正は根拠不足。RC7 の再ビルド・再利用・
   当該セッションの Continue/Apply はしない。RC7 アプリと RC8 を同時起動しない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
@@ -327,9 +328,10 @@ RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH 
 Trial A は実施済み（確認済みは警告→YES→読み込み→再生。電源未確認。binary 対象外）
 だが、primary RC8 Apply からの連続 disposable clone 試験の代替にならない。
 正式受入計画: `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`
-（明示 LOAD のため第二 Project を **PRE 固定前** に用意。既存 OCTA2 コピーで
-PRE からやり直さない）。Trial B **BLOCKED**、Trial C **NOT_RUN**。
-Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+（明示 LOAD のため第二 Project を **PRE 固定前** に用意。追加後は二 Project
+状態を新 trial source として保全し、その source で clone 検証する。元
+`source/` は保持。既存 OCTA2 コピーで PRE からやり直さない）。Trial B **BLOCKED**、
+Trial C **NOT_RUN**。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
 
 **履歴:** `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` — 保全 105 件 vs manifest 60 件の
 訂正と OCTA2 試行観測の文書化（#118 merge 後 docs PR）。`MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`

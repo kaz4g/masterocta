@@ -48,10 +48,15 @@ and formal acceptance remain **separate tracks**.
 - Original CF/SD media stay disconnected for the entire run.
 - Do **not** modify the failed primary card or operator-local preserved evidence.
 - Do **not** use OCTA2 post-trial or POST reconstruction media as the formal trial
-  clone. Build PRE-equivalent state from operator-local preserved `source/` only.
+  clone. Reconstruct the card from operator-local preserved `source/` first,
+  then re-baseline as below. Do **not** overwrite that original `source/`.
 - The frozen PRE clone **must** contain a second Project in the same Set before
   PRE capture. See **Second Project and PRE freeze** below. Do not start Plan /
   Apply while Trial B-style CHANGE-away remains impossible.
+- After the second Project is added, clone verification must use a **new**
+  two-Project trial source. The original one-Project `source/` cannot fully
+  match the card. See **Trial source re-baseline**. Do not weaken clone
+  verification to ignore the extra Project.
 - Use a **new** disposable clone root, manifest, Application Support session, and
   journal context. Do not reuse RC7 or prior RC8 runtime state.
 - Frozen RC8 artifact only. Re-verify DMG SHA256 and launched executable SHA256
@@ -96,22 +101,67 @@ card, OCTA2 trial-after media, and POST reconstruction media stay unused.
 
 Forbidden: adding the second Project after PRE freeze, after Plan, or after
 Apply; treating filesystem copy of the rename-target folder as a second
-Project; using Trial B on the existing OCTA2 copy as this trial’s LOAD.
+Project; using Trial B on the existing OCTA2 copy as this trial’s LOAD;
+recording CloneSourceEvidence from the original one-Project `source/` against
+the two-Project card.
+
+### Trial source re-baseline (VERIFIED CLONE)
+
+Clone verification compares a live clone manifest to immutable
+`CloneSourceEvidence` (`v2_clone_record_source_evidence` →
+`v2_clone_verify_external`). A mismatch is `CLONE_SOURCE_EVIDENCE_MISMATCH`.
+The original preserved `source/` has **no second Project**, so it cannot be the
+source for verifying the two-Project trial card. Do **not** relax that match.
+
+Keep the original `source/` and all prior RC8 / OCTA2 evidence unchanged.
+
+1. **Target-Project check (not clone verification).** After the second Project
+   is added and the clone is back on Mac, confirm the **rename-target Project**
+   files still match the original preserved `source/` (path, type, size,
+   SHA256). The second Project is expected extra content versus that original
+   source. If the target Project drifted, **STOP** (same as step 5 above).
+2. **New trial source.** Copy the two-Project card state to a **new**
+   operator-local preserved source. Do not write into the original `source/`.
+   Label it as the formal-trial source for this work ID only.
+3. **Full-file compare.** Capture the new trial source and the trial card with
+   the same Gate C byte-manifest tool and compare **entry-for-entry**. Verdict
+   must be **PASS** with diffs=0. This is the first complete match of the
+   two-Project state. If it fails, **STOP**. Do not record clone source
+   evidence. Do not freeze PRE.
+4. **Clone source evidence from the new trial source.** Register the new trial
+   source read-only. Record `CloneSourceEvidence` from **that** source (not from
+   the original one-Project `source/`). The trial card remains a distinct
+   device from the source (source-equals-clone is still forbidden).
+5. **PRE freeze, then existing clone verification.** Capture the frozen PRE
+   byte manifest of the trial card (see below). Then run the existing clone
+   verification against the new trial source’s evidence until the card is a
+   **VERIFIED CLONE**. Only then register write intent and proceed to Plan.
+
+Do **not** treat the target-Project subset check as VERIFIED CLONE. Do **not**
+skip full-file compare by attesting the extra Project. Managed-clone copy from
+the original one-Project source is also insufficient: it would omit the
+second Project needed for explicit LOAD.
 
 ### When PRE is frozen
 
-PRE freeze is the first complete per-file byte manifest taken **after** the
-second Project is present **and** the rename-target Project still matches the
-pre-second-Project inventory.
+PRE freeze is the first complete per-file byte manifest of the trial card taken
+**after** all of:
 
-That PRE manifest is captured **before** root registration, Plan, Prepare, and
-Apply. From this point:
+- the second Project is present
+- the rename-target Project still matches the original `source/`
+- the new two-Project trial source is preserved separately
+- full-file compare of new trial source vs trial card is **PASS** (diffs=0)
 
+That PRE manifest is captured **before** clone-root write registration, Plan,
+Prepare, and Apply. From this point:
+
+- clone verification uses the new trial source’s `CloneSourceEvidence`
 - expected-only compare treats second-Project files as **unrelated** (must be
   unchanged by Apply)
 - hardware LOAD is CHANGE to the second Project, then CHANGE back to the
   rename-target Project
-- a clone frozen without a second Project is **not** a valid formal-trial PRE
+- a clone frozen without a second Project, or verified against the original
+  one-Project `source/`, is **not** a valid formal-trial PRE
 
 Trial B on the existing OCTA2 reconstruction remains **BLOCKED**. Adding a
 second Project to that copy after the fact does **not** convert it into this
@@ -122,22 +172,29 @@ formal trial.
 ### Agent responsibilities
 
 1. From operator-local preserved `source/`, prepare a **PRE-equivalent** disposable
-   clone (not POST reconstruction, not OCTA2 trial-after state).
-2. After the operator adds the second Project and target-Project hashes still
-   match, capture the **frozen PRE** per-file manifest; verify clone integrity.
-3. Re-verify frozen RC8 artifact and launched binary identity (read-only) for
+   clone (not POST reconstruction, not OCTA2 trial-after state). Do not modify
+   that original `source/`.
+2. After the operator adds the second Project, confirm rename-target Project
+   hashes still match the original `source/`. Preserve the two-Project card as
+   a **new** trial source. Full-file compare new trial source vs trial card
+   (PASS, diffs=0). Capture the **frozen PRE** from the trial card.
+3. Record `CloneSourceEvidence` from the **new** trial source and run existing
+   clone verification until the card is **VERIFIED CLONE**. Do not use the
+   original one-Project `source/` for this verify.
+4. Re-verify frozen RC8 artifact and launched binary identity (read-only) for
    **this** trial. Do not cite OCTA2 Trial A for binary identity.
-4. Organize operator-local evidence directories for Plan, Committed, post-Apply
+5. Organize operator-local evidence directories for Plan, Committed, post-Apply
    manifest, and post-hardware capture.
-5. After operator steps, run expected-only byte compare and post-hardware manifest
+6. After operator steps, run expected-only byte compare and post-hardware manifest
    diff tooling. Preserve evidence outside the repository.
 
 ### Operator responsibilities
 
 1. On the disposable clone, create the second Project (see above) **before**
    PRE freeze. Do not proceed if only one Project exists.
-2. Register the disposable clone root in MasterOCTa (dedicated session) only
-   after PRE is frozen.
+2. After the new two-Project trial source is preserved and full-file compare
+   PASSes, confirm **VERIFIED CLONE** against that new source (existing clone
+   operator flow). Register write intent on the clone only after that.
 3. Plan → Prepare → application restart → Continue → Apply on the **clone only**.
 4. Confirm `COMMITTED / VERIFIED`, zero Missing / Invalid / Unresolved counts.
 5. Save Committed evidence JSON unchanged outside the clone and repository.
@@ -160,8 +217,11 @@ formal trial.
 
 All of the following on **one** continuous disposable clone:
 
-- Frozen PRE captured **after** the second Project is present and the
-  rename-target still matches the pre-second-Project inventory
+- New two-Project trial source preserved separately; original `source/` unchanged
+- Full-file compare of new trial source vs trial card **PASS** (diffs=0)
+- `CloneSourceEvidence` recorded from the new trial source; existing clone
+  verification **VERIFIED CLONE** (not against the original one-Project `source/`)
+- Frozen PRE captured **after** that re-baseline
 - Launched RC8 executable SHA256 matches the frozen ledger (this trial)
 - Apply `COMMITTED / VERIFIED` with zero Missing / Invalid / Unresolved
 - Post-Apply expected-only compare **PASS** (second-Project files unchanged)
@@ -196,7 +256,11 @@ Record outside the repository (sanitized; no personal paths in repo):
 - Trial ID `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`
 - Frozen RC8 identity and launched binary SHA256 match yes/no (**this** trial)
 - Second Project present at PRE freeze yes/no; rename-target hash match vs
-  pre-second-Project inventory
+  original preserved `source/`
+- New two-Project trial source preserved separately yes/no; original `source/`
+  left unchanged
+- Full-file compare of new trial source vs trial card: verdict and entry count
+- CloneSourceEvidence recorded from new trial source; VERIFIED CLONE yes/no
 - Clone manifest SHA256 and entry count (pre-second-Project inventory, frozen
   PRE, post-Apply, post-hardware)
 - Plan identity, Committed evidence reference, compare verdict
