@@ -1,6 +1,6 @@
 # Codex引継ぎ — MasterOCTa
 
-更新日: 2026-09-10
+更新日: 2026-09-12
 
 ## 1. 目的
 
@@ -109,20 +109,15 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 - Gate C RC8 candidate build: **COMPLETE**（run `34453265057`、draft release `386101842`）
 - Gate C RC8 freeze ledger: **MERGED**（#117）
 - RC8 static-slot 調査 PR: **MERGED**（#118、`dd5fb16`）
-- RC8 Human Gate C: **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1
-  with old PATH in device LOG after passing Apply verification)。調査正本は
-  `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`（OCTA2 reconstruction 試行と
-  保全件数訂正を含む）。対照試験: `docs/testing/MO_RC8_HARDWARE_CONTRAST_TRIAL.md`
-  — Trial A は OCTA2 reconstruction で **実施済み**（確認済み: 警告→YES→読み込み→
-  新名再生。電源状態は未確認。起動 binary は Apply 未実施のため **対象外**）。
-  Trial B **BLOCKED**（第二 Project なし）、Trial C **NOT_RUN**。primary RC8 Apply
-  連続試験の代替ではない。
+- RC8 Human Gate C: **PASS**（formal continuous trial `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`、
+  2026-09-12 オペレーター承認。Apply 時点の unrelated-bytes 読み。実機後の
+  対象外 Bank working file 2 バイト差分は Apply に帰属させない）。
+  非連続セッションの FILE NOT FOUND は歴史的 STOP として
+  `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。
 - Gate C: **NOT_PASS**。M5: **INCOMPLETE**
-- 次作業: Gate C 連続正式試験 **未実行**（計画のみ:
-  `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`。第二 Project 追加後は
-  新 trial source で clone 検証。元 `source/` は保持）。Human Gate C **STOP** /
-  M5 **INCOMPLETE** を維持。製品 PATH/Bank 修正は根拠不足。RC7 の再ビルド・再利用・
-  当該セッションの Continue/Apply はしない。RC7 アプリと RC8 を同時起動しない。
+- 次作業: Gate C 全体 PASS / M5 完了は別宣言。公開配布は別 gate。製品 PATH/Bank
+  修正は根拠不足のまま。RC7 の再ビルド・再利用・当該セッションの Continue/Apply
+  はしない。RC8 の再ビルド・redispatch はしない。
 - 現在のmain基準SHA（handoff 旧記）: `87c1368`（M5-C5 R4 #82 merge後）
 - M5-C5 R0 — clone artifact containment hardening: **COMPLETE**（#74）
 - M5-C5 R1 — durable clone evidence / session authority separation: **COMPLETE**（#77）
@@ -318,20 +313,22 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ## 6. 次のCodex作業
 
-### 6.0 現在の次作業（2026-09-11）
+### 6.0 現在の次作業（2026-09-12）
 
-**作業ID:** `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`（**計画のみ・未実行**）
+**作業ID:** Gate C / M5 の残条件（Human Gate C は記録済み PASS）
 
-RC8 Human Gate C は Apply 検証 PASS 後、MkII で static slot 1 が旧 PATH の
-`FILE NOT FOUND` となり **STOP**（変更なし）。調査正本は
-`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md`。OCTA2 reconstruction 上の
-Trial A は実施済み（確認済みは警告→YES→読み込み→再生。電源未確認。binary 対象外）
-だが、primary RC8 Apply からの連続 disposable clone 試験の代替にならない。
-正式受入計画: `docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`
-（明示 LOAD のため第二 Project を **PRE 固定前** に用意。追加後は二 Project
-状態を新 trial source として保全し、その source で clone 検証する。元
-`source/` は保持。既存 OCTA2 コピーで PRE からやり直さない）。Trial B **BLOCKED**、
-Trial C **NOT_RUN**。Gate C **NOT_PASS** / M5 **INCOMPLETE** を維持。
+RC8 Human Gate C は正式連続試験
+`docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md` により **PASS**
+（オペレーター承認 2026-09-12）。台帳正本は `docs/testing/GATE_C_RC_LEDGER.md`
+§RC8。Gate C は **NOT_PASS**、M5 は **INCOMPLETE** のまま。Human Gate C PASS は
+公開配布・RC8 再ビルド・製品 PATH/Bank 修正を許可しない。
+
+非連続セッションの FILE NOT FOUND は歴史的 STOP として
+`docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。原因調査は未閉鎖。
+Trial B **BLOCKED**、Trial C **NOT_RUN**。RC7 再ビルド・Continue/Apply はしない。
+
+**履歴:** `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` — 正式連続試験 **EXECUTED** /
+Human Gate C **PASS**。
 
 **履歴:** `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` — 保全 105 件 vs manifest 60 件の
 訂正と OCTA2 試行観測の文書化（#118 merge 後 docs PR）。`MO-RC8-STATIC-LINK-INVESTIGATION-PR-1`

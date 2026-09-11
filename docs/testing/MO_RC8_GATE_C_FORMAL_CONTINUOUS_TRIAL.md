@@ -1,11 +1,11 @@
-# MO-RC8 Gate C Formal Continuous Trial Plan
+# MO-RC8 Gate C Formal Continuous Trial
 
-- Status: **NOT_RUN** (plan only; no execution in this document)
+- Status: **EXECUTED** (Human Gate C **PASS**; operator sign-off 2026-09-12)
 - Work ID: `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`
 - Related investigation: [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
 - Related contrast trials: [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md)
 - Gate C smoke contract: [`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)
-- Gate C: **NOT_PASS** / Human Gate C: **STOP** / M5: **INCOMPLETE**
+- Gate C: **NOT_PASS** / Human Gate C: **PASS** / M5: **INCOMPLETE**
 
 ## Purpose
 
@@ -17,9 +17,9 @@ That evidence is preserved but is **not** a substitute for this trial. It used
 **different media**, was **not** continuous with the primary RC8 Apply session, and
 did not follow the full Gate C smoke contract on one clone.
 
-This document does **not** authorize execution in the task that creates it. It does
-**not** weaken Gate C PASS requirements. It does **not** authorize RC8 rebuild,
-workflow redispatch, or product PATH/Bank changes.
+This document recorded the plan first and now records the executed trial.
+It does **not** weaken Gate C PASS requirements. It does **not** authorize RC8
+rebuild, workflow redispatch, or product PATH/Bank changes.
 
 ## Why a new continuous trial is required
 
@@ -282,9 +282,41 @@ Record outside the repository (sanitized; no personal paths in repo):
 - Slot display, playback result
 - Preservation selection counts if post-hardware capture differs from manifest scope
 
+## Execution record (2026-09-12)
+
+Operator sign-off: Human Gate C **PASS**. Evidence remains operator-local; this
+section is sanitized (no personal paths, volume names, or sample stems).
+
+| Item | Result |
+|---|---|
+| Frozen RC8 launched binary SHA256 | Matches [`GATE_C_RC_LEDGER.md`](GATE_C_RC_LEDGER.md) §RC8 |
+| Second Project present before PRE freeze | Yes |
+| New two-Project trial source preserved separately | Yes; original one-Project `source/` unchanged |
+| Full-file compare new trial source vs trial card | **PASS** (diffs=0) |
+| Clone verification | **VERIFIED CLONE** against the new two-Project source |
+| PRE freeze | Before trial-card registration |
+| Plan → Prepare → restart → Continue → Apply | `COMMITTED` / `VERIFIED` |
+| `rename-committed-evidence:v1` / `expected-from-evidence` | Exported; accepted without manual hash completion |
+| Apply-time byte-manifest vs PRE | **PASS**; unrelated entries unchanged (second-Project files unchanged by Apply) |
+| MkII OS | 1.4; no boot Error/warning recorded |
+| Explicit LOAD | Device presented the **second** Project first; operator CHANGE to the rename-target Project. Boot auto-open of the rename-target was **not** used as evidence. SAVE / RELOAD / slot reassignment were **not** performed |
+| Playback | Rename-target Static Slot 1 displayed and played the destination basename without ERROR; no `FILE NOT FOUND`; no card-root LOG at after-hardware capture |
+| After MkII vs post-Apply | One 2-byte change in an **unrelated** Bank working file. Rename-target Project documents and destination WAV hashes unchanged vs post-Apply. Bank checksum field valid before and after; payload field identity **unknown**. **Not** attributed to Apply; **not** certified as normal autosave |
+
+Interpretation used for this PASS: unrelated-bytes versus the pre-run
+manifest are evaluated at Apply time ([`GATE_C_CLONE_SMOKE.md`](GATE_C_CLONE_SMOKE.md)
+compare before eject). The after-MkII Bank working-file delta is a recorded
+deviation, not an Apply failure. This does **not** rewrite Gate C PASS
+conditions and does **not** close the original FILE NOT FOUND cause
+investigation.
+
 ## Gate status
 
-- This plan: **NOT_RUN**
-- RC8 Human Gate C: **STOP** (unchanged until a successful formal continuous trial)
+- This trial: **EXECUTED**
+- RC8 Human Gate C: **PASS** (operator sign-off 2026-09-12)
 - Gate C: **NOT_PASS**
 - M5: **INCOMPLETE**
+- Historical non-continuous FILE NOT FOUND session: remains **STOP** in
+  [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)
+- RC8 artifact rebuild / workflow redispatch / product PATH/Bank fix: **not authorized**
+- Public distribution: **not authorized**

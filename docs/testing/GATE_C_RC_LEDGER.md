@@ -515,8 +515,10 @@ Phase 3 merge
 → draft candidate retrieved
 → local SHA256 re-verification PASS
 → provenance / access boundary confirmation PASS
-→ RC8 freeze ledger PR (this docs PR; merge pending)
-→ Human Gate C on RC8 frozen candidate only after ledger merge
+→ RC8 freeze ledger PR merged (#117)
+→ Human Gate C on RC8 historical STOP (FILE NOT FOUND; non-continuous session)
+→ Formal continuous trial `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` executed
+→ Human Gate C PASS (operator sign-off 2026-09-12; Apply-time unrelated-bytes reading)
 → M5 closure PR
 ```
 
@@ -544,12 +546,12 @@ RC4 = NOT_CREATED / historical pre-freeze failure
 RC5 = FROZEN (historical). current-main Human Gate C = FORBIDDEN
 RC6 = FROZEN (historical). current-main Human Gate C = FORBIDDEN after #109/#111
 RC7 = FROZEN (historical). Human Gate C STOP at Prepare; do not rebuild or reuse
-RC8 = FROZEN (recorded by this docs PR; effective on main only after merge)
-current-main Human Gate C on RC8 = NOT AUTHORIZED until this freeze ledger PR merges
-Human Gate C = NOT_RUN
+RC8 = FROZEN
+current-main Human Gate C on RC8 = PASS (formal continuous trial; operator sign-off 2026-09-12)
+Human Gate C = PASS
 Gate C = NOT_PASS
 M5 = INCOMPLETE
-remaining M5 blocker = RC8 freeze ledger merge + Human Gate C on RC8 only
+remaining M5 blocker = Gate C overall PASS / M5 closure not declared; public distribution remains a separate gate; original FILE NOT FOUND cause investigation remains open
 public distribution = NOT AUTHORIZED
 ```
 
@@ -558,12 +560,13 @@ commit, source tree, artifact, artifact SHA256, and all other identity fields
 remain `UNSET`. RC3 official identity fields remain `UNSET`. RC4 official
 identity fields remain `UNSET`. RC5 official identity is recorded as a
 historical freeze only. RC6 remains a historical freeze only. RC7 is a historical
-freeze with Human Gate C `STOP` at Prepare. RC8 identity is recorded by this
-docs PR; it is **not** the effective `main` ledger until merge. Human Gate C
-remains `NOT_RUN`; Gate C remains `NOT_PASS`; M5 remains `INCOMPLETE`. The
-remaining M5 blocker is RC8 freeze ledger merge and Human Gate C on the RC8
-frozen candidate only. Signing, notarization, and public distribution remain
-separate gates.
+freeze with Human Gate C `STOP` at Prepare. RC8 identity is recorded and effective
+on `main` after #117. Human Gate C on RC8 is `PASS` for the formal continuous
+trial (`MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`; operator sign-off 2026-09-12). Gate C
+remains `NOT_PASS`; M5 remains `INCOMPLETE`. Human Gate C PASS does not by itself
+close Gate C or M5. Signing, notarization, and public distribution remain separate
+gates. The original RC8 FILE NOT FOUND session remains a historical STOP on a
+different evidence root.
 
 ## RC3
 
@@ -1054,11 +1057,11 @@ Assessment: [GATE_C_POST109_111_REBASELINE.md](GATE_C_POST109_111_REBASELINE.md)
 | RC7 candidate build | run [`34438615252`](https://github.com/kaz4g/masterocta/actions/runs/34438615252) `completed` / `success` |
 | RC7 freeze ledger | **MERGED** (#115) |
 | RC8 candidate build | run [`34453265057`](https://github.com/kaz4g/masterocta/actions/runs/34453265057) `completed` / `success` |
-| RC8 freeze ledger | **this docs PR** (merge pending; not effective on `main` until merge) |
+| RC8 freeze ledger | **MERGED** (#117) |
+| RC8 Human Gate C | **PASS** (formal continuous trial; operator sign-off 2026-09-12) |
 
 RC8 source commit, tree, DMG hash, binary hash, workflow run, and release ID are
-recorded together in §RC8 below. They are **not** effective on `main` until this
-freeze ledger PR merges.
+recorded together in §RC8 below.
 
 ## RC7
 
@@ -1213,8 +1216,8 @@ current-main Human Gate C. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 
 | Field | Value |
 |---|---|
-| status | `FROZEN` (recorded by this docs PR; effective on `main` only after merge) |
-| requirement | `SATISFIED` (run `34453265057` + local verification). Human Gate C **NOT AUTHORIZED until merge** |
+| status | `FROZEN` (identity unchanged after #117 merge) |
+| requirement | `SATISFIED` (run `34453265057` + local verification). Human Gate C **PASS** (formal continuous trial) |
 | candidate_id | `gate-c-rc8-8382de2ed1d2` |
 | source commit | `8382de2ed1d2ce7323ed17c1a8833da267abc635` |
 | source tree | `4ce5c7c2697611464cdd14be82918bb336a6a89b` |
@@ -1259,7 +1262,7 @@ current-main Human Gate C. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
 | codesign classification | `AD_HOC_VERIFIED` |
 | codesign command result | `valid_on_disk_and_designated_requirement_satisfied` |
 | spctl result | `rejected_expected` |
-| Human Gate C | `STOP` (MkII hardware FILE NOT FOUND; [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md)) |
+| Human Gate C | `PASS` (formal continuous trial `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1`; operator sign-off 2026-09-12). Historical STOP: [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) |
 | Bank checksum rename gate | `NON_BLOCKING_FOR_CURRENT_RENAME_GATE` (unchanged) |
 
 RC8 source-to-artifact provenance chain:
@@ -1276,7 +1279,7 @@ frozen source commit/tree
 → authenticated retrieval
 → local SHA256 / DMG / binary / codesign re-verification
 → anonymous access denial
-→ RC8 freeze tuple (this docs PR; merge pending)
+→ RC8 freeze tuple (#117 merged)
 ```
 
 Exact draft release asset set (3 assets):
@@ -1353,11 +1356,19 @@ current-main Human Gate C. RC7 Human Gate C remains `STOP` at Prepare; do not
 Continue/Apply that session or reuse RC7 runtime state. Pull requests #103,
 #104, and #105 remain closed until M5 closure; do not reopen, rebase, or merge
 them into a new candidate. RC8 is a personal/local evaluation candidate and the
-post-#116 current-main authorization target after #117 merge. RC8 Human Gate C
-observed **STOP** at MkII hardware load (`FILE NOT FOUND` on static slot 1 with
-old PATH in device LOG after Apply verification passed). Investigation:
-[`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md).
-Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+post-#116 current-main authorization target after #117 merge. RC8 Human Gate C is
+`PASS` for the formal continuous trial
+([`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md);
+operator sign-off 2026-09-12). Unrelated-bytes versus the pre-run manifest are
+evaluated at Apply time. After MkII, one 2-byte change in an unrelated Bank
+working file is recorded and is **not** attributed to Apply; it is not certified
+as normal autosave. A prior non-continuous session observed **STOP** at MkII
+hardware load (`FILE NOT FOUND` on static slot 1 with old PATH in device LOG
+after Apply verification passed). That historical STOP remains in
+[`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) and
+does not replace this PASS. Gate C remains `NOT_PASS`. M5 remains `INCOMPLETE`.
+Human Gate C PASS does not authorize public distribution, RC8 rebuild, or product
+PATH/Bank changes.
 
 ## Investigation records (do not alter RC freeze tuples)
 
@@ -1367,10 +1378,10 @@ Human Gate C outcomes on this ledger.
 
 | Work ID | Document | Status |
 |---|---|---|
-| `MO-RC8-STATIC-LINK-INVESTIGATION-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) | Investigation complete; Human Gate C **STOP** on RC8 hardware FILE NOT FOUND |
+| `MO-RC8-STATIC-LINK-INVESTIGATION-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) | Investigation complete; historical Human Gate C **STOP** on a non-continuous RC8 FILE NOT FOUND session |
 | `MO-RC8-STATIC-LINK-INVESTIGATION-PR-1` | [`MO_RC8_HARDWARE_CONTRAST_TRIAL.md`](MO_RC8_HARDWARE_CONTRAST_TRIAL.md) | Contrast trial plan; Trial A on OCTA2 reconstruction **EXECUTED**; Trial B **BLOCKED**; Trial C **NOT_RUN** |
 | `MO-RC8-TRIAL-A-EVIDENCE-RECONCILE-1` | [`MO_RC8_STATIC_LINK_INVESTIGATION.md`](MO_RC8_STATIC_LINK_INVESTIGATION.md) § OCTA2 reconstruction trial | Preservation count correction (105 vs manifest 60); evidence SHA256 re-verified operator-local |
-| `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` | [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md) | Formal continuous Gate C trial **NOT_RUN**; second Project before PRE freeze; clone verify against a new two-Project trial source |
+| `MO-RC8-GATE-C-FORMAL-CONTINUOUS-1` | [`MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`](MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md) | Formal continuous Gate C trial **EXECUTED**; Human Gate C **PASS** (operator sign-off 2026-09-12) |
 
 RC8 freeze tuple and candidate coordinates are recorded in §RC8 above. This
 section does not authorize RC8 rebuild or redispatch.
@@ -1431,3 +1442,8 @@ Gate C is PASS only when every item below is demonstrated:
 Any gap in this evidence is STOP, not PASS.
 
 Human Gate C PASS does not authorize public distribution.
+
+RC8 Human Gate C operator sign-off (2026-09-12) evaluates unrelated-bytes versus
+the pre-run manifest at Apply time (`GATE_C_CLONE_SMOKE.md` compare before eject).
+That sign-off does **not** rewrite the list above. Gate C overall remains `NOT_PASS`
+until separately declared.

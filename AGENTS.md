@@ -15,9 +15,10 @@ Read `docs/CODEX_HANDOFF.md` before planning or implementing work.
 For new architecture, API boundaries, data ownership, and migration order, also
 read `docs/NEXT_GENERATION_ARCHITECTURE.md`. New code must not bypass its
 Intent -> Plan -> Apply write boundary.
-Current M5 next work is Human Gate C on RC8 after the RC8 freeze ledger Draft PR
-merges to `main`. Read `docs/testing/GATE_C_RC_LEDGER.md` §RC8 and
-`docs/testing/GATE_C_CLONE_SMOKE.md`. RC7 Prepare STOP boundaries remain in
+Current M5 next work is the Gate C / M5 closure record after RC8 Human Gate C
+**PASS**. Read `docs/testing/GATE_C_RC_LEDGER.md` §RC8 and
+`docs/testing/MO_RC8_GATE_C_FORMAL_CONTINUOUS_TRIAL.md`. Do not rebuild or
+redispatch RC8. RC7 Prepare STOP boundaries remain in
 `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`.
 
 ## Non-negotiable data-safety rules
