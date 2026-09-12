@@ -212,6 +212,45 @@ describe("CatalogLibraryBrowser", () => {
     expect(screen.getByLabelText("Asset inspector")).not.toHaveTextContent("sha256:");
   });
 
+  it("filters, paginates, and keeps selection when the file stays in the location", () => {
+    const files = Array.from({ length: 101 }, (_, index) => ({
+      fileInstanceId: `fileinst:v1:${index}`,
+      assetId: `asset:v1:${index}`,
+      displayName: `sample-${index}.wav`,
+      relativePath: `LIVE_SET/AUDIO/sample-${index}.wav`,
+      byteSize: index,
+      storageScope: "set_audio_pool" as const,
+    }));
+    const onSelectedAssetChange = vi.fn();
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={{ ...snapshot, audioFiles: files }}
+        inspectorPlacement="shell"
+        onSelectedAssetChange={onSelectedAssetChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /sample-0\.wav/ }));
+    expect(onSelectedAssetChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileInstanceId: "fileinst:v1:0" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(onSelectedAssetChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileInstanceId: "fileinst:v1:0" }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Search samples in this location"), {
+      target: { value: "sample-99" },
+    });
+    expect(screen.getByText(/1 matching/)).toBeInTheDocument();
+    expect(onSelectedAssetChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ fileInstanceId: "fileinst:v1:0" }),
+    );
+  });
+
   it("reports shell inspector selection without rendering the inline column", () => {
     const onSelectedAssetChange = vi.fn();
     render(

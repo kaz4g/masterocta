@@ -162,6 +162,48 @@
   padding: var(--mo-space-2);
 }
 
+.catalog-library-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--mo-space-2);
+  margin-bottom: var(--mo-space-3);
+}
+
+.catalog-library-search label {
+  display: grid;
+  gap: var(--mo-space-1);
+  font-size: var(--mo-font-size-xs);
+  color: var(--mo-text-muted);
+}
+
+.catalog-library-search input,
+.catalog-library-search select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--mo-space-2);
+  background: var(--mo-surface-2);
+  color: var(--mo-text);
+  border: 1px solid var(--mo-border);
+  border-radius: var(--mo-radius-sm);
+  font: inherit;
+}
+
+.catalog-library-file-count {
+  margin: 0 0 var(--mo-space-2);
+  color: var(--mo-text-muted);
+  font-size: var(--mo-font-size-xs);
+}
+
+.catalog-library-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--mo-space-2);
+  font-size: var(--mo-font-size-xs);
+  margin-top: var(--mo-space-2);
+}
+
 .catalog-library-inspector {
   background: color-mix(in srgb, var(--mo-surface-2) 55%, var(--mo-surface-1));
 }

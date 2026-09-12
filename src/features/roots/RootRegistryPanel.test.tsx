@@ -154,6 +154,12 @@ describe("RootRegistryPanel", () => {
     expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
     expect(screen.getByText("KICK.wav")).toBeInTheDocument();
     expect(screen.getByText("LIVE_SET/AUDIO/KICK.wav")).toBeInTheDocument();
+    const contextBar = screen.getByLabelText("Library context");
+    expect(contextBar).toHaveTextContent("Fixture Root");
+    expect(contextBar).toHaveTextContent("Read only");
+    await waitFor(() => {
+      expect(contextBar).toHaveTextContent("1 samples");
+    });
     expect(screen.getByLabelText("Inspector")).toBeInTheDocument();
     expect(screen.getByText("Notes & details")).toBeInTheDocument();
     expect(screen.queryByLabelText("Asset inspector")).not.toBeInTheDocument();

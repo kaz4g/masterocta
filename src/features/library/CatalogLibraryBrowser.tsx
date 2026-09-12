@@ -8,12 +8,17 @@ import type {
   MetadataApi,
 } from "../../api";
 import { audioApi, metadataApi } from "../../api";
+import { Button } from "../../design-system";
 import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor";
 import { ProjectWorkspace } from "../project-workspace";
 import { UsageGraphPanel } from "../usage";
 import { WaveformPreview } from "../waveform/WaveformPreview";
 import { SliceWorkbench } from "../slicing/SliceWorkbench";
 import { AudioLibrary } from "./AudioLibrary";
+import {
+  type CatalogFileSort,
+  queryCatalogFiles,
+} from "./catalogFileQuery";
 import "./CatalogLibraryBrowser.css";
 
 /** Opaque catalog asset selection for AppShell Inspector (UI4). */
@@ -22,6 +27,14 @@ export interface CatalogAssetSelection {
   fileInstanceId: string;
   displayName: string;
   relativePath: string;
+}
+
+export interface CatalogBrowseContext {
+  sourceLabel: string;
+  locationLabel: string;
+  locationCount: number;
+  matchingCount: number;
+  hasSearch: boolean;
 }
 
 export type CatalogInspectorPlacement = "inline" | "shell";
@@ -37,6 +50,7 @@ interface CatalogLibraryBrowserProps {
    */
   inspectorPlacement?: CatalogInspectorPlacement;
   onSelectedAssetChange?: (selection: CatalogAssetSelection | null) => void;
+  onBrowseContextChange?: (context: CatalogBrowseContext | null) => void;
 }
 
 type SourceOption =
@@ -142,6 +156,7 @@ export function CatalogLibraryBrowser({
   metadataClient = metadataApi,
   inspectorPlacement = "inline",
   onSelectedAssetChange,
+  onBrowseContextChange,
 }: CatalogLibraryBrowserProps) {
   const sources = useMemo(() => sourceOptions(snapshot), [snapshot]);
   const [sourceKey, setSourceKey] = useState<string | null>(sources[0]?.key ?? null);
@@ -153,15 +168,58 @@ export function CatalogLibraryBrowser({
   const [locationKey, setLocationKey] = useState<string | null>(null);
   const selectedLocation = locations.find((location) => location.key === locationKey)
     ?? locations[0];
-  const audioFiles = useMemo(
+  const locationFiles = useMemo(
     () => filesFor(selectedLocation, snapshot.audioFiles),
     [selectedLocation, snapshot.audioFiles],
   );
-  const [selectedFileInstanceId, setSelectedFileInstanceId] = useState<string | null>(null);
-  const selectedFile = audioFiles.find(
-    (file) => file.fileInstanceId === selectedFileInstanceId,
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<CatalogFileSort>("name");
+  const [page, setPage] = useState(0);
+  const fileQuery = useMemo(
+    () => queryCatalogFiles({ files: locationFiles, search, sort, page }),
+    [locationFiles, search, sort, page],
   );
+  const [selectedFileInstanceId, setSelectedFileInstanceId] = useState<string | null>(null);
+  const selectedFile = useMemo(() => {
+    if (selectedFileInstanceId === null) return undefined;
+    return locationFiles.find((file) => file.fileInstanceId === selectedFileInstanceId);
+  }, [locationFiles, selectedFileInstanceId]);
   const shellInspector = inspectorPlacement === "shell";
+
+  useEffect(() => {
+    setPage(0);
+  }, [selectedLocation?.key, selectedSource?.key, search, sort]);
+
+  useEffect(() => {
+    if (
+      selectedFileInstanceId !== null
+      && !locationFiles.some((file) => file.fileInstanceId === selectedFileInstanceId)
+    ) {
+      setSelectedFileInstanceId(null);
+    }
+  }, [locationFiles, selectedFileInstanceId]);
+
+  useEffect(() => {
+    if (!onBrowseContextChange) return;
+    if (selectedSource === undefined || selectedLocation === undefined) {
+      onBrowseContextChange(null);
+      return;
+    }
+    onBrowseContextChange({
+      sourceLabel: selectedSource.label,
+      locationLabel: selectedLocation.label,
+      locationCount: fileQuery.locationCount,
+      matchingCount: fileQuery.matchingCount,
+      hasSearch: search.trim() !== "",
+    });
+  }, [
+    onBrowseContextChange,
+    selectedSource,
+    selectedLocation,
+    fileQuery.locationCount,
+    fileQuery.matchingCount,
+    search,
+  ]);
 
   useEffect(() => {
     if (!onSelectedAssetChange) return;
@@ -192,6 +250,12 @@ export function CatalogLibraryBrowser({
     return <p className="catalog-library-empty">No catalog entries are available.</p>;
   }
 
+  const emptyFilesMessage = locationFiles.length === 0
+    ? "No audio files indexed here."
+    : search.trim() !== "" && fileQuery.matchingCount === 0
+      ? "No samples match this search."
+      : null;
+
   const detail = (
     <div
       className={[
@@ -201,12 +265,40 @@ export function CatalogLibraryBrowser({
     >
       <div className="catalog-library-column catalog-library-files" aria-label="Audio files">
         <h4>Audio files</h4>
+        <div className="catalog-library-search">
+          <label>
+            Search this location
+            <input
+              type="search"
+              aria-label="Search samples in this location"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name or folder…"
+            />
+          </label>
+          <label>
+            Sort
+            <select
+              aria-label="Sort samples"
+              value={sort}
+              onChange={(event) => setSort(event.target.value as CatalogFileSort)}
+            >
+              <option value="name">Name</option>
+              <option value="size">Size · largest first</option>
+            </select>
+          </label>
+        </div>
+        <p className="catalog-library-file-count" aria-live="polite">
+          {search.trim() !== ""
+            ? `${fileQuery.matchingCount} matching · ${fileQuery.locationCount} in this location`
+            : `${fileQuery.locationCount} in this location`}
+        </p>
         <div className="catalog-library-options">
-          {audioFiles.map((file) => (
+          {fileQuery.visible.map((file) => (
             <button
               type="button"
               className="catalog-library-file"
-              aria-pressed={file.fileInstanceId === selectedFile?.fileInstanceId}
+              aria-pressed={file.fileInstanceId === selectedFileInstanceId}
               key={file.fileInstanceId}
               onClick={() => setSelectedFileInstanceId(file.fileInstanceId)}
             >
@@ -217,10 +309,31 @@ export function CatalogLibraryBrowser({
               <span>{formatBytes(file.byteSize)}</span>
             </button>
           ))}
-          {audioFiles.length === 0 && (
-            <p className="catalog-library-empty">No audio files indexed here.</p>
+          {emptyFilesMessage !== null && (
+            <p className="catalog-library-empty">{emptyFilesMessage}</p>
           )}
         </div>
+        {fileQuery.lastPage > 0 && (
+          <nav className="catalog-library-pagination" aria-label="Sample pages">
+            <Button
+              variant="secondary"
+              disabled={fileQuery.page <= 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {fileQuery.page + 1} of {fileQuery.lastPage + 1}
+            </span>
+            <Button
+              variant="secondary"
+              disabled={fileQuery.page >= fileQuery.lastPage}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+            </Button>
+          </nav>
+        )}
       </div>
 
       {!shellInspector && (
@@ -266,7 +379,7 @@ export function CatalogLibraryBrowser({
     region = (
       <ProjectWorkspace
         project={selectedLocation.project}
-        localSampleCount={audioFiles.length}
+        localSampleCount={locationFiles.length}
       >
         {detail}
       </ProjectWorkspace>
@@ -276,14 +389,14 @@ export function CatalogLibraryBrowser({
       <AudioLibrary
         scope="audio_pool"
         parentPath={selectedLocation.parentPath}
-        fileCount={audioFiles.length}
+        fileCount={locationFiles.length}
       >
         {detail}
       </AudioLibrary>
     );
   } else if (selectedLocation?.kind === "unclassified") {
     region = (
-      <AudioLibrary scope="unclassified" fileCount={audioFiles.length}>
+      <AudioLibrary scope="unclassified" fileCount={locationFiles.length}>
         {detail}
       </AudioLibrary>
     );
