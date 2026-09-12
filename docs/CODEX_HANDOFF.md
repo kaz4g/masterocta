@@ -327,6 +327,10 @@ reference-safe）。Human Gate C は正式連続試験の **PASS** を維持。�
 公開配布・署名・notarization は **NOT AUTHORIZED**。RC8 再ビルド・redispatch、
 製品 PATH/Bank 修正、#103 / #104 / #105 の再開はしない。
 
+Post-M5 最初の製品 PR: **Library Workspace layout only**（branch
+`feat/m6-library-workspace-layout`、調査 `docs/planning/POST_M5_FEATURE_RESTART_AUDIT.md`）。
+WF2 backend / `OperationsDialog` / #104 / #105 は別 PR。
+
 非連続セッションの FILE NOT FOUND は歴史的 STOP として
 `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。原因は未解決。
 実機後の対象外 Bank working file 2 バイトは記録済み偏差であり、正常 autosave とはしない。

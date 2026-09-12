@@ -4,6 +4,8 @@ import { SplitPane } from '../design-system'
 import './AppShell.css'
 
 export interface AppShellProps extends HTMLAttributes<HTMLElement> {
+  /** Optional top context bar (source / location summary). */
+  contextBar?: ReactNode
   /** Left Sources column (root / set navigation chrome). */
   sources: ReactNode
   /** Center Library / Project workspace. */
@@ -24,12 +26,13 @@ export interface AppShellProps extends HTMLAttributes<HTMLElement> {
  * Presentation only — feature state stays in callers.
  */
 export function AppShell({
+  contextBar,
   sources,
   main,
   inspector,
   changeDrawer,
   sourcesSize,
-  defaultSourcesSize = 28,
+  defaultSourcesSize = 20,
   onSourcesSizeChange,
   className,
   ...rest
@@ -39,6 +42,11 @@ export function AppShell({
 
   return (
     <section className={merged} aria-label={PRODUCT_WORKSPACE_LABEL} {...rest}>
+      {contextBar != null && (
+        <div className="mo-app-shell__context" data-testid="app-shell-context">
+          {contextBar}
+        </div>
+      )}
       <SplitPane
         className="mo-app-shell__body"
         primarySize={sourcesSize}
@@ -58,9 +66,9 @@ export function AppShell({
           {showInspector ? (
             <SplitPane
               className="mo-app-shell__body"
-              defaultPrimarySize={72}
+              defaultPrimarySize={64}
               minPrimary={55}
-              maxPrimary={85}
+              maxPrimary={75}
             >
               <SplitPane.Primary className="mo-app-shell__main">
                 {main}

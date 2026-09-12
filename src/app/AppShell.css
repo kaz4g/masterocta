@@ -10,6 +10,12 @@
   overflow: hidden;
 }
 
+.mo-app-shell__context {
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--mo-border);
+  background: color-mix(in srgb, var(--mo-surface-1) 80%, var(--mo-canvas));
+}
+
 .mo-app-shell__body {
   /* Content-sized: avoid claiming large viewport height on Home above legacy grids. */
   flex: 0 1 auto;

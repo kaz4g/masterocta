@@ -17,3 +17,27 @@
   color: var(--mo-text-muted);
   font-size: 0.85rem;
 }
+
+.root-registry-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1rem;
+  font-size: 0.85rem;
+  color: var(--mo-text-muted);
+}
+
+.root-registry-context-bar__root {
+  color: var(--mo-text);
+  font-weight: var(--mo-font-weight-bold);
+}
+
+.root-registry-context-bar__trail {
+  color: var(--mo-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.root-registry-context-bar__counts {
+  font-size: var(--mo-font-size-xs);
+}

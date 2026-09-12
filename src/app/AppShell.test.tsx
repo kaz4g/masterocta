@@ -28,6 +28,18 @@ describe('AppShell', () => {
     expect(screen.getByText('Inspector content')).toBeInTheDocument()
   })
 
+  it('renders an optional context bar above the workspace regions', () => {
+    render(
+      <AppShell
+        contextBar={<div>Context summary</div>}
+        sources={<div>Sources content</div>}
+        main={<div>Main content</div>}
+      />,
+    )
+
+    expect(screen.getByTestId('app-shell-context')).toHaveTextContent('Context summary')
+  })
+
   it('renders the Change Drawer below the workspace regions', () => {
     render(
       <AppShell

@@ -32,6 +32,7 @@ import { InspectorPane } from "../inspector";
 import {
   CatalogLibraryBrowser,
   type CatalogAssetSelection,
+  type CatalogBrowseContext,
 } from "../library/CatalogLibraryBrowser";
 import { ManualAssetMetadataEditor } from "../metadata/ManualAssetMetadataEditor";
 import { SourcesPane } from "../sources";
@@ -99,6 +100,7 @@ export function RootRegistryPanel({
   const [renameModalAsset, setRenameModalAsset] = useState<CatalogAssetSelection | null>(null);
   const [cloneVerification, setCloneVerification] = useState<CloneVerification | null>(null);
   const [sourceEvidenceId, setSourceEvidenceId] = useState<string | null>(null);
+  const [browseContext, setBrowseContext] = useState<CatalogBrowseContext | null>(null);
 
   async function refreshCloneVerification(rootId: string) {
     try {
@@ -140,6 +142,7 @@ export function RootRegistryPanel({
       setSession(registered);
       setLibrary(snapshot);
       setSelectedAsset(null);
+      setBrowseContext(null);
       setChangeBusy(false);
       try {
         setRecovery(await changeClient.recoveryStatus(registered.rootId));
@@ -157,6 +160,7 @@ export function RootRegistryPanel({
       setSession(null);
       setLibrary(null);
       setSelectedAsset(null);
+      setBrowseContext(null);
       setRecovery(null);
       setRenameRecovery(null);
       setCloneVerification(null);
@@ -177,6 +181,7 @@ export function RootRegistryPanel({
       setSession(null);
       setLibrary(null);
       setSelectedAsset(null);
+      setBrowseContext(null);
       setRecovery(null);
       setRenameRecovery(null);
       setRenameModalOpen(false);
@@ -407,9 +412,32 @@ export function RootRegistryPanel({
     setRenameModalOpen(true);
   }
 
+  const contextBar = catalogReady && session !== null ? (
+    <div className="root-registry-context-bar" aria-label="Library context">
+      <span className="root-registry-context-bar__root">{session.displayName}</span>
+      <span className="root-registry-context-bar__mode">
+        {writeEnabled ? "Edit enabled" : "Read only"}
+      </span>
+      {browseContext !== null && (
+        <>
+          <span className="root-registry-context-bar__trail">
+            {browseContext.sourceLabel} › {browseContext.locationLabel}
+          </span>
+          <span className="root-registry-context-bar__counts">
+            {browseContext.hasSearch
+              ? `${browseContext.matchingCount} matching`
+              : `${browseContext.locationCount} samples`}
+            {" · this location"}
+          </span>
+        </>
+      )}
+    </div>
+  ) : undefined;
+
   return (
     <>
       <AppShell
+      contextBar={contextBar}
       sources={
         <SourcesPane
           session={session}
@@ -446,6 +474,7 @@ export function RootRegistryPanel({
             metadataClient={metadataClient}
             inspectorPlacement="shell"
             onSelectedAssetChange={setSelectedAsset}
+            onBrowseContextChange={setBrowseContext}
           />
         ) : (
           <p className="root-registry-main-empty">
