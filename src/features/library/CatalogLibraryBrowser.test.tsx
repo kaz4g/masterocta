@@ -85,7 +85,7 @@ describe("CatalogLibraryBrowser", () => {
     expect(screen.getByLabelText("Audio files")).toHaveTextContent("STANDALONE.wav");
   });
 
-  it("orders root-relative paths deterministically without locale collation", () => {
+  it("orders files by display name when paths would sort differently", () => {
     const { container } = render(
       <CatalogLibraryBrowser
         rootId="root-opaque"
@@ -94,15 +94,15 @@ describe("CatalogLibraryBrowser", () => {
           audioFiles: [
             {
               ...snapshot.audioFiles[0],
-              fileInstanceId: "fileinst:v1:lower",
-              displayName: "a.wav",
-              relativePath: "LIVE_SET/AUDIO/a.wav",
+              fileInstanceId: "fileinst:v1:shallow",
+              displayName: "beta.wav",
+              relativePath: "LIVE_SET/AUDIO/beta.wav",
             },
             {
               ...snapshot.audioFiles[0],
-              fileInstanceId: "fileinst:v1:upper",
-              displayName: "Z.wav",
-              relativePath: "LIVE_SET/AUDIO/Z.wav",
+              fileInstanceId: "fileinst:v1:deep",
+              displayName: "alpha.wav",
+              relativePath: "LIVE_SET/omega/alpha.wav",
             },
           ],
         }}
@@ -112,7 +112,7 @@ describe("CatalogLibraryBrowser", () => {
     expect(
       Array.from(container.querySelectorAll(".catalog-library-file strong"))
         .map((element) => element.textContent),
-    ).toEqual(["Z.wav", "a.wav"]);
+    ).toEqual(["alpha.wav", "beta.wav"]);
   });
 
   it("reports an empty catalog explicitly", () => {
@@ -210,6 +210,50 @@ describe("CatalogLibraryBrowser", () => {
       640,
     );
     expect(screen.getByLabelText("Asset inspector")).not.toHaveTextContent("sha256:");
+  });
+
+  it("steps pagination from the clamped page after the snapshot shrinks", () => {
+    const largeSnapshot = (count: number) => ({
+      ...snapshot,
+      audioFiles: Array.from({ length: count }, (_, index) => {
+        const label = `sample-${String(index).padStart(3, "0")}.wav`;
+        return {
+          fileInstanceId: `fileinst:v1:${index}`,
+          assetId: `asset:v1:${index}`,
+          displayName: label,
+          relativePath: `LIVE_SET/AUDIO/${label}`,
+          byteSize: index,
+          storageScope: "set_audio_pool" as const,
+        };
+      }),
+    });
+
+    const { rerender } = render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={largeSnapshot(201)}
+        inspectorPlacement="shell"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sample-200\.wav/ })).toBeInTheDocument();
+
+    rerender(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={largeSnapshot(101)}
+        inspectorPlacement="shell"
+      />,
+    );
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sample-100\.wav/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sample-000\.wav/ })).toBeInTheDocument();
   });
 
   it("filters, paginates, and keeps selection when the file stays in the location", () => {

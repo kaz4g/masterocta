@@ -21,8 +21,12 @@ export interface CatalogFileQueryResult {
 }
 
 function compareByName(left: LibraryAudioFile, right: LibraryAudioFile): number {
+  if (left.displayName < right.displayName) return -1;
+  if (left.displayName > right.displayName) return 1;
   if (left.relativePath < right.relativePath) return -1;
   if (left.relativePath > right.relativePath) return 1;
+  if (left.fileInstanceId < right.fileInstanceId) return -1;
+  if (left.fileInstanceId > right.fileInstanceId) return 1;
   return 0;
 }
 

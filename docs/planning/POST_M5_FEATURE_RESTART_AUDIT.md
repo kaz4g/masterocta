@@ -32,17 +32,18 @@ RC8 再ビルド・redispatch、公開配布は行わない。
 - 一部 clone ではローカル `origin/main` が古い RC8 source SHA のまま残る。**GitHub main（`456db35`）を正とする。**
 - `git fetch origin main` が broken ref で失敗する環境では、対象 SHA を `gh api` または immutable ref fetch で取得する。
 
-### 2.2 正本のギャップ（実装前に解消推奨）
+### 2.2 正本のギャップ（後続 docs 整理）
 
-GitHub main（`456db35`）には次が **未収録**（ローカル dirty tree にのみ存在しうる）:
+GitHub main（`456db35`）には次が **未収録**（ローカル tree にのみ存在しうる）:
 
 - `docs/OCTATRACK_PERFORMANCE_SYSTEM.md`（M6+ 製品・milestone 正本）
 - `docs/planning/MILESTONE_INDEX.md`
 - `docs/planning/ADR_INDEX.md`
 
 `docs/NEXT_GENERATION_ARCHITECTURE.md`（main）は旧 M6 Portable / M7 Slice 番号のまま。
-Post-M5 の製品順（Library → Waveform v2 → …）を repo 正本として固定するには、
-上記 docs を **別 docs-only PR** で main に載せることを、最初の機能 PR のブロッカー扱いとする。
+Post-M5 の製品順を repo 正本として揃える作業は **別 docs-only PR** で後続とし、
+**layout 等の機能 PR のブロッカーにはしない。** 機能側は `NEXT_GENERATION_ARCHITECTURE.md`、
+`CODEX_HANDOFF.md`、本 audit の承認範囲と Gate C 安全境界の上で実装する。
 
 **本 layout PR では上記 Performance System 系 docs は持ち込まない。**
 

@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { LibraryAudioFile } from "../../api";
 import { CATALOG_PAGE_SIZE, queryCatalogFiles } from "./catalogFileQuery";
 
-function file(id: string, path: string, byteSize: number): LibraryAudioFile {
+function file(
+  id: string,
+  path: string,
+  byteSize: number,
+  displayName?: string,
+): LibraryAudioFile {
   return {
     fileInstanceId: id,
     assetId: `asset:${id}`,
-    displayName: path.split("/").pop() ?? path,
+    displayName: displayName ?? path.split("/").pop() ?? path,
     relativePath: path,
     byteSize,
     storageScope: "set_audio_pool",
@@ -30,7 +35,16 @@ describe("queryCatalogFiles", () => {
     expect(page1.page).toBe(1);
   });
 
-  it("sorts by size descending and keeps path tie-breaker", () => {
+  it("sorts by display name when folder paths would order differently", () => {
+    const files = [
+      file("b", "LIVE_SET/AUDIO/beta.wav", 1),
+      file("a", "LIVE_SET/omega/alpha.wav", 2, "alpha.wav"),
+    ];
+    const result = queryCatalogFiles({ files, search: "", sort: "name", page: 0 });
+    expect(result.visible.map((entry) => entry.displayName)).toEqual(["alpha.wav", "beta.wav"]);
+  });
+
+  it("sorts by size descending and keeps name tie-breaker", () => {
     const files = [
       file("a", "LIVE_SET/AUDIO/a.wav", 100),
       file("b", "LIVE_SET/AUDIO/b.wav", 500),

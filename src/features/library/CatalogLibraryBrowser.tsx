@@ -191,6 +191,10 @@ export function CatalogLibraryBrowser({
   }, [selectedLocation?.key, selectedSource?.key, search, sort]);
 
   useEffect(() => {
+    setPage((current) => (current === fileQuery.page ? current : fileQuery.page));
+  }, [fileQuery.page]);
+
+  useEffect(() => {
     if (
       selectedFileInstanceId !== null
       && !locationFiles.some((file) => file.fileInstanceId === selectedFileInstanceId)
@@ -318,7 +322,7 @@ export function CatalogLibraryBrowser({
             <Button
               variant="secondary"
               disabled={fileQuery.page <= 0}
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
+              onClick={() => setPage(Math.max(0, fileQuery.page - 1))}
             >
               Previous
             </Button>
@@ -328,7 +332,7 @@ export function CatalogLibraryBrowser({
             <Button
               variant="secondary"
               disabled={fileQuery.page >= fileQuery.lastPage}
-              onClick={() => setPage((current) => current + 1)}
+              onClick={() => setPage(fileQuery.page + 1)}
             >
               Next
             </Button>
