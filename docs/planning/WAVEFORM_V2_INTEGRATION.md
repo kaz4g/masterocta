@@ -290,11 +290,18 @@ Inspector で選択中サンプルについて、**フレーム address 可能�
 
 ## 13. 未確定点
 
-### 13.1 実装 PR 前に決める
+### 13.1 MO-M7-WAVEFORM-V2-LIBRARY-QUERY-1 で確定（実装済み）
 
-- v2 cache ファイル名に **content hash のみ** か **descriptor-relative** か（#104 知見）。
-- `endFrame` vs `endFrameExclusive` の IPC 名称統一（Slice DTO は `end_frame` — Library v2 は exclusive を明示推奨）。
-- 第一 PR で `targetPoints` を Inspector 幅から自動計算するか **固定 640** から開始するか。
+| 項目 | 決定 |
+| --- | --- |
+| v2 cache key | **`waveform-v2-{content-hash-hex}.json`**（v1 と同 digest、名前空間のみ分離）。descriptor-relative は **未採用** |
+| Library range IPC | **`startFrame` / `endFrameExclusive`**（decimal u64 string）。Slice DTO は変更しない |
+| Inspector `targetPoints` | **固定 640**（`WaveformPreview`）。幅連動は後続 |
+| Backend | `v2_audio_waveform_query` + `ot-audio` `waveform:v2` full-file per-channel pyramid cache |
+| Preview | **v1 先頭 60s** のまま（ranged preview は PR-2） |
+| キャンセル | Library 専用 generation（**spawn 前** `fetch_add`）+ frontend request id |
+
+**未実装（本 PR 外）:** ranged preview token、WFM2、zoom / Canvas、descriptor-relative cache。
 
 ### 13.2 後続でよい
 

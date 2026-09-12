@@ -24,7 +24,7 @@ use ot_application::{
     ListLibrary, LoadLibrarySnapshot, LoadManualAssetMetadata, ReplaceManualAssetMetadata,
     StoreLibrarySnapshot,
 };
-use ot_audio::AudioError;
+use ot_audio::{AudioError, WAVEFORM_V2_ANALYZER_VERSION};
 use ot_domain::{
     ContentHash, FileInstance, InvalidManualMetadata, LibraryProject, LibrarySet, LibrarySnapshot,
     ManualAssetMetadata, ManualNote, ManualTag, RenameSampleIntent, RootId, RootRelativePath,
@@ -626,6 +626,39 @@ pub struct AudioWaveformDto {
     peaks: Vec<WaveformPeakDto>,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioFrameRangeDto {
+    start_frame: String,
+    end_frame_exclusive: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioWaveformQueryDto {
+    range: Option<AudioFrameRangeDto>,
+    target_points: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioWaveformWindowDto {
+    analyzer_version: &'static str,
+    sample_rate: u32,
+    channels: u16,
+    frame_count: String,
+    range: AudioFrameRangeResponseDto,
+    frames_per_peak: String,
+    channel_peaks: Vec<Vec<WaveformPeakDto>>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioFrameRangeResponseDto {
+    start_frame: String,
+    end_frame_exclusive: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioPreviewTokenDto {
@@ -635,6 +668,68 @@ pub struct AudioPreviewTokenDto {
     byte_length: usize,
     duration_millis: u64,
     truncated: bool,
+}
+
+fn frame_count_string(value: u64) -> String {
+    value.to_string()
+}
+
+fn get_audio_waveform_query_sync(
+    registry: &RootRegistry,
+    catalog: &SharedCatalog,
+    audio: &SharedAudioRuntime,
+    root_id: &RootId,
+    asset_id: &str,
+    epoch: u64,
+    query: AudioWaveformQueryDto,
+) -> Result<AudioWaveformWindowDto, ApiError> {
+    let target_points = usize::try_from(query.target_points).map_err(|_| {
+        ApiError::new(
+            "INVALID_AUDIO_REQUEST",
+            "target points are outside the supported range",
+            true,
+        )
+    })?;
+    let ipc_range = query.range.as_ref().map(|range| {
+        (
+            range.start_frame.as_str(),
+            range.end_frame_exclusive.as_str(),
+        )
+    });
+    let window = with_live_audio_source(registry, catalog, root_id, asset_id, |source| {
+        audio.waveform_query(
+            epoch,
+            asset_id,
+            &source.content_hash,
+            &source.absolute_path,
+            ipc_range,
+            target_points,
+        )
+    })?;
+    Ok(AudioWaveformWindowDto {
+        analyzer_version: WAVEFORM_V2_ANALYZER_VERSION,
+        sample_rate: window.sample_rate,
+        channels: window.channels,
+        frame_count: frame_count_string(window.frame_count),
+        range: AudioFrameRangeResponseDto {
+            start_frame: frame_count_string(window.range.start),
+            end_frame_exclusive: frame_count_string(window.range.end_exclusive),
+        },
+        frames_per_peak: frame_count_string(window.frames_per_peak),
+        channel_peaks: window
+            .channel_peaks
+            .into_iter()
+            .map(|channel| {
+                channel
+                    .into_iter()
+                    .map(|peak| WaveformPeakDto {
+                        min: peak.min,
+                        max: peak.max,
+                    })
+                    .collect()
+            })
+            .collect(),
+    })
 }
 
 fn get_audio_waveform_sync(
@@ -4349,6 +4444,29 @@ pub async fn v2_audio_waveform_get(
 }
 
 #[tauri::command]
+pub async fn v2_audio_waveform_query(
+    root_id: String,
+    asset_id: String,
+    query: AudioWaveformQueryDto,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    audio: State<'_, SharedAudioRuntime>,
+) -> Result<AudioWaveformWindowDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let audio = Arc::clone(audio.inner());
+    let epoch = audio.begin_waveform_query();
+    tauri::async_runtime::spawn_blocking(move || {
+        get_audio_waveform_query_sync(
+            &registry, &catalog, &audio, &root_id, &asset_id, epoch, query,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
 pub async fn v2_audio_preview_create(
     root_id: String,
     asset_id: String,
@@ -6704,6 +6822,137 @@ mod tests {
         assert!(!response_json.contains(&asset_id));
         assert!(!response_json.contains(root.path().to_str().unwrap()));
         assert!(!ticket.preview_token.contains("kick"));
+    }
+
+    #[test]
+    fn waveform_query_api_round_trip_without_exposing_paths_or_hashes() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        let audio_path = root.path().join("SET_A/AUDIO/kick.wav");
+        write_test_wav(&audio_path);
+        let registry = registry();
+        let data_directory = TempDir::new().unwrap();
+        let catalog = open_shared_catalog(data_directory.path()).unwrap();
+        let audio = open_shared_audio_runtime(data_directory.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset_id = snapshot.audio_files[0].asset_id.clone();
+        let epoch = audio.begin_waveform_query();
+
+        let window = get_audio_waveform_query_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            epoch,
+            AudioWaveformQueryDto {
+                range: None,
+                target_points: 128,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(window.analyzer_version, "waveform:v2");
+        assert_eq!(window.sample_rate, 8_000);
+        assert_eq!(window.channels, 1);
+        assert_eq!(window.frame_count, "4000");
+        assert_eq!(window.range.start_frame, "0");
+        assert_eq!(window.range.end_frame_exclusive, "4000");
+        assert_eq!(window.channel_peaks.len(), 1);
+        assert_eq!(window.channel_peaks[0].len(), 128);
+
+        let json = serde_json::to_string(&window).unwrap();
+        assert!(!json.contains("sha256:"));
+        assert!(!json.contains(root.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn waveform_query_rejects_superseded_generation_before_completion() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        let audio_path = root.path().join("SET_A/AUDIO/kick.wav");
+        write_test_wav(&audio_path);
+        let registry = registry();
+        let data_directory = TempDir::new().unwrap();
+        let catalog = open_shared_catalog(data_directory.path()).unwrap();
+        let audio = open_shared_audio_runtime(data_directory.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset_id = snapshot.audio_files[0].asset_id.clone();
+        let stale_epoch = audio.begin_waveform_query();
+        let _current_epoch = audio.begin_waveform_query();
+
+        let error = get_audio_waveform_query_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            stale_epoch,
+            AudioWaveformQueryDto {
+                range: None,
+                target_points: 128,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "AUDIO_REQUEST_CANCELLED");
+    }
+
+    #[test]
+    fn waveform_query_api_requires_live_root_authority() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        write_test_wav(&root.path().join("SET_A/AUDIO/kick.wav"));
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let audio = open_shared_audio_runtime(data_directory.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset_id = snapshot.audio_files[0].asset_id.clone();
+        registry.close(&root_id).unwrap();
+        let epoch = audio.begin_waveform_query();
+
+        let error = get_audio_waveform_query_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            epoch,
+            AudioWaveformQueryDto {
+                range: None,
+                target_points: 128,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "ROOT_NOT_APPROVED");
+    }
+
+    #[test]
+    fn waveform_query_frame_strings_round_trip_for_large_decimals() {
+        let dto = AudioFrameRangeDto {
+            start_frame: "9007199254740993".into(),
+            end_frame_exclusive: "18446744073709551615".into(),
+        };
+        let json = serde_json::to_string(&dto).unwrap();
+        let restored: AudioFrameRangeDto = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.start_frame, "9007199254740993");
+        assert_eq!(restored.end_frame_exclusive, "18446744073709551615");
     }
 
     #[test]

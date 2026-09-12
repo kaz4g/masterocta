@@ -1417,6 +1417,7 @@ pub fn run() {
             v2_api::v2_audio_preview_region_create,
             v2_api::v2_audio_preview_region_read,
             v2_api::v2_audio_waveform_get,
+            v2_api::v2_audio_waveform_query,
             v2_api::v2_audio_preview_create,
             v2_api::v2_audio_preview_read,
             v2_api::v2_change_plan,

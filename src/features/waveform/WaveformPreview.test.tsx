@@ -1,24 +1,31 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AudioApi, AudioWaveform } from "../../api";
-import { WaveformPreview, waveformPath } from "./WaveformPreview";
+import type { AudioApi, AudioWaveformWindow } from "../../api";
+import { WaveformPreview, waveformChannelPath, waveformPath } from "./WaveformPreview";
 
-const waveform: AudioWaveform = {
-  analyzerVersion: "waveform:v1",
+const waveformWindow: AudioWaveformWindow = {
+  analyzerVersion: "waveform:v2",
   sampleRate: 44100,
   channels: 2,
-  frameCount: 44100,
-  durationSeconds: 1,
-  samplesPerPeak: 256,
-  peaks: [
-    { min: -0.5, max: 0.75 },
-    { min: -1, max: 1 },
+  frameCount: "44100",
+  range: { startFrame: "0", endFrameExclusive: "44100" },
+  framesPerPeak: "256",
+  channelPeaks: [
+    [
+      { min: -0.5, max: 0.75 },
+      { min: -1, max: 1 },
+    ],
+    [
+      { min: -0.25, max: 0.5 },
+      { min: -0.5, max: 0.5 },
+    ],
   ],
 };
 
-function api(): AudioApi {
+function api(overrides: Partial<AudioApi> = {}): AudioApi {
   return {
-    getWaveform: vi.fn().mockResolvedValue(waveform),
+    getWaveform: vi.fn(),
+    queryWaveform: vi.fn().mockResolvedValue(waveformWindow),
     createPreviewToken: vi.fn().mockResolvedValue({
       previewToken: "preview:v1:opaque",
       expiresInSeconds: 120,
@@ -28,6 +35,7 @@ function api(): AudioApi {
       truncated: false,
     }),
     readPreview: vi.fn().mockResolvedValue(new Uint8Array([82, 73, 70, 70]).buffer),
+    ...overrides,
   };
 }
 
@@ -43,7 +51,7 @@ describe("WaveformPreview", () => {
     vi.unstubAllGlobals();
   });
 
-  it("loads waveform peaks with opaque IDs", async () => {
+  it("loads v2 waveform peaks with opaque IDs", async () => {
     const client = api();
     render(
       <WaveformPreview
@@ -55,10 +63,10 @@ describe("WaveformPreview", () => {
     );
 
     expect(await screen.findByRole("img", { name: "Audio waveform" })).toBeInTheDocument();
-    expect(client.getWaveform).toHaveBeenCalledWith(
+    expect(client.queryWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:opaque",
-      640,
+      { range: null, targetPoints: 640 },
     );
     expect(screen.getByText("0:01")).toBeInTheDocument();
   });
@@ -91,8 +99,9 @@ describe("WaveformPreview", () => {
   });
 
   it("reports waveform failure without creating a preview token", async () => {
-    const client = api();
-    vi.mocked(client.getWaveform).mockRejectedValue(new Error("source changed"));
+    const client = api({
+      queryWaveform: vi.fn().mockRejectedValue(new Error("source changed")),
+    });
     render(
       <WaveformPreview
         api={client}
@@ -104,6 +113,45 @@ describe("WaveformPreview", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("source changed");
     expect(client.createPreviewToken).not.toHaveBeenCalled();
+  });
+
+  it("discards stale waveform results after a fast asset switch", async () => {
+    const client = api();
+    let resolveFirst: ((value: AudioWaveformWindow) => void) | undefined;
+    vi.mocked(client.queryWaveform)
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({
+        ...waveformWindow,
+        frameCount: "88200",
+      });
+
+    const view = render(
+      <WaveformPreview
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:first"
+        displayName="first.wav"
+      />,
+    );
+
+    view.rerender(
+      <WaveformPreview
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:second"
+        displayName="second.wav"
+      />,
+    );
+
+    expect(await screen.findByText("0:02")).toBeInTheDocument();
+    resolveFirst?.(waveformWindow);
+    await Promise.resolve();
+    expect(screen.getByText("0:02")).toBeInTheDocument();
+    expect(screen.queryByText("0:01")).not.toBeInTheDocument();
   });
 
   it("rejects preview bytes that do not match the bounded token response", async () => {
@@ -158,11 +206,17 @@ describe("WaveformPreview", () => {
   });
 
   it("clamps untrusted peak values when building the SVG path", () => {
-    const path = waveformPath({
-      ...waveform,
-      peaks: [{ min: -5, max: 5 }],
-    });
+    const path = waveformChannelPath(
+      [{ min: -5, max: 5 }],
+      1,
+    );
 
     expect(path).toBe("M320.00 0.00V140.00");
+  });
+
+  it("derives the legacy helper path from the first channel", () => {
+    const path = waveformPath(waveformWindow);
+    expect(path).toContain("M");
+    expect(path).toBe(waveformChannelPath(waveformWindow.channelPeaks[0], 2));
   });
 });

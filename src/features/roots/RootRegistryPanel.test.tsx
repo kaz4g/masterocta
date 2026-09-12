@@ -171,11 +171,15 @@ describe("RootRegistryPanel", () => {
   it("loads shell Inspector waveform and metadata for the selected asset", async () => {
     const api = fakeApi();
     const audioClient: AudioApi = {
-      getWaveform: vi.fn().mockResolvedValue({
-        durationSeconds: 1,
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
         sampleRate: 44100,
         channels: 1,
-        peaks: [{ min: -0.2, max: 0.4 }],
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.2, max: 0.4 }]],
       }),
       createPreviewToken: vi.fn(),
       readPreview: vi.fn(),
@@ -215,10 +219,10 @@ describe("RootRegistryPanel", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Usage graph")).toBeInTheDocument();
     expect(screen.getByLabelText("Usage summary")).toHaveTextContent("1 used");
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    expect(audioClient.queryWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:opaque",
-      640,
+      { range: null, targetPoints: 640 },
     );
     expect(metadataClient.loadManualAssetMetadata).toHaveBeenCalledWith(
       "root-opaque",
@@ -323,11 +327,15 @@ describe("RootRegistryPanel", () => {
     const api = fakeApi();
     const changeClient = fakeChangeApi();
     const audioClient: AudioApi = {
-      getWaveform: vi.fn().mockResolvedValue({
-        durationSeconds: 1,
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
         sampleRate: 44100,
         channels: 1,
-        peaks: [{ min: -0.2, max: 0.4 }],
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.2, max: 0.4 }]],
       }),
       createPreviewToken: vi.fn(),
       readPreview: vi.fn(),
@@ -369,11 +377,15 @@ describe("RootRegistryPanel", () => {
     const api = fakeApi();
     const renameClient = fakeRenameApi();
     const audioClient: AudioApi = {
-      getWaveform: vi.fn().mockResolvedValue({
-        durationSeconds: 1,
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
         sampleRate: 44100,
         channels: 1,
-        peaks: [{ min: -0.2, max: 0.4 }],
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.2, max: 0.4 }]],
       }),
       createPreviewToken: vi.fn(),
       readPreview: vi.fn(),

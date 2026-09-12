@@ -1,4 +1,6 @@
-use ot_audio::{create_preview, AudioError, WaveformCache, WaveformSlice};
+use ot_audio::{
+    create_preview, AudioError, WaveformCache, WaveformCacheV2, WaveformQueryResult, WaveformSlice,
+};
 use ot_domain::{ContentHash, RootId};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -37,8 +39,10 @@ struct PreviewState {
 
 pub struct AudioRuntime {
     waveform_cache: WaveformCache,
+    waveform_cache_v2: WaveformCacheV2,
     previews: Mutex<PreviewState>,
     preview_generation: Mutex<()>,
+    waveform_query_epoch: AtomicU64,
     preview_ttl: Duration,
     nonce: [u8; 32],
     next_token: AtomicU64,
@@ -58,14 +62,18 @@ impl AudioRuntime {
             .map_err(|error| runtime_io("resolve product data directory", error))?;
         let waveform_directory = canonical_product_directory.join(WAVEFORM_CACHE_DIRECTORY);
         let waveform_cache =
-            WaveformCache::open(waveform_directory).map_err(AudioRuntimeError::Audio)?;
+            WaveformCache::open(waveform_directory.clone()).map_err(AudioRuntimeError::Audio)?;
+        let waveform_cache_v2 =
+            WaveformCacheV2::open(waveform_directory).map_err(AudioRuntimeError::Audio)?;
         let mut nonce = [0_u8; 32];
         getrandom::fill(&mut nonce)
             .map_err(|error| AudioRuntimeError::Entropy(error.to_string()))?;
         Ok(Self {
             waveform_cache,
+            waveform_cache_v2,
             previews: Mutex::new(PreviewState::default()),
             preview_generation: Mutex::new(()),
+            waveform_query_epoch: AtomicU64::new(0),
             preview_ttl,
             nonce,
             next_token: AtomicU64::new(1),
@@ -82,6 +90,35 @@ impl AudioRuntime {
         self.waveform_cache
             .waveform(asset_id, expected_hash, source_path, target_points)
             .map_err(AudioRuntimeError::Audio)
+    }
+
+    pub fn begin_waveform_query(&self) -> u64 {
+        self.waveform_query_epoch.fetch_add(1, Ordering::SeqCst) + 1
+    }
+
+    fn assert_waveform_query_epoch(&self, epoch: u64) -> Result<(), AudioRuntimeError> {
+        if self.waveform_query_epoch.load(Ordering::SeqCst) != epoch {
+            return Err(AudioRuntimeError::RequestCancelled);
+        }
+        Ok(())
+    }
+
+    pub fn waveform_query(
+        &self,
+        epoch: u64,
+        asset_id: &str,
+        expected_hash: &ContentHash,
+        source_path: &Path,
+        range: Option<(&str, &str)>,
+        target_points: usize,
+    ) -> Result<WaveformQueryResult, AudioRuntimeError> {
+        self.assert_waveform_query_epoch(epoch)?;
+        let result = self
+            .waveform_cache_v2
+            .query(asset_id, expected_hash, source_path, range, target_points)
+            .map_err(AudioRuntimeError::Audio)?;
+        self.assert_waveform_query_epoch(epoch)?;
+        Ok(result)
     }
 
     pub fn create_preview_token(
@@ -244,6 +281,7 @@ pub enum AudioRuntimeError {
     InvalidPreviewToken,
     ExpiredPreviewToken,
     Unavailable,
+    RequestCancelled,
 }
 
 impl AudioRuntimeError {
@@ -254,6 +292,7 @@ impl AudioRuntimeError {
             Self::Audio(error) => error.code(),
             Self::InvalidPreviewToken => "PREVIEW_TOKEN_INVALID",
             Self::ExpiredPreviewToken => "PREVIEW_TOKEN_EXPIRED",
+            Self::RequestCancelled => "AUDIO_REQUEST_CANCELLED",
         }
     }
 
@@ -262,6 +301,7 @@ impl AudioRuntimeError {
             Self::UnsafePath(_) | Self::Entropy(_) | Self::Unavailable => false,
             Self::Audio(error) => error.recoverable(),
             Self::Io { .. } | Self::InvalidPreviewToken | Self::ExpiredPreviewToken => true,
+            Self::RequestCancelled => true,
         }
     }
 }
@@ -283,6 +323,9 @@ impl std::fmt::Display for AudioRuntimeError {
             Self::InvalidPreviewToken => formatter.write_str("preview token is invalid or expired"),
             Self::ExpiredPreviewToken => formatter.write_str("preview token has expired"),
             Self::Unavailable => formatter.write_str("audio runtime is unavailable"),
+            Self::RequestCancelled => {
+                formatter.write_str("a newer waveform query superseded this request")
+            }
         }
     }
 }

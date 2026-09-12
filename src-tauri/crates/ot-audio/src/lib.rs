@@ -19,12 +19,16 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
+pub mod waveform_v2;
+
+pub use waveform_v2::{WaveformCacheV2, WaveformQueryResult, WAVEFORM_V2_ANALYZER_VERSION};
+
 pub const WAVEFORM_ANALYZER_VERSION: &str = "waveform:v1";
 pub const MIN_TARGET_POINTS: usize = 32;
 pub const MAX_TARGET_POINTS: usize = 4096;
 const BASE_SAMPLES_PER_PEAK: u64 = 256;
 const LEVEL_SCALE: usize = 4;
-const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_CACHE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_PREVIEW_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PREVIEW_SECONDS: u64 = 60;
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(1);
@@ -346,14 +350,16 @@ fn analyze(source: File, source_path: &Path, asset_id: &str) -> Result<CachedWav
     })
 }
 
-struct DecoderState {
+pub(crate) struct DecoderState {
     format: Box<dyn symphonia::core::formats::FormatReader>,
     decoder: Box<dyn symphonia::core::codecs::Decoder>,
     track_id: u32,
 }
 
 impl DecoderState {
-    fn next_packet(&mut self) -> Result<Option<symphonia::core::formats::Packet>, AudioError> {
+    pub(crate) fn next_packet(
+        &mut self,
+    ) -> Result<Option<symphonia::core::formats::Packet>, AudioError> {
         loop {
             match self.format.next_packet() {
                 Ok(packet) if packet.track_id() == self.track_id => return Ok(Some(packet)),
@@ -369,7 +375,7 @@ impl DecoderState {
     }
 }
 
-fn open_decoder(file: File, path: &Path) -> Result<DecoderState, AudioError> {
+pub(crate) fn open_decoder(file: File, path: &Path) -> Result<DecoderState, AudioError> {
     let stream = MediaSourceStream::new(Box::new(file), Default::default());
     open_decoder_stream(stream, path)
 }
@@ -586,7 +592,10 @@ fn write_cache(path: &Path, cached: &CachedWaveform) -> Result<(), AudioError> {
     Ok(())
 }
 
-fn open_verified_source(path: &Path, expected_hash: &ContentHash) -> Result<File, AudioError> {
+pub(crate) fn open_verified_source(
+    path: &Path,
+    expected_hash: &ContentHash,
+) -> Result<File, AudioError> {
     let metadata = fs::symlink_metadata(path).map_err(source_io)?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(AudioError::SourceUnavailable(
@@ -648,7 +657,7 @@ fn encode_pcm_wav(pcm: &[u8], sample_rate: u32, channels: u16) -> Result<Vec<u8>
     Ok(bytes)
 }
 
-fn validate_asset_id<'a>(
+pub(crate) fn validate_asset_id<'a>(
     asset_id: &'a str,
     expected_hash: &ContentHash,
 ) -> Result<&'a str, AudioError> {
@@ -675,7 +684,7 @@ fn validate_asset_id<'a>(
     Ok(digest)
 }
 
-fn ensure_real_directory(path: &Path) -> Result<(), AudioError> {
+pub(crate) fn ensure_real_directory(path: &Path) -> Result<(), AudioError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
@@ -692,7 +701,7 @@ fn ensure_real_directory(path: &Path) -> Result<(), AudioError> {
     Ok(())
 }
 
-fn reject_unsafe_cache_entry(path: &Path) -> Result<(), AudioError> {
+pub(crate) fn reject_unsafe_cache_entry(path: &Path) -> Result<(), AudioError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => Err(
             AudioError::UnsafeCachePath("cache entry must be a regular file"),
