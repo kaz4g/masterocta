@@ -131,10 +131,10 @@ Must:
 
 | 項目 | 決定 |
 | --- | --- |
-| 現行 main / #121 merge SHA | `456db35f2423a3af8bf485e46c937f8ff0ef86c0` |
-| 最初に実装する 1 件 | **M6 Library Workspace layout**（#103 UI 部分の main 向け再実装） |
-| 次に続く候補 | M7 Waveform v2（#103 backend または #104 エンジンを u64 IPC で統合設計後）→ #105 AS-N01 以降 |
-| 調査文書 | 本ファイル |
+| 現行 main / #122 merge SHA | `bed38a46f1c8e644b4bfaae2d1aaac1a3f290eb6`（#121 `@456db35` の後続） |
+| M6 layout | **MERGED**（#122）。WF2 **未実装** |
+| 次に続く候補 | [WAVEFORM_V2_INTEGRATION.md](./WAVEFORM_V2_INTEGRATION.md) → Library `v2_audio_waveform_query` PR → ranged preview / WFM2 → #105 AS-N01 以降 |
+| 調査文書 | 本ファイル + Waveform v2 統合設計 |
 
 ## 11. Layout PR 実装記録（`MO-M6-LIBRARY-WORKSPACE-LAYOUT-1`）
 
@@ -144,6 +144,7 @@ Must:
 | Branch | `feat/m6-library-workspace-layout` |
 | 実装 | context bar、location 内 search/sort/100-page、`catalogFileQuery`、Inspector 比率（64/75）、Sources 初期幅 20% |
 | 未実装 | WF2 backend、`OperationsDialog`、#104/#105、Performance System docs |
+| 後続 | #122 merge 後 `MO-WAVEFORM-V2-INTEGRATION-DESIGN-1`（統合設計。layout 完了と WF2 未実装を分離） |
 | 検証 | typecheck、frontend tests、build、architecture/containment、rename E2E（drawer 経路）、合成 fixture の UI 受入 |
 | 文書 | §2.2 の調査記録と実装方針を分離。milestone docs は後続であり layout のブロッカーではない |
 | UI 受入 | 合成 fixture（絶対 path なし）。Vite `localhost:1420`、Playwright Chromium。1280px / 840px。Search/Sort は catalog 実幅に応じて折り返す。locale 非依存検索と page reset/clamp を分離 |

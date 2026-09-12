@@ -20,6 +20,9 @@ Current M5 status is **COMPLETE** (rename / reference-safe) on RC8. Gate C is
 `docs/testing/GATE_C_RC_LEDGER.md` §RC8. Do not rebuild or redispatch RC8. RC7
 Prepare STOP boundaries remain in
 `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`.
+Post-M5 Waveform v2 integration design:
+`docs/planning/WAVEFORM_V2_INTEGRATION.md` (M6 layout #122 merged; WF2 not yet
+implemented). Do not reopen closed PRs #103–#105.
 
 ## Non-negotiable data-safety rules
 
