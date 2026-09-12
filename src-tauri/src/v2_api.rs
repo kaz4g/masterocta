@@ -706,6 +706,7 @@ fn get_audio_waveform_query_sync(
             target_points,
         )
     })?;
+    registry.resolve(root_id)?;
     Ok(AudioWaveformWindowDto {
         analyzer_version: WAVEFORM_V2_ANALYZER_VERSION,
         sample_rate: window.sample_rate,
@@ -4141,8 +4142,10 @@ pub async fn v2_root_close(
     root_id: String,
     registry: State<'_, Arc<RootRegistry>>,
     clone_runtime: State<'_, SharedCloneRuntime>,
+    audio: State<'_, SharedAudioRuntime>,
 ) -> Result<(), ApiError> {
     let root_id = parse_root_id(root_id)?;
+    audio.invalidate_waveform_queries();
     clone_runtime.revoke_for_root(&root_id);
     registry.close(&root_id)?;
     Ok(())
@@ -6941,6 +6944,94 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.code, "ROOT_NOT_APPROVED");
+    }
+
+    #[test]
+    fn waveform_query_rejects_epoch_invalidated_when_root_is_closed() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        write_test_wav(&root.path().join("SET_A/AUDIO/kick.wav"));
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let audio = open_shared_audio_runtime(data_directory.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset_id = snapshot.audio_files[0].asset_id.clone();
+        let stale_epoch = audio.begin_waveform_query();
+        audio.invalidate_waveform_queries();
+
+        let error = get_audio_waveform_query_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            stale_epoch,
+            AudioWaveformQueryDto {
+                range: None,
+                target_points: 128,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "AUDIO_REQUEST_CANCELLED");
+
+        audio.invalidate_waveform_queries();
+        registry.close(&root_id).unwrap();
+        let error = get_audio_waveform_query_sync(
+            &registry,
+            &catalog,
+            &audio,
+            &root_id,
+            &asset_id,
+            audio.begin_waveform_query(),
+            AudioWaveformQueryDto {
+                range: None,
+                target_points: 128,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "ROOT_NOT_APPROVED");
+    }
+
+    #[test]
+    fn waveform_query_rerevalidates_root_before_returning_window() {
+        let root = TempDir::new().unwrap();
+        create_set_project(root.path(), "SET_A", "PROJECT_A");
+        write_test_wav(&root.path().join("SET_A/AUDIO/kick.wav"));
+        let registry = registry();
+        let (data_directory, catalog) = catalog();
+        let audio = open_shared_audio_runtime(data_directory.path()).unwrap();
+        let session =
+            register_root_sync(&registry, &catalog, root.path().to_str().unwrap()).unwrap();
+        let root_id = RootId::new(session.root_id).unwrap();
+        let clone_runtime = open_test_clone_runtime(data_directory.path());
+        install_fixture_clone_verification(&clone_runtime, &registry, &root_id);
+        let snapshot = list_library_dto_sync(&registry, &catalog, &root_id).unwrap();
+        let asset_id = snapshot.audio_files[0].asset_id.clone();
+        let epoch = audio.begin_waveform_query();
+        let sources = resolve_live_audio_sources(&registry, &catalog, &root_id, &asset_id).unwrap();
+        audio
+            .waveform_query(
+                epoch,
+                &asset_id,
+                &sources[0].content_hash,
+                &sources[0].absolute_path,
+                None,
+                128,
+            )
+            .unwrap();
+        registry.close(&root_id).unwrap();
+
+        assert_eq!(
+            registry.resolve(&root_id).unwrap_err(),
+            RootRegistryError::NotApproved
+        );
     }
 
     #[test]
