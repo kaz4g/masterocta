@@ -83,9 +83,10 @@
 
 .catalog-library-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   width: 100%;
+  min-width: 0;
   padding: var(--mo-space-2) var(--mo-space-3);
   border: 1px solid transparent;
   border-radius: var(--mo-radius-md);
@@ -94,6 +95,11 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.catalog-library-option > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .catalog-library-option:hover {
@@ -144,6 +150,11 @@
   display: grid;
   min-width: 0;
   gap: var(--mo-space-1);
+}
+
+.catalog-library-file strong {
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .catalog-library-file code {
@@ -222,6 +233,10 @@
 @media (max-width: 840px) {
   .catalog-library-layout,
   .catalog-library-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .catalog-library-search {
     grid-template-columns: 1fr;
   }
 

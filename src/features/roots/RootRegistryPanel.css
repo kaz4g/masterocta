@@ -34,6 +34,8 @@
 
 .root-registry-context-bar__trail {
   color: var(--mo-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .root-registry-context-bar__counts {

@@ -32,18 +32,21 @@ RC8 再ビルド・redispatch、公開配布は行わない。
 - 一部 clone ではローカル `origin/main` が古い RC8 source SHA のまま残る。**GitHub main（`456db35`）を正とする。**
 - `git fetch origin main` が broken ref で失敗する環境では、対象 SHA を `gh api` または immutable ref fetch で取得する。
 
-### 2.2 正本のギャップ（後続 docs 整理）
+### 2.2 正本のギャップ（調査時点の記録）
 
-GitHub main（`456db35`）には次が **未収録**（ローカル tree にのみ存在しうる）:
+**調査時点（`MO-POST-M5-FEATURE-RESTART-AUDIT-1`）:** GitHub main（`456db35`）には次が **未収録**:
 
 - `docs/OCTATRACK_PERFORMANCE_SYSTEM.md`（M6+ 製品・milestone 正本）
 - `docs/planning/MILESTONE_INDEX.md`
 - `docs/planning/ADR_INDEX.md`
 
 `docs/NEXT_GENERATION_ARCHITECTURE.md`（main）は旧 M6 Portable / M7 Slice 番号のまま。
-Post-M5 の製品順を repo 正本として揃える作業は **別 docs-only PR** で後続とし、
-**layout 等の機能 PR のブロッカーにはしない。** 機能側は `NEXT_GENERATION_ARCHITECTURE.md`、
-`CODEX_HANDOFF.md`、本 audit の承認範囲と Gate C 安全境界の上で実装する。
+
+**実装方針（`MO-M6-LIBRARY-WORKSPACE-LAYOUT-1` 以降）:** 今回の layout は
+`NEXT_GENERATION_ARCHITECTURE.md`、`CODEX_HANDOFF.md`、本 audit の承認済み範囲と
+既存 catalog API の上で実装する。未収録の Performance System / milestone 文書は
+**実装根拠にしない**。製品全体の milestone 文書整理は **後続の docs-only PR**。
+**最初の機能 PR のブロッカーではない。**
 
 **本 layout PR では上記 Performance System 系 docs は持ち込まない。**
 
@@ -141,7 +144,9 @@ Must:
 | Branch | `feat/m6-library-workspace-layout` |
 | 実装 | context bar、location 内 search/sort/100-page、`catalogFileQuery`、Inspector 比率（64/75）、Sources 初期幅 20% |
 | 未実装 | WF2 backend、`OperationsDialog`、#104/#105、Performance System docs |
-| 検証 | typecheck、frontend tests、build、architecture/containment、rename E2E（drawer 経路） |
+| 検証 | typecheck、frontend tests、build、architecture/containment、rename E2E（drawer 経路）、合成 fixture の UI 受入 |
+| 文書 | §2.2 の調査記録と実装方針を分離。milestone docs は後続であり layout のブロッカーではない |
+| UI 受入 | 合成 fixture（絶対 path なし）。Vite `localhost:1420`、Playwright Chromium。1280px / 840px |
 
 ---
 
