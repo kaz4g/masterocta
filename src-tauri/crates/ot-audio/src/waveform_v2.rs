@@ -193,7 +193,7 @@ fn select_range_peaks(
 
     let mut buckets = vec![vec![Vec::new(); target_points]; channel_count];
 
-    for (bucket, channel_rows) in buckets.iter_mut().enumerate().take(target_points) {
+    for bucket in 0..target_points {
         let bucket_start = range.start + range.len() * bucket as u64 / target_points as u64;
         let bucket_end = range.start + range.len() * (bucket as u64 + 1) / target_points as u64;
         if bucket_end <= bucket_start {
@@ -201,9 +201,10 @@ fn select_range_peaks(
         }
         let first_peak = bucket_start / samples_per_peak;
         let last_peak = bucket_end.saturating_sub(1) / samples_per_peak;
-        for (channel_buckets, peaks) in channel_rows.iter_mut().zip(base.channels.iter()) {
+        for (channel_row, peaks) in buckets.iter_mut().zip(base.channels.iter()) {
+            let bucket_peaks = &mut channel_row[bucket];
             for peak_index in first_peak..=last_peak.min(peaks.len().saturating_sub(1) as u64) {
-                channel_buckets.push(peaks[peak_index as usize]);
+                bucket_peaks.push(peaks[peak_index as usize]);
             }
         }
     }
