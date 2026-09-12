@@ -197,6 +197,7 @@ const expectedV2Commands = [
   "v2_audio_preview_region_create",
   "v2_audio_preview_region_read",
   "v2_audio_waveform_get",
+  "v2_audio_waveform_query",
   "v2_audio_waveform_range_get",
   "v2_change_apply",
   "v2_change_get_plan",

@@ -3,9 +3,11 @@ import {
   audioApi,
   type AudioApi,
   type AudioPreviewBytes,
-  type AudioWaveform,
+  type AudioWaveformWindow,
+  type WaveformPeak,
 } from "../../api";
 import { Button } from "../../design-system";
+import { durationSeconds } from "./frameMath";
 import "./WaveformPreview.css";
 
 const TARGET_POINTS = 640;
@@ -31,11 +33,11 @@ function toArrayBuffer(bytes: AudioPreviewBytes): ArrayBuffer {
   return bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer;
 }
 
-export function waveformPath(waveform: AudioWaveform): string {
-  if (waveform.peaks.length === 0) return "";
-  const xScale = VIEWBOX_WIDTH / waveform.peaks.length;
+export function waveformChannelPath(peaks: WaveformPeak[], pointCount: number): string {
+  if (peaks.length === 0) return "";
+  const xScale = VIEWBOX_WIDTH / pointCount;
   const center = VIEWBOX_HEIGHT / 2;
-  return waveform.peaks
+  return peaks
     .map((peak, index) => {
       const x = (index + 0.5) * xScale;
       const top = center - Math.max(-1, Math.min(1, peak.max)) * center;
@@ -43,6 +45,12 @@ export function waveformPath(waveform: AudioWaveform): string {
       return `M${x.toFixed(2)} ${top.toFixed(2)}V${bottom.toFixed(2)}`;
     })
     .join("");
+}
+
+/** @deprecated Use waveformChannelPath with v2 channel peaks. */
+export function waveformPath(window: AudioWaveformWindow): string {
+  const primary = window.channelPeaks[0] ?? [];
+  return waveformChannelPath(primary, primary.length);
 }
 
 function formatDuration(seconds: number): string {
@@ -58,28 +66,32 @@ export function WaveformPreview({
   displayName,
   api = audioApi,
 }: WaveformPreviewProps) {
-  const [waveform, setWaveform] = useState<AudioWaveform | null>(null);
+  const [waveform, setWaveform] = useState<AudioWaveformWindow | null>(null);
   const [waveformError, setWaveformError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
   const previewRequest = useRef(0);
+  const waveformRequest = useRef(0);
 
   useEffect(() => {
-    let active = true;
+    const request = waveformRequest.current + 1;
+    waveformRequest.current = request;
     setWaveform(null);
     setWaveformError(null);
-    api.getWaveform(rootId, assetId, TARGET_POINTS).then(
-      (nextWaveform) => {
-        if (active) setWaveform(nextWaveform);
-      },
-      (error) => {
-        if (active) setWaveformError(errorMessage(error));
-      },
-    );
+    api
+      .queryWaveform(rootId, assetId, { range: null, targetPoints: TARGET_POINTS })
+      .then(
+        (nextWaveform) => {
+          if (waveformRequest.current === request) setWaveform(nextWaveform);
+        },
+        (error) => {
+          if (waveformRequest.current === request) setWaveformError(errorMessage(error));
+        },
+      );
     return () => {
-      active = false;
+      waveformRequest.current += 1;
     };
   }, [api, assetId, rootId]);
 
@@ -98,7 +110,17 @@ export function WaveformPreview({
     setTruncated(false);
   }, [assetId, rootId]);
 
-  const path = useMemo(() => waveform === null ? "" : waveformPath(waveform), [waveform]);
+  const channelPaths = useMemo(() => {
+    if (waveform === null) return [];
+    return waveform.channelPeaks.map((channel) =>
+      waveformChannelPath(channel, channel.length),
+    );
+  }, [waveform]);
+
+  const durationLabel = useMemo(() => {
+    if (waveform === null) return null;
+    return formatDuration(durationSeconds(waveform.frameCount, waveform.sampleRate));
+  }, [waveform]);
 
   async function loadPreview() {
     const request = previewRequest.current + 1;
@@ -131,7 +153,7 @@ export function WaveformPreview({
     <section className="waveform-preview" aria-label={`Waveform preview for ${displayName}`}>
       <div className="waveform-preview-heading">
         <p>Waveform</p>
-        {waveform !== null && <span>{formatDuration(waveform.durationSeconds)}</span>}
+        {durationLabel !== null && <span>{durationLabel}</span>}
       </div>
 
       {waveform === null && waveformError === null && (
@@ -145,7 +167,9 @@ export function WaveformPreview({
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
         >
           <line x1="0" x2={VIEWBOX_WIDTH} y1={VIEWBOX_HEIGHT / 2} y2={VIEWBOX_HEIGHT / 2} />
-          <path d={path} />
+          {channelPaths.map((path, index) => (
+            <path d={path} key={`channel-${index}`} />
+          ))}
         </svg>
       )}
       {waveformError !== null && (

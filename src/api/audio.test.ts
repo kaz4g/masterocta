@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createAudioApi, type AudioPreviewToken, type AudioWaveform } from "./audio";
+import {
+  createAudioApi,
+  type AudioPreviewToken,
+  type AudioWaveform,
+  type AudioWaveformWindow,
+} from "./audio";
 import { createIpcClient, type IpcCommandArgs, type IpcTransport } from "./client";
 
 describe("audioApi", () => {
@@ -32,11 +37,31 @@ describe("audioApi", () => {
     };
     const api = createAudioApi(createIpcClient(transport));
 
+    const window: AudioWaveformWindow = {
+      analyzerVersion: "waveform:v2",
+      sampleRate: 44100,
+      channels: 1,
+      frameCount: "44100",
+      range: { startFrame: "0", endFrameExclusive: "44100" },
+      framesPerPeak: "256",
+      channelPeaks: [[{ min: -0.5, max: 0.5 }]],
+    };
+    responses.unshift(window);
+
+    await api.queryWaveform("root-opaque", "asset:v1:opaque", {
+      range: null,
+      targetPoints: 640,
+    });
     await api.getWaveform("root-opaque", "asset:v1:opaque", 640);
     await api.createPreviewToken("root-opaque", "asset:v1:opaque");
     await api.readPreview("root-opaque", "preview:v1:opaque");
 
     expect(calls).toEqual([
+      ["v2_audio_waveform_query", {
+        rootId: "root-opaque",
+        assetId: "asset:v1:opaque",
+        query: { range: null, targetPoints: 640 },
+      }],
       ["v2_audio_waveform_get", {
         rootId: "root-opaque",
         assetId: "asset:v1:opaque",

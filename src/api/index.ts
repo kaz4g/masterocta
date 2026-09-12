@@ -3,9 +3,12 @@ export type { IpcClient, IpcCommandArgs, IpcTransport } from "./client";
 export { audioApi, createAudioApi } from "./audio";
 export type {
   AudioApi,
+  AudioFrameRange,
   AudioPreviewBytes,
   AudioPreviewToken,
   AudioWaveform,
+  AudioWaveformQuery,
+  AudioWaveformWindow,
   WaveformPeak,
 } from "./audio";
 export { createMetadataApi, metadataApi } from "./metadata";

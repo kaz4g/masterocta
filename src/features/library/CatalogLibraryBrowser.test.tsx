@@ -128,14 +128,15 @@ describe("CatalogLibraryBrowser", () => {
 
   it("clears the selected file when switching locations", async () => {
     const audioClient: AudioApi = {
-      getWaveform: vi.fn().mockResolvedValue({
-        analyzerVersion: "waveform:v1",
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
         sampleRate: 44100,
         channels: 2,
-        frameCount: 44100,
-        durationSeconds: 1,
-        samplesPerPeak: 256,
-        peaks: [{ min: -0.5, max: 0.5 }],
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.5, max: 0.5 }]],
       }),
       createPreviewToken: vi.fn(),
       readPreview: vi.fn(),
@@ -168,14 +169,15 @@ describe("CatalogLibraryBrowser", () => {
 
   it("opens manual metadata for the selected opaque AssetId", async () => {
     const audioClient: AudioApi = {
-      getWaveform: vi.fn().mockResolvedValue({
-        analyzerVersion: "waveform:v1",
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
         sampleRate: 44100,
         channels: 2,
-        frameCount: 44100,
-        durationSeconds: 1,
-        samplesPerPeak: 256,
-        peaks: [{ min: -0.5, max: 0.5 }],
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.5, max: 0.5 }]],
       }),
       createPreviewToken: vi.fn(),
       readPreview: vi.fn(),
@@ -204,10 +206,10 @@ describe("CatalogLibraryBrowser", () => {
       "root-opaque",
       "asset:v1:pool",
     );
-    expect(audioClient.getWaveform).toHaveBeenCalledWith(
+    expect(audioClient.queryWaveform).toHaveBeenCalledWith(
       "root-opaque",
       "asset:v1:pool",
-      640,
+      { range: null, targetPoints: 640 },
     );
     expect(screen.getByLabelText("Asset inspector")).not.toHaveTextContent("sha256:");
   });
@@ -389,6 +391,53 @@ describe("CatalogLibraryBrowser", () => {
     expect(onSelectedAssetChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ fileInstanceId: "fileinst:v1:0" }),
     );
+  });
+
+  it("keeps querying the selected asset when pagination hides the row", async () => {
+    const audioClient: AudioApi = {
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
+        sampleRate: 44100,
+        channels: 1,
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.5, max: 0.5 }]],
+      }),
+      createPreviewToken: vi.fn(),
+      readPreview: vi.fn(),
+    };
+    const metadataClient: MetadataApi = {
+      loadManualAssetMetadata: vi.fn().mockResolvedValue({ tags: [], note: "" }),
+      replaceManualAssetMetadata: vi.fn(),
+    };
+    const files = Array.from({ length: 101 }, (_, index) => ({
+      fileInstanceId: `fileinst:v1:${index}`,
+      assetId: `asset:v1:${index}`,
+      displayName: `sample-${index}.wav`,
+      relativePath: `LIVE_SET/AUDIO/sample-${index}.wav`,
+      byteSize: index,
+      storageScope: "set_audio_pool" as const,
+    }));
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={{ ...snapshot, audioFiles: files }}
+        audioClient={audioClient}
+        metadataClient={metadataClient}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /sample-0\.wav/ }));
+    await screen.findByRole("img", { name: "Audio waveform" });
+    vi.mocked(audioClient.queryWaveform).mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sample-0\.wav/ })).not.toBeInTheDocument();
+    expect(audioClient.queryWaveform).not.toHaveBeenCalled();
+    expect(screen.getByRole("img", { name: "Audio waveform" })).toBeInTheDocument();
   });
 
   it("reports shell inspector selection without rendering the inline column", () => {

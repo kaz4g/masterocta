@@ -328,12 +328,12 @@ reference-safe）。Human Gate C は正式連続試験の **PASS** を維持。�
 製品 PATH/Bank 修正、#103 / #104 / #105 の再開はしない。
 
 **M6 Library Workspace layout:** **MERGED**（#122、`bed38a46f1c8e644b4bfaae2d1aaac1a3f290eb6`）。
-Waveform v2 は **未実装**（Inspector は v1 640 点 + 先頭 preview のまま）。
+**Library Waveform v2 query:** `MO-M7-WAVEFORM-V2-LIBRARY-QUERY-1` — Inspector は
+`v2_audio_waveform_query`（固定 640 点・per-channel peaks）。Preview は v1 先頭 60s のまま。
+契約正本: `docs/planning/WAVEFORM_V2_INTEGRATION.md` §13.1。
 
-**作業ID:** `MO-WAVEFORM-V2-INTEGRATION-DESIGN-1` — 統合設計
-`docs/planning/WAVEFORM_V2_INTEGRATION.md`（Draft PR）。次は設計に従う
-**Library `v2_audio_waveform_query` 垂直 slice**（製品 PR）。#103 / #104 / #105 は reopen しない。
-WF2 backend / `OperationsDialog` / #105 Auto Slice 残機能は別 PR。
+**次作業（製品 PR）:** ranged preview token（`v2_audio_preview_range_create` 相当）。
+WFM2 / Canvas / zoom、`OperationsDialog`、#105 Auto Slice 残機能は別 PR。#103 / #104 / #105 は reopen しない。
 
 非連続セッションの FILE NOT FOUND は歴史的 STOP として
 `docs/testing/MO_RC8_STATIC_LINK_INVESTIGATION.md` に残す。原因は未解決。
