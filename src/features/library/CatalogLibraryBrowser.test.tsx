@@ -254,6 +254,102 @@ describe("CatalogLibraryBrowser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Previous" }));
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sample-000\.wav/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sample-100\.wav/ })).toBeInTheDocument();
+  });
+
+  it("resets to the first page when search shrinks a later page to 101–200 files", () => {
+    const files = Array.from({ length: 250 }, (_, index) => ({
+      fileInstanceId: `fileinst:v1:${index}`,
+      assetId: `asset:v1:${index}`,
+      displayName: index < 150 ? `keep-${String(index).padStart(3, "0")}.wav` : `drop-${index}.wav`,
+      relativePath: `LIVE_SET/AUDIO/file-${String(index).padStart(3, "0")}.wav`,
+      byteSize: index,
+      storageScope: "set_audio_pool" as const,
+    }));
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={{ ...snapshot, audioFiles: files }}
+        inspectorPlacement="shell"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search samples in this location"), {
+      target: { value: "keep-" },
+    });
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText(/150 matching/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /keep-000\.wav/ })).toBeInTheDocument();
+  });
+
+  it("resets to the first page when switching to another location with 101–200 files", () => {
+    const files = [
+      ...Array.from({ length: 201 }, (_, index) => ({
+        fileInstanceId: `fileinst:pool:${index}`,
+        assetId: `asset:pool:${index}`,
+        displayName: `pool-${String(index).padStart(3, "0")}.wav`,
+        relativePath: `LIVE_SET/AUDIO/pool-${String(index).padStart(3, "0")}.wav`,
+        byteSize: index,
+        storageScope: "set_audio_pool" as const,
+      })),
+      ...Array.from({ length: 150 }, (_, index) => ({
+        fileInstanceId: `fileinst:project:${index}`,
+        assetId: `asset:project:${index}`,
+        displayName: `project-${String(index).padStart(3, "0")}.wav`,
+        relativePath: `LIVE_SET/PROJECT_A/project-${String(index).padStart(3, "0")}.wav`,
+        byteSize: index,
+        storageScope: "project_local" as const,
+      })),
+    ];
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={{ ...snapshot, audioFiles: files }}
+        inspectorPlacement="shell"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /PROJECT_A/ }));
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /project-000\.wav/ })).toBeInTheDocument();
+  });
+
+  it("resets to the first page when sort changes on a later page", () => {
+    const files = Array.from({ length: 201 }, (_, index) => ({
+      fileInstanceId: `fileinst:v1:${index}`,
+      assetId: `asset:v1:${index}`,
+      displayName: `sample-${String(index).padStart(3, "0")}.wav`,
+      relativePath: `LIVE_SET/AUDIO/sample-${String(index).padStart(3, "0")}.wav`,
+      byteSize: index,
+      storageScope: "set_audio_pool" as const,
+    }));
+    render(
+      <CatalogLibraryBrowser
+        rootId="root-opaque"
+        snapshot={{ ...snapshot, audioFiles: files }}
+        inspectorPlacement="shell"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByText("Page 3 of 3")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Sort samples"), {
+      target: { value: "size" },
+    });
+    expect(screen.getByText("Page 1 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sample-200\.wav/ })).toBeInTheDocument();
   });
 
   it("filters, paginates, and keeps selection when the file stays in the location", () => {

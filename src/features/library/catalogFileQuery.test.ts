@@ -80,4 +80,19 @@ describe("queryCatalogFiles", () => {
     const byPath = queryCatalogFiles({ files, search: "snare", sort: "name", page: 0 });
     expect(byPath.matchingCount).toBe(1);
   });
+
+  it("matches ASCII case independently of the Turkish locale", () => {
+    const files = [file("kick", "LIVE_SET/AUDIO/KICK.wav", 1)];
+    const original = String.prototype.toLocaleLowerCase;
+    String.prototype.toLocaleLowerCase = function toTurkishLower(this: string) {
+      return original.call(this, "tr");
+    };
+    try {
+      const result = queryCatalogFiles({ files, search: "kick", sort: "name", page: 0 });
+      expect(result.matchingCount).toBe(1);
+      expect(result.visible[0]?.displayName).toBe("KICK.wav");
+    } finally {
+      String.prototype.toLocaleLowerCase = original;
+    }
+  });
 });

@@ -146,7 +146,7 @@ Must:
 | 未実装 | WF2 backend、`OperationsDialog`、#104/#105、Performance System docs |
 | 検証 | typecheck、frontend tests、build、architecture/containment、rename E2E（drawer 経路）、合成 fixture の UI 受入 |
 | 文書 | §2.2 の調査記録と実装方針を分離。milestone docs は後続であり layout のブロッカーではない |
-| UI 受入 | 合成 fixture（絶対 path なし）。Vite `localhost:1420`、Playwright Chromium。1280px / 840px |
+| UI 受入 | 合成 fixture（絶対 path なし）。Vite `localhost:1420`、Playwright Chromium。1280px / 840px。Search/Sort は catalog 実幅に応じて折り返す。locale 非依存検索と page reset/clamp を分離 |
 
 ---
 

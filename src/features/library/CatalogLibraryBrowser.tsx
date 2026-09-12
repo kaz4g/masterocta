@@ -174,10 +174,10 @@ export function CatalogLibraryBrowser({
   );
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<CatalogFileSort>("name");
-  const [page, setPage] = useState(0);
+  const [requestedPage, setRequestedPage] = useState(0);
   const fileQuery = useMemo(
-    () => queryCatalogFiles({ files: locationFiles, search, sort, page }),
-    [locationFiles, search, sort, page],
+    () => queryCatalogFiles({ files: locationFiles, search, sort, page: requestedPage }),
+    [locationFiles, search, sort, requestedPage],
   );
   const [selectedFileInstanceId, setSelectedFileInstanceId] = useState<string | null>(null);
   const selectedFile = useMemo(() => {
@@ -185,14 +185,6 @@ export function CatalogLibraryBrowser({
     return locationFiles.find((file) => file.fileInstanceId === selectedFileInstanceId);
   }, [locationFiles, selectedFileInstanceId]);
   const shellInspector = inspectorPlacement === "shell";
-
-  useEffect(() => {
-    setPage(0);
-  }, [selectedLocation?.key, selectedSource?.key, search, sort]);
-
-  useEffect(() => {
-    setPage((current) => (current === fileQuery.page ? current : fileQuery.page));
-  }, [fileQuery.page]);
 
   useEffect(() => {
     if (
@@ -243,11 +235,23 @@ export function CatalogLibraryBrowser({
     setSourceKey(nextKey);
     setLocationKey(null);
     setSelectedFileInstanceId(null);
+    setRequestedPage(0);
   }
 
   function selectLocation(nextKey: string) {
     setLocationKey(nextKey);
     setSelectedFileInstanceId(null);
+    setRequestedPage(0);
+  }
+
+  function changeSearch(nextSearch: string) {
+    setSearch(nextSearch);
+    setRequestedPage(0);
+  }
+
+  function changeSort(nextSort: CatalogFileSort) {
+    setSort(nextSort);
+    setRequestedPage(0);
   }
 
   if (sources.length === 0) {
@@ -276,7 +280,7 @@ export function CatalogLibraryBrowser({
               type="search"
               aria-label="Search samples in this location"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => changeSearch(event.target.value)}
               placeholder="Name or folder…"
             />
           </label>
@@ -285,7 +289,7 @@ export function CatalogLibraryBrowser({
             <select
               aria-label="Sort samples"
               value={sort}
-              onChange={(event) => setSort(event.target.value as CatalogFileSort)}
+              onChange={(event) => changeSort(event.target.value as CatalogFileSort)}
             >
               <option value="name">Name</option>
               <option value="size">Size · largest first</option>
@@ -322,7 +326,7 @@ export function CatalogLibraryBrowser({
             <Button
               variant="secondary"
               disabled={fileQuery.page <= 0}
-              onClick={() => setPage(Math.max(0, fileQuery.page - 1))}
+              onClick={() => setRequestedPage(Math.max(0, fileQuery.page - 1))}
             >
               Previous
             </Button>
@@ -332,7 +336,7 @@ export function CatalogLibraryBrowser({
             <Button
               variant="secondary"
               disabled={fileQuery.page >= fileQuery.lastPage}
-              onClick={() => setPage(fileQuery.page + 1)}
+              onClick={() => setRequestedPage(fileQuery.page + 1)}
             >
               Next
             </Button>

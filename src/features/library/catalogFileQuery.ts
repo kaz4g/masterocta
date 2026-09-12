@@ -37,13 +37,13 @@ function compareBySize(left: LibraryAudioFile, right: LibraryAudioFile): number 
 
 export function queryCatalogFiles(input: CatalogFileQueryInput): CatalogFileQueryResult {
   const locationCount = input.files.length;
-  const term = input.search.trim().toLocaleLowerCase();
+  const term = input.search.trim().toLowerCase();
   const matching = input.files
     .filter((file) => {
       if (term === "") return true;
       return (
-        file.displayName.toLocaleLowerCase().includes(term)
-        || file.relativePath.toLocaleLowerCase().includes(term)
+        file.displayName.toLowerCase().includes(term)
+        || file.relativePath.toLowerCase().includes(term)
       );
     })
     .slice()
