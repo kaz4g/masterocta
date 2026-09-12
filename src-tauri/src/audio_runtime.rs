@@ -96,6 +96,10 @@ impl AudioRuntime {
         self.waveform_query_epoch.fetch_add(1, Ordering::SeqCst) + 1
     }
 
+    pub fn invalidate_waveform_queries(&self) {
+        self.waveform_query_epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
     fn assert_waveform_query_epoch(&self, epoch: u64) -> Result<(), AudioRuntimeError> {
         if self.waveform_query_epoch.load(Ordering::SeqCst) != epoch {
             return Err(AudioRuntimeError::RequestCancelled);

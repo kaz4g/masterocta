@@ -518,6 +518,22 @@ impl RootRegistry {
         Ok(observation)
     }
 
+    fn refresh_live_entry(
+        &self,
+        state: &mut RegistryState,
+        root_id: &RootId,
+        entry: &RootEntry,
+    ) -> Result<DeviceObservation, RootRegistryError> {
+        match self.refresh_observation(entry) {
+            Ok(observation) => Ok(observation),
+            Err(error @ RootRegistryError::Removed | error @ RootRegistryError::Changed) => {
+                state.roots.remove(root_id);
+                Err(error)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub fn stored_observation_for_root(
         &self,
         root_id: &RootId,
@@ -528,6 +544,58 @@ impl RootRegistry {
             .get(root_id)
             .map(|entry| entry.observation.clone())
             .ok_or(RootRegistryError::NotApproved)
+    }
+
+    /// Compatibility boundary for legacy commands that still receive absolute paths.
+    ///
+    /// New commands must use `RootId` plus `RootRelativePath` directly. This bridge
+    /// only authorizes an existing path after binding it to a live registered root.
+    pub fn authorize_legacy_path(
+        &self,
+        raw_path: &str,
+        require_write: bool,
+        require_regular_file: bool,
+    ) -> Result<PathBuf, RootRegistryError> {
+        let candidate = Path::new(raw_path);
+        if raw_path.trim().is_empty() || !candidate.is_absolute() {
+            return Err(RootRegistryError::InvalidPath);
+        }
+        let canonical = candidate.canonicalize().map_err(map_resolve_file_error)?;
+
+        let mut candidates = {
+            let state = self.lock_state()?;
+            state
+                .roots
+                .iter()
+                .filter(|(_, entry)| canonical.starts_with(&entry.canonical_path))
+                .map(|(root_id, entry)| (root_id.clone(), entry.canonical_path.clone()))
+                .collect::<Vec<_>>()
+        };
+        candidates.sort_by_key(|(_, path)| std::cmp::Reverse(path.components().count()));
+        let Some((root_id, registered_path)) = candidates.into_iter().next() else {
+            return Err(RootRegistryError::NotApproved);
+        };
+
+        let resolved = self.resolve(&root_id)?;
+        if require_write && !resolved.session.capabilities.write {
+            return Err(RootRegistryError::WriteGrantRequired);
+        }
+        let relative = canonical
+            .strip_prefix(&registered_path)
+            .map_err(|_| RootRegistryError::PathEscape)?;
+        let components = relative
+            .components()
+            .map(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .ok_or(RootRegistryError::InvalidPath)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let relative = RootRelativePath::from_components(components)
+            .map_err(|_| RootRegistryError::PathEscape)?;
+
+        resolved.resolve_existing_path(&relative, require_regular_file)
     }
 
     pub fn resolve(&self, root_id: &RootId) -> Result<ResolvedRoot, RootRegistryError> {
@@ -551,12 +619,7 @@ impl RootRegistry {
         }
         let entry = entry.clone();
 
-        if let Err(error @ RootRegistryError::Removed | error @ RootRegistryError::Changed) =
-            self.refresh_observation(&entry)
-        {
-            state.roots.remove(root_id);
-            return Err(error);
-        }
+        self.refresh_live_entry(&mut state, root_id, &entry)?;
 
         let mut session = entry.session;
         session.expires_in_seconds = entry.expires_at.saturating_duration_since(now).as_secs();
@@ -581,14 +644,7 @@ impl RootRegistry {
             state.roots.remove(root_id);
             return Err(RootRegistryError::Expired);
         }
-        let observation = match self.refresh_observation(&entry) {
-            Ok(observation) => observation,
-            Err(error @ RootRegistryError::Removed | error @ RootRegistryError::Changed) => {
-                state.roots.remove(root_id);
-                return Err(error);
-            }
-            Err(error) => return Err(error),
-        };
+        let observation = self.refresh_live_entry(&mut state, root_id, &entry)?;
         if !observation.stable {
             return Err(RootRegistryError::UnstableIdentity);
         }
@@ -652,24 +708,25 @@ impl RootRegistry {
 
         let now = Instant::now();
         let mut state = self.lock_state()?;
-        let Some(entry) = state.roots.get_mut(root_id) else {
-            return Err(RootRegistryError::NotApproved);
+        let (entry_snapshot, observed_revision) = {
+            let Some(entry) = state.roots.get_mut(root_id) else {
+                return Err(RootRegistryError::NotApproved);
+            };
+            if entry.expires_at <= now {
+                state.roots.remove(root_id);
+                return Err(RootRegistryError::Expired);
+            }
+            (entry.clone(), entry.session.observed_revision)
         };
-        if entry.expires_at <= now {
-            state.roots.remove(root_id);
-            return Err(RootRegistryError::Expired);
-        }
-
-        if let Err(error @ RootRegistryError::Removed | error @ RootRegistryError::Changed) =
-            self.refresh_observation(entry)
-        {
-            state.roots.remove(root_id);
-            return Err(error);
-        }
-        if scan_revision < entry.session.observed_revision {
+        self.refresh_live_entry(&mut state, root_id, &entry_snapshot)?;
+        if scan_revision < observed_revision {
             return Err(RootRegistryError::Changed);
         }
 
+        let entry = state
+            .roots
+            .get_mut(root_id)
+            .ok_or(RootRegistryError::NotApproved)?;
         entry.session.observed_revision = scan_revision;
         entry.session.expires_in_seconds =
             entry.expires_at.saturating_duration_since(now).as_secs();
@@ -712,6 +769,14 @@ impl ResolvedRoot {
         &self,
         relative_path: &RootRelativePath,
     ) -> Result<PathBuf, RootRegistryError> {
+        self.resolve_existing_path(relative_path, true)
+    }
+
+    fn resolve_existing_path(
+        &self,
+        relative_path: &RootRelativePath,
+        require_regular_file: bool,
+    ) -> Result<PathBuf, RootRegistryError> {
         let mut candidate = self.canonical_path.clone();
         let components = relative_path.as_str().split('/').collect::<Vec<_>>();
         for (index, component) in components.iter().enumerate() {
@@ -724,7 +789,10 @@ impl ResolvedRoot {
                 return Err(RootRegistryError::SymlinkEscape);
             }
             let is_last = index + 1 == components.len();
-            if (!is_last && !metadata.is_dir()) || (is_last && !metadata.is_file()) {
+            if (!is_last && !metadata.is_dir())
+                || (is_last && require_regular_file && !metadata.is_file())
+                || (is_last && !require_regular_file && !metadata.is_file() && !metadata.is_dir())
+            {
                 return Err(RootRegistryError::NotRegularFile);
             }
         }
@@ -759,6 +827,7 @@ pub enum RootRegistryError {
     PathEscape,
     SymlinkEscape,
     NotRegularFile,
+    WriteGrantRequired,
     Io(String),
     Unavailable,
 }
@@ -778,6 +847,7 @@ impl RootRegistryError {
             Self::PathEscape => "PATH_ESCAPE",
             Self::SymlinkEscape => "SYMLINK_ESCAPE",
             Self::NotRegularFile => "AUDIO_SOURCE_UNAVAILABLE",
+            Self::WriteGrantRequired => "WRITE_GRANT_REQUIRED",
             Self::Io(_) | Self::Unavailable => "ROOT_UNAVAILABLE",
         }
     }
@@ -809,6 +879,9 @@ impl std::fmt::Display for RootRegistryError {
                 formatter.write_str("the requested file traverses a symbolic link")
             }
             Self::NotRegularFile => formatter.write_str("the requested path is not a regular file"),
+            Self::WriteGrantRequired => {
+                formatter.write_str("write access has not been enabled for this root")
+            }
             Self::Io(message) => {
                 write!(
                     formatter,
@@ -825,6 +898,7 @@ impl std::error::Error for RootRegistryError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
     use std::sync::atomic::AtomicU64;
     use tempfile::TempDir;
 
@@ -874,6 +948,37 @@ mod tests {
                 total_capacity: None,
                 mount_token: "fallback-mount".into(),
                 stable: false,
+            })
+        }
+    }
+
+    struct IoOnNextObserveProvider {
+        fail_next: AtomicBool,
+    }
+
+    impl IoOnNextObserveProvider {
+        fn new() -> Self {
+            Self {
+                fail_next: AtomicBool::new(false),
+            }
+        }
+
+        fn fail_next_observe(&self) {
+            self.fail_next.store(true, Ordering::SeqCst);
+        }
+    }
+
+    impl DeviceIdentityProvider for IoOnNextObserveProvider {
+        fn observe(&self, _root: &Path) -> Result<DeviceObservation, RootRegistryError> {
+            if self.fail_next.swap(false, Ordering::SeqCst) {
+                return Err(RootRegistryError::Io("simulated inspection failure".into()));
+            }
+            Ok(DeviceObservation {
+                stable_key: "volume-io-test".into(),
+                filesystem_type: Some("testfs".into()),
+                total_capacity: Some(1024),
+                mount_token: "mount-io-test".into(),
+                stable: true,
             })
         }
     }
@@ -1193,6 +1298,68 @@ mod tests {
         assert_eq!(fs::read(path).unwrap(), b"fixture");
     }
 
+    #[test]
+    fn legacy_path_authorization_requires_registration_and_write_grant() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        fs::create_dir(root.path().join("AUDIO")).unwrap();
+        let file = root.path().join("AUDIO/kick.wav");
+        fs::write(&file, b"fixture").unwrap();
+        let outside_file = outside.path().join("outside.wav");
+        fs::write(&outside_file, b"private").unwrap();
+        let registry = RootRegistry::new(
+            Arc::new(FakeIdentityProvider::new()),
+            Duration::from_secs(60),
+        );
+        let session = registry.register(root.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(
+            registry
+                .authorize_legacy_path(outside_file.to_str().unwrap(), false, true)
+                .unwrap_err(),
+            RootRegistryError::NotApproved
+        );
+        assert_eq!(
+            registry
+                .authorize_legacy_path(file.to_str().unwrap(), true, true)
+                .unwrap_err(),
+            RootRegistryError::WriteGrantRequired
+        );
+
+        registry.enable_write(&session.root_id).unwrap();
+        assert_eq!(
+            registry
+                .authorize_legacy_path(file.to_str().unwrap(), true, true)
+                .unwrap(),
+            file.canonicalize().unwrap()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn legacy_path_authorization_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let outside_file = outside.path().join("outside.wav");
+        fs::write(&outside_file, b"private").unwrap();
+        let link = root.path().join("escape.wav");
+        symlink(&outside_file, &link).unwrap();
+        let registry = RootRegistry::new(
+            Arc::new(FakeIdentityProvider::new()),
+            Duration::from_secs(60),
+        );
+        registry.register(root.path().to_str().unwrap()).unwrap();
+
+        assert_eq!(
+            registry
+                .authorize_legacy_path(link.to_str().unwrap(), false, true)
+                .unwrap_err(),
+            RootRegistryError::NotApproved
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn resolved_root_rejects_symlinked_components() {
@@ -1244,6 +1411,58 @@ mod tests {
                 .record_completed_scan_revision(&session.root_id, 2)
                 .unwrap_err(),
             RootRegistryError::Changed
+        );
+    }
+
+    #[test]
+    fn resolve_fails_closed_on_observation_io_without_returning_stale_write_grant() {
+        let root = TempDir::new().unwrap();
+        let provider = Arc::new(IoOnNextObserveProvider::new());
+        let registry = RootRegistry::new(provider.clone(), Duration::from_secs(60));
+        let session = registry.register(root.path().to_str().unwrap()).unwrap();
+        registry.enable_write(&session.root_id).unwrap();
+        assert!(
+            registry
+                .resolve(&session.root_id)
+                .unwrap()
+                .session
+                .capabilities
+                .write
+        );
+
+        provider.fail_next_observe();
+        let error = registry.resolve(&session.root_id).unwrap_err();
+        assert!(matches!(error, RootRegistryError::Io(_)));
+        assert!(
+            registry
+                .resolve(&session.root_id)
+                .unwrap()
+                .session
+                .capabilities
+                .write
+        );
+    }
+
+    #[test]
+    fn record_completed_scan_revision_fails_closed_on_observation_io() {
+        let root = TempDir::new().unwrap();
+        let provider = Arc::new(IoOnNextObserveProvider::new());
+        let registry = RootRegistry::new(provider.clone(), Duration::from_secs(60));
+        let session = registry.register(root.path().to_str().unwrap()).unwrap();
+        assert_eq!(session.observed_revision, 1);
+
+        provider.fail_next_observe();
+        let error = registry
+            .record_completed_scan_revision(&session.root_id, 2)
+            .unwrap_err();
+        assert!(matches!(error, RootRegistryError::Io(_)));
+        assert_eq!(
+            registry
+                .resolve(&session.root_id)
+                .unwrap()
+                .session
+                .observed_revision,
+            1
         );
     }
 }
