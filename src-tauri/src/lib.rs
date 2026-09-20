@@ -1,6 +1,7 @@
 // Allow certain clippy lints that would require significant refactoring
 #![allow(clippy::too_many_arguments)]
 
+mod asset_derivation_query;
 mod audio_pool;
 mod audio_runtime;
 mod bank_validation;
@@ -1639,6 +1640,8 @@ pub fn run() {
             v2_api::v2_slice_draft_update,
             v2_api::v2_slice_proposal_create,
             v2_api::v2_slice_export_apply,
+            v2_api::v2_asset_derivation_get,
+            v2_api::v2_asset_derivation_list_children,
             v2_api::v2_audio_waveform_range_get,
             v2_api::v2_audio_preview_region_create,
             v2_api::v2_audio_preview_region_read,

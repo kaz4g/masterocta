@@ -9,6 +9,7 @@ async function seedSliceExportFixture(page: import("@playwright/test").Page) {
     const range = { startFrame: "0", endExclusive: "44100" };
     let revision = 0;
     let markers: any[] = [];
+    let derivedChildren: any[] = [];
     const draft = () => ({
       revision,
       region: range,
@@ -110,12 +111,35 @@ async function seedSliceExportFixture(page: import("@playwright/test").Page) {
           return draft();
         }
         if (cmd === "v2_slice_export_apply") {
+          derivedChildren = [{
+            assetId: "asset-derived-range",
+            kind: "SLICE_EXPORT",
+            parentAssetId: "asset-slice-export",
+            parentAvailable: true,
+            processor: { name: "masterocta-trim", revision: "pcm-wav-v1" },
+            createdAt: "2026-09-21T00:00:00.000Z",
+            parameters: {
+              status: "available",
+              startFrame: "11025",
+              endFrameExclusive: "44100",
+            },
+          }];
           return {
             derivedAssetId: "asset-derived-range",
             sourceUnchanged: false,
             startFrame: "11025",
             endExclusive: "44100",
           };
+        }
+        if (cmd === "v2_asset_derivation_get") {
+          return {
+            assetId: args.assetId,
+            isDerived: false,
+            derivation: null,
+          };
+        }
+        if (cmd === "v2_asset_derivation_list_children") {
+          return { assetId: args.assetId, children: derivedChildren };
         }
         return null;
       },
@@ -145,5 +169,12 @@ test.describe("slice derived export", () => {
       fileInstanceId: "file-slice-export",
     });
     expect(exportCall?.args.range).toBeUndefined();
+    await page.getByRole("tab", { name: uiText("ja", "inspector.tabInfo") }).click();
+    await expect(page.getByTestId("inspector-derivation-children")).toBeVisible();
+    await expect(page.getByText(uiText("ja", "inspector.derivationKind.SLICE_EXPORT"))).toBeVisible();
+    await expect(page.getByText("asset-derived-range")).toBeVisible();
+    const pageText = await page.locator(".mo-inspector-derivation").innerText();
+    expect(pageText).not.toMatch(/sha256:/);
+    expect(pageText).not.toContain("/tmp/");
   });
 });

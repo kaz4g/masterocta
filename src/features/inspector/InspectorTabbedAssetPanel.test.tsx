@@ -1,5 +1,19 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../api/derivations", () => ({
+  derivationsApi: {
+    getAssetDerivation: vi.fn().mockResolvedValue({
+      assetId: "asset:v1:pool",
+      isDerived: false,
+      derivation: null,
+    }),
+    listDerivedChildren: vi.fn().mockResolvedValue({
+      assetId: "asset:v1:pool",
+      children: [],
+    }),
+  },
+}));
 import type { LibraryAudioFile, LibrarySnapshot } from "../../api";
 import { tJa } from "../../i18n/testStrings";
 import { InspectorTabbedAssetPanel } from "./InspectorTabbedAssetPanel";

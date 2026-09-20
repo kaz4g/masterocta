@@ -13,6 +13,13 @@ export type {
 } from "./audio";
 export { createMetadataApi, metadataApi } from "./metadata";
 export type { ManualAssetMetadata, MetadataApi } from "./metadata";
+export { createDerivationsApi, derivationsApi } from "./derivations";
+export type {
+  AssetDerivationGetResult,
+  AssetDerivationListChildrenResult,
+  AssetDerivationRecord,
+  DerivationsApi,
+} from "./derivations";
 export { changeApi, createChangeApi } from "./changes";
 export type {
   ChangeApi,

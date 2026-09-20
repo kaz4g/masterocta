@@ -2,7 +2,8 @@
 
 - Work IDs:
   - `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1` — application vertical slice (**MERGED** #152)
-  - `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1` — opaque IPC + Slice Workspace export (**IN_PROGRESS**)
+  - `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1` — opaque IPC + Slice Workspace export (**MERGED** #153)
+  - `MO-M7-DERIVED-LINEAGE-QUERY-UI-1` — read-only lineage query IPC + Inspector Info (**IN_PROGRESS**)
 - Updated: 2026-09-21
 
 ## Purpose
@@ -63,7 +64,14 @@ no raw hash/path). Errors map to `STALE_DRAFT`, `SLICE_MISSING`, `SOURCE_CHANGED
 Single selected marker: review (name, frames, duration) → lightweight confirm →
 「派生素材として書き出す」. Success is shown in-workspace (opaque id). Library
 Browser does **not** rescan OT roots; `mac_derived` remains outside OT library list
-until `MO-M7-DERIVED-QUERY-API-1`.
+until lineage query landed (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`).
+
+## Lineage query (Inspector)
+
+- `v2_asset_derivation_get` — immediate parent for a derived asset.
+- `v2_asset_derivation_list_children` — one-level derived outputs for an original asset.
+- Inspector Info: primary path is **original → children** after export on the source sample.
+- Native evidence: [`../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md).
 
 ## Explicit non-goals
 
@@ -73,4 +81,4 @@ until `MO-M7-DERIVED-QUERY-API-1`.
 
 ## Next
 
-- `MO-M7-DERIVED-QUERY-API-1` — read-only derived / lineage query IPC
+- Native acceptance PASS for lineage query UI; mac_derived Library browse remains deferred.

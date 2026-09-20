@@ -80,7 +80,7 @@ impl ApiError {
         }
     }
 
-    fn task_failed(_task: impl std::fmt::Display) -> Self {
+    pub(crate) fn task_failed(_task: impl std::fmt::Display) -> Self {
         Self {
             code: "INTERNAL_ERROR".into(),
             message: "the operation could not complete".into(),
@@ -429,7 +429,7 @@ fn manual_metadata_error(error: InvalidManualMetadata) -> ApiError {
     ApiError::new("INVALID_MANUAL_METADATA", error.to_string(), true)
 }
 
-fn validate_asset_id(asset_id: &str) -> Result<(), ApiError> {
+pub(crate) fn validate_asset_id(asset_id: &str) -> Result<(), ApiError> {
     let digest = asset_id
         .strip_prefix("asset:v1:")
         .ok_or_else(invalid_asset_id)?;
@@ -451,7 +451,7 @@ fn invalid_asset_id() -> ApiError {
     )
 }
 
-fn content_hash_for_asset_id(
+pub(crate) fn content_hash_for_asset_id(
     snapshot: &LibrarySnapshot,
     asset_id: &str,
 ) -> Result<ContentHash, ApiError> {
@@ -3972,7 +3972,7 @@ pub(crate) fn gate_c_latest_completed_scan_revision(
     latest_completed_scan_revision(catalog, fingerprint)
 }
 
-fn catalog_lock_error() -> ApiError {
+pub(crate) fn catalog_lock_error() -> ApiError {
     ApiError::new(
         "CATALOG_UNAVAILABLE",
         "the local catalog is temporarily unavailable",
@@ -4421,6 +4421,50 @@ pub async fn v2_slice_draft_update(
             &job_id,
             expected_revision,
             edit,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_asset_derivation_get(
+    root_id: String,
+    asset_id: String,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+) -> Result<crate::asset_derivation_query::AssetDerivationGetDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::asset_derivation_query::asset_derivation_get_sync(
+            &registry,
+            &catalog,
+            &root_id,
+            &asset_id,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_asset_derivation_list_children(
+    root_id: String,
+    asset_id: String,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+) -> Result<crate::asset_derivation_query::AssetDerivationListChildrenDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::asset_derivation_query::asset_derivation_list_children_sync(
+            &registry,
+            &catalog,
+            &root_id,
+            &asset_id,
         )
     })
     .await

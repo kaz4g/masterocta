@@ -128,6 +128,10 @@ export function RootRegistryPanel({
   const requestStopLibraryPlayback = useCallback(() => {
     setStopLibraryPlaybackToken((token) => token + 1);
   }, []);
+  const [derivationRefreshGeneration, setDerivationRefreshGeneration] = useState(0);
+  const handleDerivedExportApplied = useCallback(() => {
+    setDerivationRefreshGeneration((generation) => generation + 1);
+  }, []);
   const [recovery, setRecovery] = useState<ChangeRecoveryStatus | null>(null);
   const [renameRecovery, setRenameRecovery] = useState<RenameRecoveryStatus | null>(null);
   const [operationsOpen, setOperationsOpen] = useState(false);
@@ -848,6 +852,7 @@ export function RootRegistryPanel({
                     onCommittedGeometryRangeChange={handleLibraryGeometryRange}
                     onRequestStopLibraryPlayback={requestStopLibraryPlayback}
                     sliceCompactHostRef={setCompactSliceHost}
+                    derivationRefreshGeneration={derivationRefreshGeneration}
                   />
                 </div>
               )}
@@ -899,6 +904,7 @@ export function RootRegistryPanel({
               onRequestStopLibraryPlayback={requestStopLibraryPlayback}
               onAnalysisBusyChange={setSliceAnalysisBusy}
               registerAnalysisCancel={registerSliceAnalysisCancel}
+              onDerivedExportApplied={handleDerivedExportApplied}
             />
           )}
         </CatalogBrowseProvider>

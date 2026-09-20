@@ -1,6 +1,6 @@
 # Codex引継ぎ — MasterOCTa
 
-更新日: 2026-09-20
+更新日: 2026-09-21
 
 ## 1. 目的
 
@@ -39,8 +39,8 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
-GitHub `main` 基準: `6df7b48988ad28a566f2a46a6887505188a0b387`（PR #151 merge。
-#147–#151 derived TRIM を含む）。
+GitHub `main` 基準: `e4f4ebdfc1b6dc011aca641229cb5893f5ee5221`（PR #153 merge。
+#147–#153 derived lineage / TRIM / slice export UI を含む）。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
 比較対象、移行期間中の利用可能なアプリとして残し、legacy adapter越しに段階的に
@@ -335,13 +335,14 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**進行中 Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1`（`v2_slice_export_apply` +
-Slice Workspace 1-slice export UI。branch `feat/m7-auto-slice-derived-export-ui-1`）。
-Backend `#152` merged。正本:
+**進行中 Work ID:** `MO-M7-DERIVED-LINEAGE-QUERY-UI-1`（read-only
+`v2_asset_derivation_get` / `v2_asset_derivation_list_children` + Inspector Info
+derivation section。branch `feat/m7-derived-lineage-query-ui-1`）。
+Slice export UI **#153 MERGED**。正本:
 [`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
 [`docs/planning/M7_DERIVED_AUDIOASSET.md`](planning/M7_DERIVED_AUDIOASSET.md)。
-Native derived-export acceptance: [`docs/testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
-次: `MO-M7-DERIVED-QUERY-API-1`（DEVELOPMENT_STATUS § Recommended next）。
+#153 Native export acceptance: [`docs/testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)（**NOT_RUN** — 捏造しない）。
+Lineage query Native: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
 
 **M7-05 native:** 統合受入 **PASS**（`main` `0f39f50`、
 `docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md` § post-#142）。
