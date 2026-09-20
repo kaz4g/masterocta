@@ -110,6 +110,11 @@ impl AssetDerivationCatalog for SqliteCatalog {
         &mut self,
         derivation: &AssetDerivation,
     ) -> Result<(), CatalogError> {
+        if derivation.parameters_unavailable() {
+            return Err(CatalogError::Derivation(
+                InvalidDerivation::InvalidParameters,
+            ));
+        }
         if let Some(existing) = self.load_asset_derivation(derivation.output())? {
             if lineage_semantically_equal(&existing, derivation) {
                 return Ok(());
@@ -586,6 +591,57 @@ mod tests {
                 InvalidDerivation::InvalidParameters
             ))
         ));
+    }
+
+    #[test]
+    fn v12_legacy_trim_row_survives_migration_to_current_schema() {
+        let source = hash(56);
+        let output = hash(57);
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "v12-legacy-trim.sqlite3");
+        {
+            let mut connection = Connection::open(&path).unwrap();
+            crate::test_apply_migrations_through_version(&mut connection, 12);
+            insert_legacy_v12_trim_row(&connection, &source, &output);
+        }
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        let loaded = catalog.load_asset_derivation(&output).unwrap().unwrap();
+        assert_eq!(loaded.kind(), DerivationKind::Trim);
+        assert!(loaded.parameters_unavailable());
+        assert_eq!(loaded.parameters().encode(), "v1|kind=empty");
+        let children = catalog.list_derived_children(&source).unwrap();
+        assert_eq!(children.len(), 1);
+        assert!(children[0].parameters_unavailable());
+    }
+
+    #[test]
+    fn loaded_legacy_trim_reregister_rejects_without_new_row() {
+        let source = hash(58);
+        let output = hash(59);
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "legacy-reregister.sqlite3");
+        let mut catalog = SqliteCatalog::open(&path).unwrap();
+        insert_legacy_v12_trim_row(&catalog.connection, &source, &output);
+        let loaded = catalog.load_asset_derivation(&output).unwrap().unwrap();
+        let row_count: i64 = catalog
+            .connection
+            .query_row("SELECT COUNT(*) FROM asset_derivations", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(matches!(
+            catalog.register_asset_derivation(&loaded),
+            Err(CatalogError::Derivation(
+                InvalidDerivation::InvalidParameters
+            ))
+        ));
+        let after: i64 = catalog
+            .connection
+            .query_row("SELECT COUNT(*) FROM asset_derivations", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(row_count, after);
     }
 
     #[test]
