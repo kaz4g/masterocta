@@ -602,11 +602,11 @@ mod tests {
         let intent = TrimIntent::new(source.clone(), range);
         let processor = RecordingProcessor {
             calls: AtomicUsize::new(0),
-            result: sample_result(output),
+            result: sample_result(output.clone()),
         };
         let verifier = RejectingOutputVerifier {
             source: source.clone(),
-            output: output.clone(),
+            output,
         };
         let mut publisher = RecordingPublisher {
             calls: AtomicUsize::new(0),
