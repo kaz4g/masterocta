@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { uiText } from "./i18n";
 import { expectEditEnabledInContextBar } from "./narrowWorkspace";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 const planId = `plan:v1:${"a".repeat(64)}`;
 const operationId = `operation:v1:${"a".repeat(64)}`;
@@ -16,6 +17,7 @@ async function chooseRoot(page: import("@playwright/test").Page) {
 
 test.describe("Rename operator workflow", () => {
   test("managed clone then continue and apply prepared rename", async ({ page }) => {
+    await installDerivationIpcDefaults(page);
     await page.addInitScript(({ cloneRootId, planId, operationId, snapshotId, continuationAuthorityId }) => {
       let activeRootId = "root-opaque";
       (window as any).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
@@ -165,6 +167,8 @@ test.describe("Rename operator workflow", () => {
               unresolvedReferenceCount: 0,
             };
           }
+          const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+          if (__derivationMock !== undefined) return __derivationMock;
           return null;
         },
       };
@@ -214,6 +218,7 @@ test.describe("Rename operator workflow", () => {
   });
 
   test("redisplays durable prepared plan after reload", async ({ page }) => {
+    await installDerivationIpcDefaults(page);
     await page.addInitScript(({ planId, operationId, snapshotId }) => {
       (window as any).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
       (window as any).__TAURI_INTERNALS__ = {
@@ -303,6 +308,8 @@ test.describe("Rename operator workflow", () => {
               cloneVerified: true,
             };
           }
+          const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+          if (__derivationMock !== undefined) return __derivationMock;
           return null;
         },
       };

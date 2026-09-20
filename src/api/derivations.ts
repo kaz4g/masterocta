@@ -41,18 +41,49 @@ export interface DerivationsApi {
   ): Promise<AssetDerivationListChildrenResult>;
 }
 
+function normalizeAssetDerivationGet(
+  assetId: string,
+  raw: AssetDerivationGetResult | null | undefined,
+): AssetDerivationGetResult {
+  if (raw == null) {
+    return { assetId, isDerived: false, derivation: null };
+  }
+  return {
+    assetId: raw.assetId ?? assetId,
+    isDerived: Boolean(raw.isDerived),
+    derivation: raw.derivation ?? null,
+  };
+}
+
+function normalizeAssetDerivationListChildren(
+  assetId: string,
+  raw: AssetDerivationListChildrenResult | null | undefined,
+): AssetDerivationListChildrenResult {
+  if (raw == null) {
+    return { assetId, children: [] };
+  }
+  return {
+    assetId: raw.assetId ?? assetId,
+    children: Array.isArray(raw.children) ? raw.children : [],
+  };
+}
+
 export function createDerivationsApi(client: IpcClient = ipcClient): DerivationsApi {
   return {
-    getAssetDerivation: (rootId, assetId) =>
-      client.request<AssetDerivationGetResult>("v2_asset_derivation_get", {
-        rootId,
-        assetId,
-      }),
-    listDerivedChildren: (rootId, assetId) =>
-      client.request<AssetDerivationListChildrenResult>(
+    getAssetDerivation: async (rootId, assetId) => {
+      const raw = await client.request<AssetDerivationGetResult | null>(
+        "v2_asset_derivation_get",
+        { rootId, assetId },
+      );
+      return normalizeAssetDerivationGet(assetId, raw);
+    },
+    listDerivedChildren: async (rootId, assetId) => {
+      const raw = await client.request<AssetDerivationListChildrenResult | null>(
         "v2_asset_derivation_list_children",
         { rootId, assetId },
-      ),
+      );
+      return normalizeAssetDerivationListChildren(assetId, raw);
+    },
   };
 }
 

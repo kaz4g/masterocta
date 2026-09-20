@@ -4439,10 +4439,7 @@ pub async fn v2_asset_derivation_get(
     let catalog = Arc::clone(catalog.inner());
     tauri::async_runtime::spawn_blocking(move || {
         crate::asset_derivation_query::asset_derivation_get_sync(
-            &registry,
-            &catalog,
-            &root_id,
-            &asset_id,
+            &registry, &catalog, &root_id, &asset_id,
         )
     })
     .await
@@ -4461,10 +4458,7 @@ pub async fn v2_asset_derivation_list_children(
     let catalog = Arc::clone(catalog.inner());
     tauri::async_runtime::spawn_blocking(move || {
         crate::asset_derivation_query::asset_derivation_list_children_sync(
-            &registry,
-            &catalog,
-            &root_id,
-            &asset_id,
+            &registry, &catalog, &root_id, &asset_id,
         )
     })
     .await

@@ -3,8 +3,10 @@ import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { LOCALE_STORAGE_KEY } from "../src/i18n/registry";
 import { expectNarrowShellClass, showInspectorFromContextBar } from "./narrowWorkspace";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
-function installLibraryMocks(page: import("@playwright/test").Page) {
+async function installLibraryMocks(page: import("@playwright/test").Page) {
+  await installDerivationIpcDefaults(page);
   return page.addInitScript(() => {
     const source = window as any;
     source.__E2E_WAVEFORM_CALLS__ = [];
@@ -73,6 +75,8 @@ function installLibraryMocks(page: import("@playwright/test").Page) {
         if (cmd === "v2_audio_preview_read") {
           return new Uint8Array([82, 73, 70, 70]).buffer;
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 async function seedSliceExportFixture(page: import("@playwright/test").Page) {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript(() => {
     const source = window as any;
     source.__E2E_ROOT_PATH__ = "/tmp/synthetic-slice-export-root";
@@ -172,7 +174,7 @@ test.describe("slice derived export", () => {
     await page.getByRole("tab", { name: uiText("ja", "inspector.tabInfo") }).click();
     await expect(page.getByTestId("inspector-derivation-children")).toBeVisible();
     await expect(page.getByText(uiText("ja", "inspector.derivationKind.SLICE_EXPORT"))).toBeVisible();
-    await expect(page.getByText("asset-derived-range")).toBeVisible();
+    await expect(page.getByTestId("inspector-derivation-row")).toContainText("asset-derived-range");
     const pageText = await page.locator(".mo-inspector-derivation").innerText();
     expect(pageText).not.toMatch(/sha256:/);
     expect(pageText).not.toContain("/tmp/");

@@ -2,8 +2,10 @@ import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { LOCALE_STORAGE_KEY } from "../src/i18n/registry";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 test("uses width-quantized targetPoints for v2_audio_waveform_query", async ({ page }) => {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript((storageKey) => {
     localStorage.setItem(storageKey, "ja");
     const source = window as any;
@@ -57,6 +59,8 @@ test("uses width-quantized targetPoints for v2_audio_waveform_query", async ({ p
             channelPeaks: [[{ min: -0.5, max: 0.5 }]],
           };
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

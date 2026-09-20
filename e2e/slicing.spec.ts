@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 test("read-only library supports attack review, boundary editing and undo", async ({ page }) => {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript(() => {
     const source = window as any;
     source.__E2E_ROOT_PATH__ = "/tmp/synthetic-slice-root";
@@ -49,6 +51,8 @@ test("read-only library supports attack review, boundary editing and undo", asyn
           revision++;
           return draft();
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow, openSampleRenameFromCatalog } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { expectEditEnabledInContextBar } from "./narrowWorkspace";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 const planId = `plan:v1:${"a".repeat(64)}`;
 const operationId = `operation:v1:${"a".repeat(64)}`;
@@ -11,6 +12,7 @@ const snapshotId = `snapshot:v1:${"c".repeat(64)}`;
 test.describe("Rename prepare workflow", () => {
   test("reviews impacts and prepares a rename without apply", async ({ page }) => {
     const calls: string[] = [];
+    await installDerivationIpcDefaults(page);
     await page.addInitScript(({ planId, operationId, authorityId, snapshotId }) => {
       (window as any).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
       (window as any).__TAURI_INTERNALS__ = {
@@ -191,6 +193,8 @@ test.describe("Rename prepare workflow", () => {
           if (cmd === "v2_metadata_load_manual_asset") {
             return { tags: [], note: "" };
           }
+          const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+          if (__derivationMock !== undefined) return __derivationMock;
           return null;
         },
       };
@@ -225,11 +229,12 @@ test.describe("Rename prepare workflow", () => {
   });
 
   test("shows blocked rename without Approve & Prepare", async ({ page }) => {
+    await installDerivationIpcDefaults(page);
     await page.addInitScript(() => {
       (window as any).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
       (window as any).__TAURI_INTERNALS__ = {
         transformCallback: () => {},
-        invoke: async (cmd: string) => {
+        invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
           if (cmd === "v2_root_register") {
             return {
               rootId: "root-opaque",
@@ -315,6 +320,8 @@ test.describe("Rename prepare workflow", () => {
           if (cmd === "v2_metadata_load_manual_asset") {
             return { tags: [], note: "" };
           }
+          const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+          if (__derivationMock !== undefined) return __derivationMock;
           return null;
         },
       };

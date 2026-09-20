@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "../../i18n";
 import { tJa } from "../../i18n/testStrings";
-import type { DerivationsApi } from "../../api/derivations";
+import { createDerivationsApi, type DerivationsApi } from "../../api/derivations";
 import { InspectorSampleDerivation } from "./InspectorSampleDerivation";
 
 function renderWithLocale(ui: ReactElement) {
@@ -88,6 +88,16 @@ describe("InspectorSampleDerivation", () => {
     await waitFor(() => expect(screen.getByTestId("inspector-derivation-parent")).toBeInTheDocument());
     expect(screen.getByText(tJa("inspector.derivationParametersUnavailable"))).toBeInTheDocument();
     expect(screen.getByText(tJa("inspector.derivationParentUnavailable"))).toBeInTheDocument();
+  });
+
+  it("treats null IPC responses as original material without crashing", async () => {
+    const api = createDerivationsApi({
+      request: vi.fn().mockResolvedValue(null),
+    });
+    renderWithLocale(
+      <InspectorSampleDerivation rootId="root-1" assetId="asset-1" api={api} />,
+    );
+    await waitFor(() => expect(screen.getByTestId("inspector-derivation-original")).toBeInTheDocument());
   });
 
   it("ignores stale responses after asset switch", async () => {

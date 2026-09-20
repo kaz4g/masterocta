@@ -226,8 +226,7 @@ mod tests {
     use ot_domain::slice_draft::{DraftMarker, SliceDraft};
     use ot_domain::slicing::{FrameRange, PcmFrame};
     use ot_domain::{
-        AssetDerivation, DerivationKind, DerivationParameterEnvelope, ProcessorIdentity,
-        TrimIntent,
+        AssetDerivation, DerivationKind, DerivationParameterEnvelope, ProcessorIdentity, TrimIntent,
     };
     use ot_storage_ports::slice_drafts::{SliceDraftBinding, SliceDraftCatalog};
     use ot_storage_ports::AssetDerivationCatalog;
