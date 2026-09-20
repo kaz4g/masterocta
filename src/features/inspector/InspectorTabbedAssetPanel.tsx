@@ -308,6 +308,7 @@ export function InspectorTabbedAssetPanel({
             assetId={file.assetId}
             sampleRate={librarySourceSampleRate}
             refreshGeneration={derivationRefreshGeneration}
+            enabled={activeTab === "info"}
           />
         </TabPanel>
         <TabPanel

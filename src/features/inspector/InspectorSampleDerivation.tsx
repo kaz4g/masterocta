@@ -12,6 +12,8 @@ export interface InspectorSampleDerivationProps {
   assetId: string;
   sampleRate?: number | null;
   refreshGeneration?: number;
+  /** When false, skip lineage IPC. Info tab uses this so Preview/Slice/Usage/Notes do not query. */
+  enabled?: boolean;
   api?: DerivationsApi;
 }
 
@@ -109,6 +111,7 @@ export function InspectorSampleDerivation({
   assetId,
   sampleRate = null,
   refreshGeneration = 0,
+  enabled = true,
   api = derivationsApi,
 }: InspectorSampleDerivationProps) {
   const t = useTranslate();
@@ -119,6 +122,9 @@ export function InspectorSampleDerivation({
   const [isDerived, setIsDerived] = useState(false);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     let active = true;
     setLoading(true);
     setErrorCode(null);
@@ -131,9 +137,9 @@ export function InspectorSampleDerivation({
     ]).then(
       ([getResult, childrenResult]) => {
         if (!active) return;
-        setIsDerived(getResult.isDerived);
-        setSelfDerivation(getResult.derivation);
-        setChildren(childrenResult.children);
+        setIsDerived(Boolean(getResult?.isDerived));
+        setSelfDerivation(getResult?.derivation ?? null);
+        setChildren(Array.isArray(childrenResult?.children) ? childrenResult.children : []);
         setLoading(false);
       },
       (reason) => {
@@ -145,7 +151,11 @@ export function InspectorSampleDerivation({
     return () => {
       active = false;
     };
-  }, [api, assetId, refreshGeneration, rootId]);
+  }, [api, assetId, enabled, refreshGeneration, rootId]);
+
+  if (!enabled) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -159,6 +169,7 @@ export function InspectorSampleDerivation({
     const errorKeys: Record<string, MessageKey> = {
       CATALOG_ASSET_NOT_FOUND: "inspector.derivationError.CATALOG_ASSET_NOT_FOUND",
       CATALOG_UNAVAILABLE: "inspector.derivationError.CATALOG_UNAVAILABLE",
+      CATALOG_INTEGRITY_ERROR: "inspector.derivationError.CATALOG_INTEGRITY_ERROR",
       CATALOG_DERIVATION_INVALID: "inspector.derivationError.CATALOG_DERIVATION_INVALID",
       INVALID_ASSET_ID: "inspector.derivationError.INVALID_ASSET_ID",
     };
@@ -171,29 +182,32 @@ export function InspectorSampleDerivation({
     );
   }
 
-  if (isDerived && selfDerivation) {
+  const showParent = isDerived && selfDerivation !== null;
+  const showChildren = children.length > 0;
+  if (!showParent && !showChildren) {
     return (
-      <section className="mo-inspector-derivation" data-testid="inspector-derivation-parent">
-        <h3 className="mo-inspector-derivation__heading">{t("inspector.derivationSectionDerived")}</h3>
-        <DerivationRow record={selfDerivation} sampleRate={sampleRate} />
-      </section>
-    );
-  }
-
-  if (children.length > 0) {
-    return (
-      <section className="mo-inspector-derivation" data-testid="inspector-derivation-children">
-        <h3 className="mo-inspector-derivation__heading">{t("inspector.derivationSectionChildren")}</h3>
-        {children.map((child) => (
-          <DerivationRow key={child.assetId} record={child} sampleRate={sampleRate} />
-        ))}
+      <section className="mo-inspector-derivation" data-testid="inspector-derivation-original">
+        <p>{t("inspector.derivationOriginalMaterial")}</p>
       </section>
     );
   }
 
   return (
-    <section className="mo-inspector-derivation" data-testid="inspector-derivation-original">
-      <p>{t("inspector.derivationOriginalMaterial")}</p>
+    <section className="mo-inspector-derivation" data-testid="inspector-derivation">
+      {showParent && selfDerivation ? (
+        <div data-testid="inspector-derivation-parent">
+          <h3 className="mo-inspector-derivation__heading">{t("inspector.derivationParentLineage")}</h3>
+          <DerivationRow record={selfDerivation} sampleRate={sampleRate} />
+        </div>
+      ) : null}
+      {showChildren ? (
+        <div data-testid="inspector-derivation-children">
+          <h3 className="mo-inspector-derivation__heading">{t("inspector.derivationSectionChildren")}</h3>
+          {children.map((child) => (
+            <DerivationRow key={child.assetId} record={child} sampleRate={sampleRate} />
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

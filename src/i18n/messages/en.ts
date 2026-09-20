@@ -152,6 +152,7 @@ export const enMessages = {
   'inspector.derivationError.generic': 'Derivation information could not be loaded.',
   'inspector.derivationError.CATALOG_ASSET_NOT_FOUND': 'This asset is not in the catalog.',
   'inspector.derivationError.CATALOG_UNAVAILABLE': 'The catalog is temporarily unavailable.',
+  'inspector.derivationError.CATALOG_INTEGRITY_ERROR': 'The local catalog failed an integrity check.',
   'inspector.derivationError.CATALOG_DERIVATION_INVALID': 'Stored derivation data is invalid.',
   'inspector.derivationError.INVALID_ASSET_ID': 'Invalid asset identifier.',
 

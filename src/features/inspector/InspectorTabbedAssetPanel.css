@@ -10,6 +10,10 @@
   font-weight: 600;
 }
 
+.mo-inspector-derivation [data-testid="inspector-derivation-children"] {
+  margin-top: var(--mo-space-3);
+}
+
 .mo-inspector-derivation__row {
   margin-bottom: var(--mo-space-3);
 }

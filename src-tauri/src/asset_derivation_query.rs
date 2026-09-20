@@ -3,12 +3,12 @@
 use crate::catalog_runtime::SharedCatalog;
 use crate::root_registry::RootRegistry;
 use crate::v2_api::{
-    catalog_error, catalog_identity, catalog_lock_error, content_hash_for_asset_id,
-    load_library_snapshot, opaque_asset_id, ApiError,
+    catalog_error, catalog_identity, catalog_lock_error, opaque_asset_id, ApiError,
 };
-use ot_application::{ListDerivedChildren, LoadAssetDerivation};
+use ot_application::{ListDerivedChildren, LoadAssetDerivation, LoadLibrarySnapshot};
 use ot_domain::{
-    AssetDerivation, ContentHash, DerivationParameters, RootId, MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+    AssetDerivation, ContentHash, DerivationParameters, LibrarySnapshot, RootId,
+    MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
 };
 use ot_storage_ports::CatalogRootIdentity;
 use serde::Serialize;
@@ -114,32 +114,96 @@ fn resolve_catalog_content_hash(
     crate::v2_api::validate_asset_id(asset_id)?;
     let resolved = registry.resolve(root_id)?;
     let ot_identity = catalog_identity(&resolved.session)?;
-    if let Ok(snapshot) = load_library_snapshot(catalog, &ot_identity) {
-        if let Ok(hash) = content_hash_for_asset_id(&snapshot, asset_id) {
-            return Ok(hash);
-        }
+    let derived_identity =
+        CatalogRootIdentity::new(MAC_DERIVED_AUDIO_ROOT_FINGERPRINT).map_err(catalog_error)?;
+    first_present_content_hash(
+        || content_hash_from_root_snapshot(catalog, &ot_identity, asset_id),
+        || content_hash_from_root_snapshot(catalog, &derived_identity, asset_id),
+        || global_content_hash(catalog, asset_id),
+    )
+}
+
+fn first_present_content_hash<C, D, G>(
+    current: C,
+    derived: D,
+    global: G,
+) -> Result<ContentHash, ApiError>
+where
+    C: FnOnce() -> Result<Option<ContentHash>, ApiError>,
+    D: FnOnce() -> Result<Option<ContentHash>, ApiError>,
+    G: FnOnce() -> Result<Option<ContentHash>, ApiError>,
+{
+    if let Some(hash) = current()? {
+        return Ok(hash);
     }
-    if let Ok(derived_identity) = CatalogRootIdentity::new(MAC_DERIVED_AUDIO_ROOT_FINGERPRINT) {
-        if let Ok(snapshot) = load_library_snapshot(catalog, &derived_identity) {
-            if let Ok(hash) = content_hash_for_asset_id(&snapshot, asset_id) {
-                return Ok(hash);
+    if let Some(hash) = derived()? {
+        return Ok(hash);
+    }
+    global()?.ok_or_else(|| {
+        ApiError::new(
+            "CATALOG_ASSET_NOT_FOUND",
+            "the requested audio asset is not present in the catalog",
+            true,
+        )
+    })
+}
+
+fn content_hash_from_root_snapshot(
+    catalog: &SharedCatalog,
+    identity: &CatalogRootIdentity,
+    asset_id: &str,
+) -> Result<Option<ContentHash>, ApiError> {
+    let snapshot = {
+        let catalog_guard = catalog.lock().map_err(|_| catalog_lock_error())?;
+        LoadLibrarySnapshot::new(&*catalog_guard)
+            .execute(identity)
+            .map_err(catalog_error)?
+    };
+    let Some(snapshot) = snapshot else {
+        return Ok(None);
+    };
+    content_hash_in_snapshot(&snapshot, asset_id)
+}
+
+fn content_hash_in_snapshot(
+    snapshot: &LibrarySnapshot,
+    asset_id: &str,
+) -> Result<Option<ContentHash>, ApiError> {
+    crate::v2_api::validate_asset_id(asset_id)?;
+    let mut matched: Option<ContentHash> = None;
+    for file in &snapshot.file_instances {
+        if opaque_asset_id(&file.content_hash) != asset_id {
+            continue;
+        }
+        if let Some(existing) = &matched {
+            if existing != &file.content_hash {
+                return Err(ApiError::new(
+                    "CATALOG_INTEGRITY_ERROR",
+                    "the catalog contains an ambiguous asset identity",
+                    false,
+                ));
             }
+        } else {
+            matched = Some(file.content_hash.clone());
         }
     }
+    Ok(matched)
+}
+
+fn global_content_hash(
+    catalog: &SharedCatalog,
+    asset_id: &str,
+) -> Result<Option<ContentHash>, ApiError> {
     let catalog_guard = catalog.lock().map_err(|_| catalog_lock_error())?;
     for hash in catalog_guard
         .list_audio_asset_content_hashes()
         .map_err(catalog_error)?
     {
         if opaque_asset_id(&hash) == asset_id {
-            return Ok(hash);
+            return Ok(Some(hash));
         }
     }
-    Err(ApiError::new(
-        "CATALOG_ASSET_NOT_FOUND",
-        "the requested audio asset is not present in the catalog",
-        true,
-    ))
+    Ok(None)
 }
 
 fn parent_source_available(
@@ -220,7 +284,8 @@ mod tests {
     };
     use crate::slice_export_apply::slice_export_apply_sync;
     use crate::v2_api::{
-        catalog_identity, gate_c_register_and_index_root, opaque_file_instance_id,
+        catalog_identity, gate_c_register_and_index_root, load_library_snapshot,
+        opaque_file_instance_id,
     };
     use ot_application::ApplyTrimDerivation;
     use ot_domain::slice_draft::{DraftMarker, SliceDraft};
@@ -529,5 +594,126 @@ mod tests {
                 .unwrap();
         assert_eq!(before.children.len(), after.children.len());
         assert_eq!(before.children[0].asset_id, after.children[0].asset_id);
+    }
+
+    fn integrity_error() -> ApiError {
+        crate::v2_api::catalog_error(ot_storage_ports::CatalogError::Integrity {
+            message: "fixture integrity".into(),
+        })
+    }
+
+    fn unavailable_error() -> ApiError {
+        crate::v2_api::catalog_error(ot_storage_ports::CatalogError::Unavailable {
+            message: "fixture unavailable".into(),
+        })
+    }
+
+    fn malformed_error() -> ApiError {
+        crate::v2_api::catalog_error(ot_storage_ports::CatalogError::InvalidStoredData {
+            field: "content_hash",
+        })
+    }
+
+    fn fixture_hash(seed: u8) -> ContentHash {
+        ContentHash::parse(format!("sha256:{seed:0>64x}")).unwrap()
+    }
+
+    fn snapshot_with_file(hash: ContentHash) -> LibrarySnapshot {
+        LibrarySnapshot {
+            file_instances: vec![ot_domain::FileInstance {
+                relative_path: ot_domain::RootRelativePath::parse("SET/AUDIO/export.wav").unwrap(),
+                content_hash: hash,
+                byte_size: 100,
+                modified_at_unix_ns: None,
+                storage_scope: ot_domain::SampleStorageScope::SetAudioPool,
+                hash_freshness: ot_domain::ContentHashFreshness::ComputedThisScan,
+            }],
+            ..LibrarySnapshot::default()
+        }
+    }
+
+    #[test]
+    fn snapshot_hit_and_miss_are_typed() {
+        let hash = fixture_hash(1);
+        let asset_id = opaque_asset_id(&hash);
+        let present =
+            content_hash_in_snapshot(&snapshot_with_file(hash.clone()), &asset_id).unwrap();
+        assert_eq!(present.as_ref(), Some(&hash));
+        let absent = content_hash_in_snapshot(&LibrarySnapshot::default(), &asset_id).unwrap();
+        assert!(absent.is_none());
+    }
+
+    #[test]
+    fn current_snapshot_integrity_is_not_hidden_by_later_hits() {
+        let hidden = fixture_hash(9);
+        let error = first_present_content_hash(
+            || Err(integrity_error()),
+            || Ok(Some(hidden.clone())),
+            || panic!("global fallback must not run after current snapshot integrity failure"),
+        )
+        .unwrap_err();
+        assert_eq!(json!(error)["code"], "CATALOG_INTEGRITY_ERROR");
+    }
+
+    #[test]
+    fn derived_snapshot_integrity_is_not_hidden_by_global_hash() {
+        let hidden = fixture_hash(9);
+        let error = first_present_content_hash(
+            || Ok(None),
+            || Err(integrity_error()),
+            || Ok(Some(hidden.clone())),
+        )
+        .unwrap_err();
+        assert_eq!(json!(error)["code"], "CATALOG_INTEGRITY_ERROR");
+    }
+
+    #[test]
+    fn unavailable_and_malformed_snapshot_loads_propagate() {
+        let unavailable = first_present_content_hash(
+            || Err(unavailable_error()),
+            || Ok(Some(fixture_hash(2))),
+            || Ok(Some(fixture_hash(3))),
+        )
+        .unwrap_err();
+        assert_eq!(json!(unavailable)["code"], "CATALOG_UNAVAILABLE");
+        let malformed = first_present_content_hash(
+            || Ok(None),
+            || Err(malformed_error()),
+            || Ok(Some(fixture_hash(3))),
+        )
+        .unwrap_err();
+        assert_eq!(json!(malformed)["code"], "CATALOG_INTEGRITY_ERROR");
+    }
+
+    #[test]
+    fn successful_current_miss_falls_back_to_derived_then_global() {
+        let derived = fixture_hash(4);
+        let found = first_present_content_hash(
+            || Ok(None),
+            || Ok(Some(derived.clone())),
+            || panic!("global must not run when derived snapshot hits"),
+        )
+        .unwrap();
+        assert_eq!(found, derived);
+        let global = fixture_hash(5);
+        let found_global =
+            first_present_content_hash(|| Ok(None), || Ok(None), || Ok(Some(global.clone())))
+                .unwrap();
+        assert_eq!(found_global, global);
+    }
+
+    #[test]
+    fn catalog_lock_poison_is_unavailable() {
+        let (_ot, _data, registry, catalog, _derived, root_id, _file_id, file) = fixture();
+        let asset_id = opaque_asset_id(&file.content_hash);
+        let poisoned = std::sync::Arc::clone(&catalog);
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoned.lock().unwrap();
+            panic!("poison catalog lock");
+        })
+        .join();
+        let error =
+            asset_derivation_get_sync(&registry, &catalog, &root_id, &asset_id).unwrap_err();
+        assert_eq!(json!(error)["code"], "CATALOG_UNAVAILABLE");
     }
 }

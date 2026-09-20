@@ -157,6 +157,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'inspector.derivationError.generic': '派生情報を読み込めませんでした。',
   'inspector.derivationError.CATALOG_ASSET_NOT_FOUND': 'このアセットはカタログにありません。',
   'inspector.derivationError.CATALOG_UNAVAILABLE': 'カタログは一時的に利用できません。',
+  'inspector.derivationError.CATALOG_INTEGRITY_ERROR': 'カタログの整合性チェックに失敗しました。',
   'inspector.derivationError.CATALOG_DERIVATION_INVALID': '保存された派生データが無効です。',
   'inspector.derivationError.INVALID_ASSET_ID': 'アセット ID が無効です。',
 
