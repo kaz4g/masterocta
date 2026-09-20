@@ -99,6 +99,9 @@ pub enum DerivationParameters {
     Trim {
         range: FrameRange,
     },
+    SliceExport {
+        range: FrameRange,
+    },
     /// v12 TRIM rows stored as `v1|kind=empty` without frame range (read-only compatibility).
     LegacyTrimUnspecified,
 }
@@ -130,6 +133,15 @@ impl DerivationParameterEnvelope {
         })
     }
 
+    pub fn slice_export(range: FrameRange) -> Result<Self, InvalidDerivation> {
+        if range.frame_count() == 0 {
+            return Err(InvalidDerivation::InvalidParameters);
+        }
+        Ok(Self {
+            parameters: DerivationParameters::SliceExport { range },
+        })
+    }
+
     pub(crate) fn legacy_trim_unspecified() -> Self {
         Self {
             parameters: DerivationParameters::LegacyTrimUnspecified,
@@ -150,6 +162,11 @@ impl DerivationParameterEnvelope {
             }
             DerivationParameters::Trim { range } => format!(
                 "{ENVELOPE_VERSION}|kind=trim|start={}|end={}",
+                range.start(),
+                range.end_exclusive()
+            ),
+            DerivationParameters::SliceExport { range } => format!(
+                "{ENVELOPE_VERSION}|kind=slice_export|start={}|end={}",
                 range.start(),
                 range.end_exclusive()
             ),
@@ -203,6 +220,20 @@ impl DerivationParameterEnvelope {
                 let end = PcmFrame::parse_decimal(end.ok_or(InvalidDerivation::InvalidParameters)?)
                     .map_err(|_| InvalidDerivation::InvalidParameters)?;
                 Self::trim(
+                    FrameRange::new(start, end)
+                        .map_err(|_| InvalidDerivation::InvalidParameters)?,
+                )
+            }
+            "slice_export" => {
+                if role.is_some() {
+                    return Err(InvalidDerivation::InvalidParameters);
+                }
+                let start =
+                    PcmFrame::parse_decimal(start.ok_or(InvalidDerivation::InvalidParameters)?)
+                        .map_err(|_| InvalidDerivation::InvalidParameters)?;
+                let end = PcmFrame::parse_decimal(end.ok_or(InvalidDerivation::InvalidParameters)?)
+                    .map_err(|_| InvalidDerivation::InvalidParameters)?;
+                Self::slice_export(
                     FrameRange::new(start, end)
                         .map_err(|_| InvalidDerivation::InvalidParameters)?,
                 )
@@ -411,6 +442,7 @@ fn validate_kind_parameters(
             DerivationParameters::Stem { .. } => Ok(()),
             DerivationParameters::Empty
             | DerivationParameters::Trim { .. }
+            | DerivationParameters::SliceExport { .. }
             | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
@@ -419,6 +451,16 @@ fn validate_kind_parameters(
             DerivationParameters::Trim { .. } => Ok(()),
             DerivationParameters::Empty
             | DerivationParameters::Stem { .. }
+            | DerivationParameters::SliceExport { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
+                Err(InvalidDerivation::InvalidParameters)
+            }
+        },
+        DerivationKind::SliceExport => match envelope.parameters() {
+            DerivationParameters::SliceExport { .. } => Ok(()),
+            DerivationParameters::Empty
+            | DerivationParameters::Stem { .. }
+            | DerivationParameters::Trim { .. }
             | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
@@ -427,6 +469,7 @@ fn validate_kind_parameters(
             DerivationParameters::Empty => Ok(()),
             DerivationParameters::Stem { .. }
             | DerivationParameters::Trim { .. }
+            | DerivationParameters::SliceExport { .. }
             | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
@@ -443,6 +486,7 @@ fn validate_stored_kind_parameters(
             DerivationParameters::Stem { .. } => Ok(()),
             DerivationParameters::Empty
             | DerivationParameters::Trim { .. }
+            | DerivationParameters::SliceExport { .. }
             | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
@@ -451,7 +495,16 @@ fn validate_stored_kind_parameters(
             DerivationParameters::Trim { .. } | DerivationParameters::LegacyTrimUnspecified => {
                 Ok(())
             }
-            DerivationParameters::Empty | DerivationParameters::Stem { .. } => {
+            DerivationParameters::Empty
+            | DerivationParameters::Stem { .. }
+            | DerivationParameters::SliceExport { .. } => Err(InvalidDerivation::InvalidParameters),
+        },
+        DerivationKind::SliceExport => match envelope.parameters() {
+            DerivationParameters::SliceExport { .. } => Ok(()),
+            DerivationParameters::Empty
+            | DerivationParameters::Stem { .. }
+            | DerivationParameters::Trim { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
         },
@@ -609,6 +662,32 @@ mod tests {
             DerivationParameterEnvelope::decode(&envelope.encode()).unwrap(),
             envelope
         );
+    }
+
+    #[test]
+    fn slice_export_envelope_round_trips() {
+        let range = FrameRange::new(PcmFrame::new(100), PcmFrame::new(250)).unwrap();
+        let envelope = DerivationParameterEnvelope::slice_export(range).unwrap();
+        assert_eq!(
+            envelope.encode(),
+            "v1|kind=slice_export|start=100|end=250".to_string()
+        );
+        assert_eq!(
+            DerivationParameterEnvelope::decode(&envelope.encode()).unwrap(),
+            envelope
+        );
+        let source = hash(20);
+        let output = hash(21);
+        AssetDerivation::new(
+            output,
+            source.clone(),
+            DerivationKind::SliceExport,
+            ProcessorIdentity::new("masterocta-trim", "pcm-wav-v1").unwrap(),
+            envelope,
+            source,
+            "2026-09-20T00:00:00.000Z",
+        )
+        .unwrap();
     }
 
     #[test]

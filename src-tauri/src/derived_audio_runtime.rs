@@ -409,11 +409,18 @@ fn staging_part_files(staging_directory: &Path) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ot_application::ApplyTrimDerivation;
+    use ot_application::{
+        ApplySliceExportDerivation, ApplyTrimDerivation, SliceExportApplyError, TrimApplyError,
+    };
+    use ot_domain::slice_draft::{DraftMarker, SliceDraft};
     use ot_domain::slicing::{FrameRange, PcmFrame};
-    use ot_domain::{ContentHash, TrimIntent};
-    use ot_storage_ports::{AssetDerivationCatalog, DerivedAudioCatalog, DerivedFileUpsert};
+    use ot_domain::{ContentHash, RootRelativePath, SliceExportIntent, TrimIntent};
+    use ot_storage_ports::slice_drafts::{SliceDraftBinding, SliceDraftCatalog};
+    use ot_storage_ports::{
+        AssetDerivationCatalog, CatalogRootIdentity, DerivedAudioCatalog, DerivedFileUpsert,
+    };
     use sha2::{Digest, Sha256};
+    use std::sync::atomic::AtomicBool;
     use tempfile::TempDir;
 
     fn hash_bytes(bytes: &[u8]) -> ContentHash {
@@ -711,6 +718,251 @@ mod tests {
             );
             assert_faulty_trim_has_no_side_effects(&runtime, &*catalog, &source_bytes, &before);
         }
+    }
+
+    fn fixture_slice_draft_binding(
+        source_hash: &ContentHash,
+        source_bytes: &[u8],
+    ) -> SliceDraftBinding {
+        let cancelled = AtomicBool::new(false);
+        let layout = ot_audio::pcm::inspect_wav_layout(source_bytes, &cancelled).unwrap();
+        SliceDraftBinding {
+            root: CatalogRootIdentity::new(format!("rootfp:v1:{}", "2".repeat(64))).unwrap(),
+            relative_path: RootRelativePath::parse("SET/AUDIO/slice-export-fixture.wav").unwrap(),
+            source_hash: source_hash.clone(),
+            sample_rate: layout.info.sample_rate,
+            frame_count: layout.info.frame_count,
+        }
+    }
+
+    fn draft_with_three_markers(frame_count: u64) -> SliceDraft {
+        let region = FrameRange::new(PcmFrame::new(0), PcmFrame::new(frame_count)).unwrap();
+        let draft = SliceDraft {
+            revision: 0,
+            region,
+            markers: vec![
+                DraftMarker {
+                    id: "first".into(),
+                    start: PcmFrame::new(0),
+                    locked: false,
+                    manual: false,
+                    candidate_id: None,
+                    estimated_attack: None,
+                },
+                DraftMarker {
+                    id: "middle".into(),
+                    start: PcmFrame::new(40),
+                    locked: false,
+                    manual: false,
+                    candidate_id: None,
+                    estimated_attack: None,
+                },
+                DraftMarker {
+                    id: "last".into(),
+                    start: PcmFrame::new(160),
+                    locked: false,
+                    manual: false,
+                    candidate_id: None,
+                    estimated_attack: None,
+                },
+            ],
+            suppressed_candidate_ids: Default::default(),
+            exclusions: vec![],
+        };
+        draft.validate().unwrap();
+        draft
+    }
+
+    #[test]
+    fn slice_export_vertical_slice_registers_lineage_and_retries_idempotently() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let shared_catalog = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+        let mut catalog = shared_catalog.lock().unwrap();
+        let source_bytes = ot_audio::test_minimal_wav(200);
+        let source_hash = hash_bytes(&source_bytes);
+        let before = hash_bytes(&source_bytes);
+        catalog
+            .upsert_derived_file(&DerivedFileUpsert {
+                content_hash: source_hash.clone(),
+                byte_size: source_bytes.len() as u64,
+                relative_path: "fixtures/slice-export-source.wav".into(),
+                modified_at_unix_ns: None,
+            })
+            .unwrap();
+        let binding = fixture_slice_draft_binding(&source_hash, &source_bytes);
+        let draft = draft_with_three_markers(binding.frame_count);
+        let saved = catalog.save_slice_draft(&binding, &draft, 0).unwrap();
+        assert_eq!(saved.revision, 1);
+        let range = saved.marker_range("middle").unwrap();
+        let intent = SliceExportIntent::new(source_hash.clone(), saved.revision, "middle", range);
+        let processor = OtAudioTrimProcessor;
+        let verifier = OtAudioTrimVerifier;
+        let output = {
+            let mut apply = ApplySliceExportDerivation::new(
+                &processor,
+                &verifier,
+                &mut runtime,
+                &mut *catalog,
+                "2026-09-20T12:00:00.000Z",
+            );
+            let result = apply
+                .execute(&binding, &intent, &source_bytes, &source_hash, &before)
+                .unwrap();
+            assert!(result.source_unchanged);
+            assert_eq!(hash_bytes(&source_bytes), before);
+            result.output
+        };
+        let loaded = catalog.load_asset_derivation(&output).unwrap().unwrap();
+        assert_eq!(loaded.kind(), ot_domain::DerivationKind::SliceExport);
+        assert_eq!(loaded.source(), &source_hash);
+        let cancelled = AtomicBool::new(false);
+        ot_audio::verify_trim_wav_output(
+            &source_bytes,
+            range,
+            &{
+                let path = runtime
+                    .published_path(&format!(
+                        "v1/{}.wav",
+                        output.as_str().strip_prefix("sha256:").unwrap()
+                    ))
+                    .unwrap();
+                fs::read(path).unwrap()
+            },
+            &cancelled,
+        )
+        .unwrap();
+        {
+            let mut apply = ApplySliceExportDerivation::new(
+                &processor,
+                &verifier,
+                &mut runtime,
+                &mut *catalog,
+                "2026-09-20T12:00:00.000Z",
+            );
+            apply
+                .execute(&binding, &intent, &source_bytes, &source_hash, &before)
+                .unwrap();
+        }
+        drop(catalog);
+        let shared = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+        let reopened = shared.lock().unwrap();
+        assert_eq!(
+            reopened
+                .load_asset_derivation(&output)
+                .unwrap()
+                .unwrap()
+                .kind(),
+            ot_domain::DerivationKind::SliceExport
+        );
+    }
+
+    #[test]
+    fn slice_export_24bit_stereo_pcm_verification() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let shared_catalog = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+        let mut catalog = shared_catalog.lock().unwrap();
+        let source_bytes = ot_audio::test_integer_pcm_wav(24, 2, 44_100, 200);
+        let source_hash = hash_bytes(&source_bytes);
+        catalog
+            .upsert_derived_file(&DerivedFileUpsert {
+                content_hash: source_hash.clone(),
+                byte_size: source_bytes.len() as u64,
+                relative_path: "fixtures/slice-export-24bit-stereo.wav".into(),
+                modified_at_unix_ns: None,
+            })
+            .unwrap();
+        let binding = fixture_slice_draft_binding(&source_hash, &source_bytes);
+        let draft = draft_with_three_markers(binding.frame_count);
+        let saved = catalog.save_slice_draft(&binding, &draft, 0).unwrap();
+        let range = saved.marker_range("middle").unwrap();
+        let intent = SliceExportIntent::new(source_hash.clone(), saved.revision, "middle", range);
+        let processor = OtAudioTrimProcessor;
+        let verifier = OtAudioTrimVerifier;
+        let before = hash_bytes(&source_bytes);
+        let mut apply = ApplySliceExportDerivation::new(
+            &processor,
+            &verifier,
+            &mut runtime,
+            &mut *catalog,
+            "2026-09-20T12:00:00.000Z",
+        );
+        let output = apply
+            .execute(&binding, &intent, &source_bytes, &source_hash, &before)
+            .unwrap()
+            .output;
+        let published = runtime
+            .published_path(&format!(
+                "v1/{}.wav",
+                output.as_str().strip_prefix("sha256:").unwrap()
+            ))
+            .unwrap();
+        let cancelled = AtomicBool::new(false);
+        ot_audio::verify_trim_wav_output(
+            &source_bytes,
+            range,
+            &fs::read(published).unwrap(),
+            &cancelled,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn slice_export_conflicts_with_existing_trim_lineage() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let shared_catalog = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+        let mut catalog = shared_catalog.lock().unwrap();
+        let source_bytes = ot_audio::test_minimal_wav(200);
+        let source_hash = hash_bytes(&source_bytes);
+        let before = hash_bytes(&source_bytes);
+        catalog
+            .upsert_derived_file(&DerivedFileUpsert {
+                content_hash: source_hash.clone(),
+                byte_size: source_bytes.len() as u64,
+                relative_path: "fixtures/slice-export-conflict-source.wav".into(),
+                modified_at_unix_ns: None,
+            })
+            .unwrap();
+        let binding = fixture_slice_draft_binding(&source_hash, &source_bytes);
+        let draft = draft_with_three_markers(binding.frame_count);
+        let saved = catalog.save_slice_draft(&binding, &draft, 0).unwrap();
+        let range = saved.marker_range("middle").unwrap();
+        let trim_intent = TrimIntent::new(source_hash.clone(), range);
+        ApplyTrimDerivation::new(
+            &OtAudioTrimProcessor,
+            &OtAudioTrimVerifier,
+            &mut runtime,
+            &mut *catalog,
+            "2026-09-20T12:00:00.000Z",
+        )
+        .execute(&trim_intent, &source_bytes, &source_hash, &before)
+        .unwrap();
+        let export_intent =
+            SliceExportIntent::new(source_hash.clone(), saved.revision, "middle", range);
+        let mut apply = ApplySliceExportDerivation::new(
+            &OtAudioTrimProcessor,
+            &OtAudioTrimVerifier,
+            &mut runtime,
+            &mut *catalog,
+            "2026-09-20T12:00:00.000Z",
+        );
+        let err = apply
+            .execute(
+                &binding,
+                &export_intent,
+                &source_bytes,
+                &source_hash,
+                &before,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            SliceExportApplyError::Catalog(ot_storage_ports::CatalogError::Derivation(
+                ot_domain::InvalidDerivation::ConflictingLineage
+            ))
+        ));
     }
 
     #[test]

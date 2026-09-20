@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 
 pub mod derived_trim;
+pub mod slice_export;
 
 pub use derived_trim::{
-    ApplyTrimDerivation, DerivedAudioPublisher, TrimApplyError, TrimApplyResult,
-    TrimDerivationVerifier, TrimVerificationKind, TrimWavProcessor, TrimWavResult,
+    prepare_publish_trim_derivation, ApplyTrimDerivation, DerivedAudioPublisher, TrimApplyError,
+    TrimApplyResult, TrimDerivationPrepared, TrimDerivationVerifier, TrimVerificationKind,
+    TrimWavProcessor, TrimWavResult,
 };
+pub use slice_export::{ApplySliceExportDerivation, SliceExportApplyError, SliceExportApplyResult};
 
 use ot_codec_ports::{CodecError, ProjectCodec};
 use ot_domain::{

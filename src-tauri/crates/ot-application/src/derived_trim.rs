@@ -141,65 +141,108 @@ where
         verified_source_hash: &ContentHash,
         source_hash_before: &ContentHash,
     ) -> Result<TrimApplyResult, TrimApplyError> {
-        let actual_source_hash = self.verifier.content_hash(verified_source_bytes)?;
-        if intent.source() != verified_source_hash
-            || intent.source() != source_hash_before
-            || actual_source_hash != *verified_source_hash
-        {
-            return Err(TrimApplyError::SourceMismatch);
-        }
-        self.verifier
-            .verify_source_for_intent(verified_source_bytes, intent)?;
-        let TrimWavResult {
-            wav_bytes,
-            expected: _claimed_expected,
-            output_hash: _claimed_output_hash,
-        } = self.processor.trim_wav(verified_source_bytes, intent)?;
-        let verified_expected =
-            self.verifier
-                .verify_output_pcm(verified_source_bytes, intent, &wav_bytes)?;
-        let output_hash = self.verifier.content_hash(&wav_bytes)?;
-        if output_hash == actual_source_hash {
-            return Err(TrimApplyError::NoOpDerivation);
-        }
-        let parameters = DerivationParameterEnvelope::trim(intent.range())
-            .map_err(|error| TrimApplyError::Plan(error.to_string()))?;
-        let processor =
-            standard_trim_processor().map_err(|error| TrimApplyError::Plan(error.to_string()))?;
-        let plan = TrimPlan::new(
-            actual_source_hash.clone(),
-            actual_source_hash.clone(),
-            intent.range(),
-            verified_expected,
-            processor.clone(),
-            parameters.clone(),
-            &output_hash,
-        )
-        .map_err(|_| TrimApplyError::Plan("invalid trim plan".into()))?;
-        self.publisher
-            .publish_trim_output(&plan, &wav_bytes, &output_hash)?;
-        self.catalog.upsert_derived_file(&DerivedFileUpsert {
-            content_hash: output_hash.clone(),
-            byte_size: wav_bytes.len() as u64,
-            relative_path: plan.published_relative_path().to_string(),
-            modified_at_unix_ns: None,
-        })?;
+        let prepared = prepare_publish_trim_derivation(
+            self.processor,
+            self.verifier,
+            self.publisher,
+            self.catalog,
+            intent,
+            verified_source_bytes,
+            verified_source_hash,
+            source_hash_before,
+        )?;
         let derivation = AssetDerivation::new(
-            output_hash.clone(),
-            actual_source_hash.clone(),
+            prepared.output.clone(),
+            prepared.actual_source_hash.clone(),
             DerivationKind::Trim,
-            processor,
-            parameters,
-            actual_source_hash.clone(),
+            prepared.processor.clone(),
+            prepared.trim_parameters.clone(),
+            prepared.actual_source_hash.clone(),
             self.created_at,
         )
         .map_err(|error| TrimApplyError::Plan(error.to_string()))?;
         self.catalog.register_asset_derivation(&derivation)?;
         Ok(TrimApplyResult {
-            output: output_hash,
-            source_unchanged: source_hash_before == &actual_source_hash,
+            output: prepared.output,
+            source_unchanged: prepared.source_unchanged,
         })
     }
+}
+
+pub struct TrimDerivationPrepared {
+    pub output: ContentHash,
+    pub source_unchanged: bool,
+    pub actual_source_hash: ContentHash,
+    pub processor: ot_domain::ProcessorIdentity,
+    pub trim_parameters: DerivationParameterEnvelope,
+    pub plan: TrimPlan,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_publish_trim_derivation<P, V, S, C>(
+    processor: &P,
+    verifier: &V,
+    publisher: &mut S,
+    catalog: &mut C,
+    intent: &TrimIntent,
+    verified_source_bytes: &[u8],
+    verified_source_hash: &ContentHash,
+    source_hash_before: &ContentHash,
+) -> Result<TrimDerivationPrepared, TrimApplyError>
+where
+    P: TrimWavProcessor,
+    V: TrimDerivationVerifier,
+    S: DerivedAudioPublisher,
+    C: DerivedAudioCatalog,
+{
+    let actual_source_hash = verifier.content_hash(verified_source_bytes)?;
+    if intent.source() != verified_source_hash
+        || intent.source() != source_hash_before
+        || actual_source_hash != *verified_source_hash
+    {
+        return Err(TrimApplyError::SourceMismatch);
+    }
+    verifier.verify_source_for_intent(verified_source_bytes, intent)?;
+    let TrimWavResult {
+        wav_bytes,
+        expected: _claimed_expected,
+        output_hash: _claimed_output_hash,
+    } = processor.trim_wav(verified_source_bytes, intent)?;
+    let verified_expected =
+        verifier.verify_output_pcm(verified_source_bytes, intent, &wav_bytes)?;
+    let output_hash = verifier.content_hash(&wav_bytes)?;
+    if output_hash == actual_source_hash {
+        return Err(TrimApplyError::NoOpDerivation);
+    }
+    let trim_parameters = DerivationParameterEnvelope::trim(intent.range())
+        .map_err(|error| TrimApplyError::Plan(error.to_string()))?;
+    let processor =
+        standard_trim_processor().map_err(|error| TrimApplyError::Plan(error.to_string()))?;
+    let plan = TrimPlan::new(
+        actual_source_hash.clone(),
+        actual_source_hash.clone(),
+        intent.range(),
+        verified_expected,
+        processor.clone(),
+        trim_parameters.clone(),
+        &output_hash,
+    )
+    .map_err(|_| TrimApplyError::Plan("invalid trim plan".into()))?;
+    publisher.publish_trim_output(&plan, &wav_bytes, &output_hash)?;
+    catalog.upsert_derived_file(&DerivedFileUpsert {
+        content_hash: output_hash.clone(),
+        byte_size: wav_bytes.len() as u64,
+        relative_path: plan.published_relative_path().to_string(),
+        modified_at_unix_ns: None,
+    })?;
+    Ok(TrimDerivationPrepared {
+        output: output_hash,
+        source_unchanged: source_hash_before == &actual_source_hash,
+        actual_source_hash,
+        processor,
+        trim_parameters,
+        plan,
+    })
 }
 
 #[cfg(test)]

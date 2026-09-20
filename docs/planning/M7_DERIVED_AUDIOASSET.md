@@ -1,6 +1,6 @@
 # M7 derived AudioAsset
 
-- Work IDs: `MO-M7-DERIVED-AUDIOASSET-1` (lineage), `MO-M7-DERIVED-AUDIOASSET-2` (TRIM generation slice)
+- Work IDs: `MO-M7-DERIVED-AUDIOASSET-1` (lineage), `MO-M7-DERIVED-AUDIOASSET-2` (TRIM generation slice), `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1` (1-slice draft export)
 - Status: **IN_PROGRESS** (M7-06 — lineage + Mac TRIM vertical slice; query IPC / operator workflow open)
 - Updated: 2026-09-20
 
@@ -96,7 +96,7 @@ Original source bytes and hash are unchanged.
 
 | Track | Connection |
 | --- | --- |
-| Auto Slice | Draft stays FileInstance-bound; export produces new bytes → catalog asset → `SLICE_EXPORT` lineage |
+| Auto Slice | **1-slice export on branch** (`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`): draft + `marker_id` + revision → shared TRIM engine → `SLICE_EXPORT` lineage. See [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md). UI/IPC still open. |
 | Stem separation | Multiple outputs from one source via `STEM` + `StemRole` parameters |
 | Node recording | `NODE_RECORDING_PROCESS` / `IMPORT_PROCESS` kinds without PerformanceSession in core |
 
@@ -113,4 +113,6 @@ Original source bytes and hash are unchanged.
 - TRIM derived WAV pipeline (#148): domain, ot-audio, catalog upsert, application orchestration.
 - P2 fixes: source-byte binding, staging cleanup, catalog root pointer repair, publish symlink guard, no-op TRIM rejection, v12 empty-trim read compat.
 
-Still open for v0.1: query IPC, stem/normalize/resample, operator workflows, production wiring.
+- **Slice export (1 slice):** `ApplySliceExportDerivation` + typed `SLICE_EXPORT` envelope (`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`; application/tests only).
+
+Still open for v0.1: query IPC, stem/normalize/resample, operator workflows, production UI wiring for slice export.
