@@ -6,7 +6,6 @@ mod audio_runtime;
 mod bank_validation;
 mod catalog_runtime;
 mod clone_runtime;
-#[cfg(test)]
 mod derived_audio_runtime;
 mod device_detection;
 mod host_metadata_policy;
@@ -23,6 +22,7 @@ mod rename_planning_facts;
 mod rename_recovery_runtime;
 mod rename_write_runtime;
 mod root_registry;
+mod slice_export_apply;
 mod slice_workbench;
 mod v2_api;
 mod write_runtime;
@@ -1592,6 +1592,9 @@ pub fn run() {
             app.manage(catalog);
             let audio_runtime = audio_runtime::open_shared_audio_runtime(&data_directory)?;
             app.manage(audio_runtime);
+            let derived_audio_runtime =
+                derived_audio_runtime::open_shared_derived_audio_runtime(&data_directory)?;
+            app.manage(derived_audio_runtime);
             app.manage(Arc::new(slice_workbench::SliceWorkbench::new()?));
             let write_runtime = write_runtime::open_shared_write_runtime(&data_directory)?;
             app.manage(write_runtime);
@@ -1633,8 +1636,9 @@ pub fn run() {
             v2_api::v2_audio_onsets_status,
             v2_api::v2_audio_onsets_cancel,
             v2_api::v2_slice_draft_get,
-            v2_api::v2_slice_proposal_create,
             v2_api::v2_slice_draft_update,
+            v2_api::v2_slice_proposal_create,
+            v2_api::v2_slice_export_apply,
             v2_api::v2_audio_waveform_range_get,
             v2_api::v2_audio_preview_region_create,
             v2_api::v2_audio_preview_region_read,

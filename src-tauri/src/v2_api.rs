@@ -319,14 +319,17 @@ impl LibrarySnapshotDto {
     }
 }
 
-fn opaque_file_instance_id(root_identity: &CatalogRootIdentity, file: &FileInstance) -> String {
+pub(crate) fn opaque_file_instance_id(
+    root_identity: &CatalogRootIdentity,
+    file: &FileInstance,
+) -> String {
     opaque_catalog_id(
         "fileinst:v1",
         &[root_identity.as_str(), file.relative_path.as_str()],
     )
 }
 
-fn opaque_asset_id(content_hash: &ContentHash) -> String {
+pub(crate) fn opaque_asset_id(content_hash: &ContentHash) -> String {
     opaque_catalog_id("asset:v1", &[content_hash.as_str()])
 }
 
@@ -3977,7 +3980,7 @@ fn catalog_lock_error() -> ApiError {
     )
 }
 
-fn catalog_error(error: CatalogError) -> ApiError {
+pub(crate) fn catalog_error(error: CatalogError) -> ApiError {
     let (code, message, recoverable) = match &error {
         CatalogError::DuplicateRelativePath(_) => (
             "CATALOG_INDEX_INVALID",
@@ -4418,6 +4421,35 @@ pub async fn v2_slice_draft_update(
             &job_id,
             expected_revision,
             edit,
+        )
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
+pub async fn v2_slice_export_apply(
+    root_id: String,
+    file_instance_id: String,
+    marker_id: String,
+    expected_revision: u64,
+    registry: State<'_, Arc<RootRegistry>>,
+    catalog: State<'_, SharedCatalog>,
+    derived: State<'_, crate::derived_audio_runtime::SharedDerivedAudioRuntime>,
+) -> Result<crate::slice_export_apply::SliceExportApplyDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let registry = Arc::clone(registry.inner());
+    let catalog = Arc::clone(catalog.inner());
+    let derived = Arc::clone(derived.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::slice_export_apply::slice_export_apply_sync(
+            &registry,
+            &catalog,
+            &derived,
+            &root_id,
+            &file_instance_id,
+            &marker_id,
+            expected_revision,
         )
     })
     .await

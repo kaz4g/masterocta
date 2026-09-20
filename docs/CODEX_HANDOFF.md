@@ -335,12 +335,13 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**進行中 Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`（Slice Draft 1 slice → Mac derived +
-`SLICE_EXPORT` lineage、application/tests のみ。branch `feat/m7-auto-slice-derived-export-1`）。
-正本: [`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
+**進行中 Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1`（`v2_slice_export_apply` +
+Slice Workspace 1-slice export UI。branch `feat/m7-auto-slice-derived-export-ui-1`）。
+Backend `#152` merged。正本:
+[`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
 [`docs/planning/M7_DERIVED_AUDIOASSET.md`](planning/M7_DERIVED_AUDIOASSET.md)。
-#147–#151（lineage + TRIM + PCM verify）は `main`（`6df7b48`）。次候補: UI/IPC または
-`MO-M7-DERIVED-QUERY-API-1`（DEVELOPMENT_STATUS § Recommended next）。
+Native derived-export acceptance: [`docs/testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
+次: `MO-M7-DERIVED-QUERY-API-1`（DEVELOPMENT_STATUS § Recommended next）。
 
 **M7-05 native:** 統合受入 **PASS**（`main` `0f39f50`、
 `docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md` § post-#142）。

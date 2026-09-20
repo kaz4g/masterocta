@@ -235,6 +235,7 @@ const expectedV2Commands = [
   "v2_root_status",
   "v2_slice_draft_get",
   "v2_slice_draft_update",
+  "v2_slice_export_apply",
   "v2_slice_proposal_create",
 ];
 const actualV2Commands = v2Commands.map((match) => match[1]).sort();

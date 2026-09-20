@@ -64,7 +64,21 @@ function client(): SliceApi {
     waveform: vi.fn().mockResolvedValue({ range: region, peaks: [[[-0.5, 0.5]]] }),
     preview: vi.fn(),
     readPreview: vi.fn(),
+    exportDerived: vi.fn().mockResolvedValue({
+      derivedAssetId: "asset-export-1",
+      sourceUnchanged: false,
+      startFrame: "956",
+      endExclusive: "44100",
+    }),
   };
+}
+async function prepareDraftWithSelection(api: SliceApi, extra: Parameters<typeof mount>[1] = {}) {
+  const view = mount(api, extra);
+  await detect();
+  fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalled());
+  fireEvent.focus(await screen.findByDisplayValue("956"));
+  return view;
 }
 function mount(
   api: SliceApi,
@@ -578,6 +592,78 @@ describe("attack slicing workbench", () => {
       0,
       { kind: "acceptProposal", proposalId: "proposal-1" },
     ));
+  });
+
+  it("exports the selected slice with opaque revision and marker payload", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(api.exportDerived).toHaveBeenCalledWith(
+      "root-1",
+      "file-1",
+      "candidate-1",
+      1,
+    ));
+    expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-1");
+  });
+
+  it("disables export while a request is pending", async () => {
+    const api = client();
+    let finish!: () => void;
+    vi.mocked(api.exportDerived).mockReturnValue(new Promise((resolve) => {
+      finish = () => resolve({
+        derivedAssetId: "asset-export-1",
+        sourceUnchanged: false,
+        startFrame: "956",
+        endExclusive: "44100",
+      });
+    }));
+    await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    expect(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") })).toBeDisabled();
+    finish();
+    await waitFor(() => expect(api.exportDerived).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows translated export errors without invalidating the analysis session", async () => {
+    const api = client();
+    vi.mocked(api.exportDerived).mockRejectedValue({
+      code: "STALE_DRAFT",
+      message: "the draft changed; reload it before exporting",
+    });
+    await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(tJa("slicing.error.STALE_DRAFT"));
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: tJa("slicing.applyCandidates") }),
+    ).toBeEnabled());
+  });
+
+  it("discards stale export success after the selected file changes", async () => {
+    const api = client();
+    const view = await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(screen.getByTestId("slice-export-success")).toHaveTextContent("asset-export-1"));
+    view.rerender(withLocaleProvider(
+      <SliceWorkbench rootId="root-1" fileInstanceId="file-2" displayName="other.wav" api={api} />,
+    ));
+    expect(screen.queryByTestId("slice-export-success")).not.toBeInTheDocument();
+    expect(api.exportDerived).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-run export when locale toggles", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api, { withLocaleToggle: true });
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(api.exportDerived).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Toggle locale" }));
+    await waitFor(() => expect(screen.getByTestId("slice-export-success")).toHaveTextContent("asset-export-1"));
+    expect(api.exportDerived).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a late edit failure after a new analysis session starts", async () => {

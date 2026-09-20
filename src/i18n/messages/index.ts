@@ -36,6 +36,11 @@ export type MessageParams = {
   'slicing.candidatesSummary': { count: number; suppressed: number }
   'slicing.reviewBoundaries': { count: number }
   'slicing.draftSummary': { count: number; revision: number }
+  'slicing.sliceExportReview': { displayName: string; markerId: string }
+  'slicing.sliceExportRangeFrames': { start: string; end: string }
+  'slicing.sliceExportRangeDuration': { duration: string }
+  'slicing.sliceExportRangeFrameCount': { frames: string }
+  'slicing.exportDerivedSuccessId': { derivedAssetId: string }
   'slicing.error.genericDetail': { detail: string }
 }
 

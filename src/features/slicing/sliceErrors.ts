@@ -10,6 +10,13 @@ const KNOWN_SLICE_ERROR_CODES = [
   "SOURCE_CHANGED",
   "AUDIO_LIMIT_EXCEEDED",
   "REQUEST_SUPERSEDED",
+  "STALE_DRAFT",
+  "SLICE_MISSING",
+  "RANGE_CHANGED",
+  "NO_OP_DERIVATION",
+  "CONFLICTING_LINEAGE",
+  "DERIVED_AUDIO_VERIFICATION_FAILED",
+  "DERIVED_AUDIO_PUBLISH_FAILED",
 ] as const;
 
 /** Broad backend bucket — use `message` detail, not a single catalog string. */

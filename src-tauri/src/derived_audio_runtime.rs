@@ -8,7 +8,10 @@ use ot_domain::{ExpectedTrimOutput, TrimIntent, TrimPlan};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(test)]
+use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::{Arc, Mutex};
 
 const PRODUCT_DIRECTORY: &str = "MasterOCTa";
 const DERIVED_DIRECTORY: &str = "derived-audio";
@@ -241,6 +244,16 @@ fn reject_non_regular_destination(path: &Path) -> Result<(), TrimApplyError> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(TrimApplyError::Publish(error.to_string())),
     }
+}
+
+pub type SharedDerivedAudioRuntime = Arc<Mutex<DerivedAudioRuntime>>;
+
+pub fn open_shared_derived_audio_runtime(
+    data_directory: &Path,
+) -> Result<SharedDerivedAudioRuntime, DerivedAudioRuntimeError> {
+    Ok(Arc::new(Mutex::new(DerivedAudioRuntime::open(
+        data_directory,
+    )?)))
 }
 
 impl DerivedAudioPublisher for DerivedAudioRuntime {
