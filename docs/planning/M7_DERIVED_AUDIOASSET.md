@@ -1,8 +1,8 @@
 # M7 derived AudioAsset
 
 - Work IDs: `MO-M7-DERIVED-AUDIOASSET-1` (lineage), `MO-M7-DERIVED-AUDIOASSET-2` (TRIM generation slice), `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1` (1-slice draft export)
-- Status: **IN_PROGRESS** (M7-06 — lineage + Mac TRIM vertical slice; query IPC / operator workflow open)
-- Updated: 2026-09-20
+- Status: **IMPLEMENTED_NOT_FULLY_ACCEPTED** for M7-06 (implementation on `main` #147–#154; Native **NOT_RUN**). Do not treat this file’s historical slices as the live exit map — see [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
+- Updated: 2026-09-21
 
 ## Purpose
 
@@ -11,8 +11,9 @@ under Application Support without mutating Octatrack media or conflating content
 with filesystem paths.
 
 Slice #1 (#147) added lineage registration only. Slice #2 adds **lossless integer PCM WAV
-TRIM** → verify → content-addressed publish → catalog (`mac_derived`) → lineage. No Tauri
-commands, production UI, or media Apply.
+TRIM** → verify → content-addressed publish → catalog (`mac_derived`) → lineage.
+Later slices added production IPC/UI (#152–#154). Native remains **NOT_RUN**.
+Media Apply is still out of scope.
 
 ## Identity
 
@@ -100,7 +101,7 @@ Original source bytes and hash are unchanged.
 
 | Track | Connection |
 | --- | --- |
-| Auto Slice | **1-slice export** (#152 backend, #153 UI): draft + `marker_id` + revision → shared TRIM engine → `SLICE_EXPORT` lineage. Inspector Info shows **original → children** via lineage query (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`). See [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md). |
+| Auto Slice | **1-slice export** (#152 backend, #153 UI): draft + `marker_id` + revision → shared TRIM engine → `SLICE_EXPORT` lineage. Inspector Info shows **original → children** via lineage query (**#154 MERGED**). See [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md). |
 | Stem separation | Multiple outputs from one source via `STEM` + `StemRole` parameters |
 | Node recording | `NODE_RECORDING_PROCESS` / `IMPORT_PROCESS` kinds without PerformanceSession in core |
 
@@ -111,14 +112,11 @@ Original source bytes and hash are unchanged.
 
 ## M7-06 status
 
-**IN_PROGRESS.** On `main` after #148/#149; post-merge strictness in `fix/m7-derived-audioasset-2-postmerge-2`:
+**IMPLEMENTED_NOT_FULLY_ACCEPTED** as of `main` #154 (`37f86c9`). Historical slice notes below are **implementation inventory**, not Native PASS.
 
-- Lineage registration and persistence (#147 on `main`).
-- TRIM derived WAV pipeline (#148): domain, ot-audio, catalog upsert, application orchestration.
-- P2 fixes: source-byte binding, staging cleanup, catalog root pointer repair, publish symlink guard, no-op TRIM rejection, v12 empty-trim read compat.
+- Lineage registration and persistence (#147).
+- TRIM derived WAV pipeline (#148–#151).
+- Slice export (1 slice) backend + UI (#152–#153).
+- Lineage query IPC + Inspector Info (#154): parent get + children list; mac_derived not injected into Library browse.
 
-- **Slice export (1 slice):** `ApplySliceExportDerivation` + typed `SLICE_EXPORT` envelope (`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`; application/tests only).
-
-- **Lineage query IPC + Inspector Info** (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`): parent get + children list; mac_derived not injected into Library browse.
-
-Still open for v0.1: stem/normalize/resample, derived asset browse projection, operator workflows beyond read-only lineage.
+Native checklists remain **NOT_RUN**. Stem/normalize/resample, Library browse projection, and batch remain **post-M7** per [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).

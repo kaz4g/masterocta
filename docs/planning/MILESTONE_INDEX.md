@@ -2,7 +2,9 @@
 
 - Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
 - Status: Active canonical index
-- Updated: 2026-09-20
+- Updated: 2026-09-21
+- Implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M7 completion map: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 
 ## Role of this document
 
@@ -100,13 +102,18 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 **Exit gate (v0.1):** Width-driven high-res waveform; not limited to 640 points; stereo channels; non-blocking analysis jobs; derived assets do not mutate originals.
 
 **Current status:** [DEVELOPMENT_STATUS § M7](./DEVELOPMENT_STATUS.md#m7--waveform-v2--audio-analysis).
+**Exit audit (2026-09-21):** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 **Canonical supporting docs:**
 
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md)
+- [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - [`AUTO_SLICE_1_TECHNICAL_DESIGN.md`](./AUTO_SLICE_1_TECHNICAL_DESIGN.md), [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_IMPLEMENTATION_STATUS.md)
+- [`M7_DERIVED_AUDIOASSET.md`](./M7_DERIVED_AUDIOASSET.md), [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md)
 - [`../testing/MO_M7_WFM2_MULTIRES_CACHE_1.md`](../testing/MO_M7_WFM2_MULTIRES_CACHE_1.md) (#145)
-- [`../testing/M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md`](../testing/M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md)
+- [`../testing/M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md`](../testing/M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md) (historical #131)
+- [`../testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](../testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md) (**NOT_RUN**)
+- [`../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md) (**NOT_RUN**)
 
 ---
 
@@ -162,7 +169,7 @@ The next-generation architecture document predates the Performance System plan.
 | Legacy (NEXT_GEN §12) | Current placement | Notes |
 | --- | --- | --- |
 | Legacy **M6** Portable Project | **Backlog** (Gate D capability) | Collect/bundle/import remains in NEXT_GEN §10.2 and Gate D; not scheduled as current M6. Revisit after M10 or as explicit portable-project milestone. |
-| Legacy **M7** Slice & Sample Chain | **M7-05** + **M11** + Auto Slice track | Attack/transient analysis and Library range→slice (#131) are in progress on main. Lossless `.ot` write, chain generation, and hardware slice acceptance align with M11 and [`AUTO_SLICE_1_*`](./AUTO_SLICE_1_IMPLEMENTATION_STATUS.md), not legacy M7 number. |
+| Legacy **M7** Slice & Sample Chain | **M7-05** + **M11** + Auto Slice track | Attack/transient analysis and Library range→slice (#131) are **COMPLETE** for M7-05 on main (see [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)). Lossless `.ot` write, chain generation, and hardware slice acceptance align with M11 and [`AUTO_SLICE_1_*`](./AUTO_SLICE_1_IMPLEMENTATION_STATUS.md), not legacy M7 number. |
 | Legacy **M8** AI context | **Post-M10 / optional** | Markdown export and IntentProposal in NEXT_GEN §9; v0.1 M8 is Performance Domain, not AI. |
 | Legacy **M9** optional cloud / MCP | **Post-M10 / optional** | ADR-009 one-way backup; no v0.1 milestone slot until local boundary complete. |
 
@@ -185,5 +192,6 @@ Stem separation (M7-07/08) must not reorder ahead of M7-02/04/06 without documen
 ## Related indexes
 
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - Architecture decisions: [`ADR_INDEX.md`](./ADR_INDEX.md)
 - Agent handoff entrypoint: [`../CODEX_HANDOFF.md`](../CODEX_HANDOFF.md)
