@@ -403,6 +403,7 @@ fn ensure_subdirectory(parent: &Path, directory: &Path) -> Result<(), DerivedAud
     Ok(())
 }
 
+#[cfg(test)]
 fn staging_part_files(staging_directory: &Path) -> Vec<PathBuf> {
     fs::read_dir(staging_directory)
         .map(|read_dir| {
