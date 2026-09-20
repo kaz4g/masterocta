@@ -39,8 +39,8 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
-GitHub `main` 基準: `6a03deb687fc7d060aad9d75500a50d726f1d243`（PR #146 merge。
-#145 WFM2 `95ca4cb` を含む）。
+GitHub `main` 基準: `6df7b48988ad28a566f2a46a6887505188a0b387`（PR #151 merge。
+#147–#151 derived TRIM を含む）。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
 比較対象、移行期間中の利用可能なアプリとして残し、legacy adapter越しに段階的に
@@ -335,9 +335,12 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**進行中 Work ID:** `MO-M7-DERIVED-AUDIOASSET-2`（M7-06 TRIM derived WAV 垂直 slice、branch
-`feat/m7-derived-audioasset-2`）。正本: [`docs/planning/M7_DERIVED_AUDIOASSET.md`](docs/planning/M7_DERIVED_AUDIOASSET.md)。
-#147 lineage は `main` 取り込み済み。次候補: `MO-M7-DERIVED-QUERY-API-1` 等（DEVELOPMENT_STATUS § Recommended next）。
+**進行中 Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`（Slice Draft 1 slice → Mac derived +
+`SLICE_EXPORT` lineage、application/tests のみ。branch `feat/m7-auto-slice-derived-export-1`）。
+正本: [`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
+[`docs/planning/M7_DERIVED_AUDIOASSET.md`](planning/M7_DERIVED_AUDIOASSET.md)。
+#147–#151（lineage + TRIM + PCM verify）は `main`（`6df7b48`）。次候補: UI/IPC または
+`MO-M7-DERIVED-QUERY-API-1`（DEVELOPMENT_STATUS § Recommended next）。
 
 **M7-05 native:** 統合受入 **PASS**（`main` `0f39f50`、
 `docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md` § post-#142）。

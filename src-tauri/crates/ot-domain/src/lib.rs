@@ -3,6 +3,7 @@
 use std::fmt;
 
 pub mod derivation;
+pub mod derived_slice_export;
 pub mod derived_trim;
 pub mod onsets;
 pub mod reference_identity;
@@ -14,6 +15,7 @@ pub use derivation::{
     DerivationParameterEnvelope, DerivationParameters, InvalidDerivation, ProcessorIdentity,
     StemRole,
 };
+pub use derived_slice_export::SliceExportIntent;
 pub use derived_trim::{
     standard_trim_processor, ExpectedTrimOutput, TrimIntent, TrimPlan,
     DERIVED_AUDIO_PUBLISHED_PREFIX, MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
