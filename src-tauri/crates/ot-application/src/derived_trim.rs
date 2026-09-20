@@ -14,9 +14,20 @@ pub struct TrimApplyResult {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TrimVerificationKind {
+    PcmMismatch,
+    MetadataMismatch,
+    MalformedOutput,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrimApplyError {
     SourceMismatch,
     NoOpDerivation,
+    Verification {
+        kind: TrimVerificationKind,
+        message: String,
+    },
     Catalog(CatalogError),
     Processor(String),
     Publish(String),
@@ -31,6 +42,9 @@ impl fmt::Display for TrimApplyError {
             }
             Self::NoOpDerivation => {
                 formatter.write_str("trim output is identical to source content")
+            }
+            Self::Verification { kind, message } => {
+                write!(formatter, "trim verification failed ({kind:?}): {message}")
             }
             Self::Catalog(error) => write!(formatter, "catalog error: {error}"),
             Self::Processor(message) => write!(formatter, "trim processor error: {message}"),
@@ -65,6 +79,19 @@ pub trait TrimWavProcessor {
 
 pub trait TrimDerivationVerifier {
     fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError>;
+
+    fn verify_source_for_intent(
+        &self,
+        source_bytes: &[u8],
+        intent: &TrimIntent,
+    ) -> Result<(), TrimApplyError>;
+
+    fn verify_output_pcm(
+        &self,
+        source_bytes: &[u8],
+        intent: &TrimIntent,
+        output_wav_bytes: &[u8],
+    ) -> Result<ExpectedTrimOutput, TrimApplyError>;
 }
 
 pub trait DerivedAudioPublisher {
@@ -121,11 +148,16 @@ where
         {
             return Err(TrimApplyError::SourceMismatch);
         }
+        self.verifier
+            .verify_source_for_intent(verified_source_bytes, intent)?;
         let TrimWavResult {
             wav_bytes,
-            expected,
+            expected: _claimed_expected,
             output_hash: _claimed_output_hash,
         } = self.processor.trim_wav(verified_source_bytes, intent)?;
+        let verified_expected =
+            self.verifier
+                .verify_output_pcm(verified_source_bytes, intent, &wav_bytes)?;
         let output_hash = self.verifier.content_hash(&wav_bytes)?;
         if output_hash == actual_source_hash {
             return Err(TrimApplyError::NoOpDerivation);
@@ -138,7 +170,7 @@ where
             actual_source_hash.clone(),
             actual_source_hash.clone(),
             intent.range(),
-            expected,
+            verified_expected,
             processor.clone(),
             parameters.clone(),
             &output_hash,
@@ -193,6 +225,15 @@ mod tests {
         }
     }
 
+    fn permissive_expected() -> ExpectedTrimOutput {
+        ExpectedTrimOutput {
+            sample_rate: 44_100,
+            channels: 1,
+            bits_per_sample: 16,
+            frame_count: 10,
+        }
+    }
+
     struct LabelVerifier;
 
     impl TrimDerivationVerifier for LabelVerifier {
@@ -203,6 +244,23 @@ mod tests {
                 Ok(hash(1))
             }
         }
+
+        fn verify_source_for_intent(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+        ) -> Result<(), TrimApplyError> {
+            Ok(())
+        }
+
+        fn verify_output_pcm(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+            _output_wav_bytes: &[u8],
+        ) -> Result<ExpectedTrimOutput, TrimApplyError> {
+            Ok(permissive_expected())
+        }
     }
 
     struct FixedVerifier(ContentHash);
@@ -210,6 +268,23 @@ mod tests {
     impl TrimDerivationVerifier for FixedVerifier {
         fn content_hash(&self, _bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
             Ok(self.0.clone())
+        }
+
+        fn verify_source_for_intent(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+        ) -> Result<(), TrimApplyError> {
+            Ok(())
+        }
+
+        fn verify_output_pcm(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+            _output_wav_bytes: &[u8],
+        ) -> Result<ExpectedTrimOutput, TrimApplyError> {
+            Ok(permissive_expected())
         }
     }
 
@@ -225,6 +300,58 @@ mod tests {
             } else {
                 Ok(self.after.clone())
             }
+        }
+
+        fn verify_source_for_intent(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+        ) -> Result<(), TrimApplyError> {
+            Ok(())
+        }
+
+        fn verify_output_pcm(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+            _output_wav_bytes: &[u8],
+        ) -> Result<ExpectedTrimOutput, TrimApplyError> {
+            Ok(permissive_expected())
+        }
+    }
+
+    struct RejectingOutputVerifier {
+        source: ContentHash,
+        output: ContentHash,
+    }
+
+    impl TrimDerivationVerifier for RejectingOutputVerifier {
+        fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
+            if bytes.len() == 64 {
+                Ok(self.output.clone())
+            } else {
+                Ok(self.source.clone())
+            }
+        }
+
+        fn verify_source_for_intent(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+        ) -> Result<(), TrimApplyError> {
+            Ok(())
+        }
+
+        fn verify_output_pcm(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+            _output_wav_bytes: &[u8],
+        ) -> Result<ExpectedTrimOutput, TrimApplyError> {
+            Err(TrimApplyError::Verification {
+                kind: TrimVerificationKind::PcmMismatch,
+                message: "injected pcm mismatch".into(),
+            })
         }
     }
 
@@ -463,6 +590,43 @@ mod tests {
             apply.execute(&intent, b"x", &source, &source),
             Err(TrimApplyError::NoOpDerivation)
         ));
+        assert_eq!(publisher.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(*catalog.upsert_calls.borrow(), 0);
+    }
+
+    #[test]
+    fn verification_failure_skips_publish_and_catalog() {
+        let source = hash(12);
+        let output = hash(13);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(output),
+        };
+        let verifier = RejectingOutputVerifier {
+            source: source.clone(),
+            output: output.clone(),
+        };
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        assert!(matches!(
+            apply.execute(&intent, b"source-bytes", &source, &source),
+            Err(TrimApplyError::Verification {
+                kind: TrimVerificationKind::PcmMismatch,
+                ..
+            })
+        ));
+        assert_eq!(processor.calls.load(Ordering::SeqCst), 1);
         assert_eq!(publisher.calls.load(Ordering::SeqCst), 0);
         assert_eq!(*catalog.upsert_calls.borrow(), 0);
     }

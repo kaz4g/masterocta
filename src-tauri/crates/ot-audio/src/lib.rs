@@ -24,7 +24,9 @@ pub mod waveform_v2;
 pub mod wfm2;
 
 pub use wav_trim::trim_wav_integer_pcm;
+pub use wav_trim::verify_trim_wav_output;
 
+pub use wav_trim::test_integer_pcm_wav;
 pub use wav_trim::test_minimal_wav;
 
 pub fn content_hash_for_bytes(bytes: &[u8]) -> ContentHash {

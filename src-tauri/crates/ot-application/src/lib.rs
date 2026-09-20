@@ -4,7 +4,7 @@ pub mod derived_trim;
 
 pub use derived_trim::{
     ApplyTrimDerivation, DerivedAudioPublisher, TrimApplyError, TrimApplyResult,
-    TrimDerivationVerifier, TrimWavProcessor, TrimWavResult,
+    TrimDerivationVerifier, TrimVerificationKind, TrimWavProcessor, TrimWavResult,
 };
 
 use ot_codec_ports::{CodecError, ProjectCodec};

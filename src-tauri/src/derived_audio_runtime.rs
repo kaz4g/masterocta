@@ -1,5 +1,6 @@
 use ot_application::{
-    DerivedAudioPublisher, TrimApplyError, TrimDerivationVerifier, TrimWavProcessor,
+    DerivedAudioPublisher, TrimApplyError, TrimDerivationVerifier, TrimVerificationKind,
+    TrimWavProcessor,
 };
 use ot_audio::trim_wav_integer_pcm;
 use ot_domain::ContentHash;
@@ -133,9 +134,63 @@ impl TrimWavProcessor for OtAudioTrimProcessor {
 
 pub struct OtAudioTrimVerifier;
 
+fn map_trim_verify_error(error: ot_audio::pcm::PcmError) -> TrimApplyError {
+    use ot_audio::pcm::PcmError;
+    match error {
+        PcmError::Cancelled => TrimApplyError::Processor("cancelled".into()),
+        PcmError::LimitExceeded => TrimApplyError::Verification {
+            kind: TrimVerificationKind::MalformedOutput,
+            message: "wav size limit exceeded".into(),
+        },
+        PcmError::Audio(audio_error) => {
+            let message = audio_error.to_string();
+            let kind = if message.contains("PCM payload mismatch") {
+                TrimVerificationKind::PcmMismatch
+            } else if message.contains("metadata mismatch")
+                || message.contains("frame count mismatch")
+                || message.contains("payload length mismatch")
+            {
+                TrimVerificationKind::MetadataMismatch
+            } else {
+                TrimVerificationKind::MalformedOutput
+            };
+            TrimApplyError::Verification { kind, message }
+        }
+    }
+}
+
 impl TrimDerivationVerifier for OtAudioTrimVerifier {
     fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
         Ok(ot_audio::content_hash_for_bytes(bytes))
+    }
+
+    fn verify_source_for_intent(
+        &self,
+        source_bytes: &[u8],
+        intent: &TrimIntent,
+    ) -> Result<(), TrimApplyError> {
+        let cancelled = AtomicBool::new(false);
+        let layout = ot_audio::pcm::inspect_wav_layout(source_bytes, &cancelled)
+            .map_err(map_trim_verify_error)?;
+        intent
+            .range()
+            .within(layout.info.frame_count)
+            .map_err(|_| TrimApplyError::Verification {
+                kind: TrimVerificationKind::MalformedOutput,
+                message: "trim range outside source".into(),
+            })?;
+        Ok(())
+    }
+
+    fn verify_output_pcm(
+        &self,
+        source_bytes: &[u8],
+        intent: &TrimIntent,
+        output_wav_bytes: &[u8],
+    ) -> Result<ExpectedTrimOutput, TrimApplyError> {
+        let cancelled = AtomicBool::new(false);
+        ot_audio::verify_trim_wav_output(source_bytes, intent.range(), output_wav_bytes, &cancelled)
+            .map_err(map_trim_verify_error)
     }
 }
 
@@ -545,6 +600,117 @@ mod tests {
             .publish_trim_output(&plan_b, b"wav-b", &output_b)
             .unwrap();
         runtime_a.clear_test_publish_fail_stage();
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum TrimOutputFault {
+        PcmOneByte,
+        ChannelsOnly,
+        BitsBlockAlign,
+        SampleRate,
+        SameLengthContent,
+    }
+
+    struct FaultyOtAudioTrimProcessor {
+        fault: TrimOutputFault,
+    }
+
+    impl TrimWavProcessor for FaultyOtAudioTrimProcessor {
+        fn trim_wav(
+            &self,
+            source_bytes: &[u8],
+            intent: &TrimIntent,
+        ) -> Result<ot_application::TrimWavResult, TrimApplyError> {
+            let mut result = OtAudioTrimProcessor.trim_wav(source_bytes, intent)?;
+            corrupt_trim_output(&mut result.wav_bytes, self.fault);
+            Ok(result)
+        }
+    }
+
+    fn corrupt_trim_output(wav: &mut [u8], fault: TrimOutputFault) {
+        match fault {
+            TrimOutputFault::PcmOneByte | TrimOutputFault::SameLengthContent => {
+                let cancelled = AtomicBool::new(false);
+                let layout = ot_audio::pcm::inspect_wav_layout(wav, &cancelled).unwrap();
+                let payload_offset = wav.len() - layout.pcm_payload.len();
+                let index = if matches!(fault, TrimOutputFault::SameLengthContent)
+                    && layout.pcm_payload.len() > 1
+                {
+                    payload_offset + 1
+                } else {
+                    payload_offset
+                };
+                wav[index] ^= 0x01;
+            }
+            TrimOutputFault::ChannelsOnly => {
+                wav[22..24].copy_from_slice(&2_u16.to_le_bytes());
+            }
+            TrimOutputFault::SampleRate => {
+                wav[24..28].copy_from_slice(&48_000_u32.to_le_bytes());
+            }
+            TrimOutputFault::BitsBlockAlign => {
+                wav[34..36].copy_from_slice(&24_u16.to_le_bytes());
+            }
+        }
+    }
+
+    fn assert_faulty_trim_has_no_side_effects(
+        runtime: &DerivedAudioRuntime,
+        catalog: &impl AssetDerivationCatalog,
+        source_bytes: &[u8],
+        before_source_hash: &ContentHash,
+    ) {
+        assert_eq!(hash_bytes(source_bytes), *before_source_hash);
+        assert!(catalog.list_derivation_edges().unwrap().is_empty());
+        assert!(staging_part_files(&runtime.staging_directory_for_tests()).is_empty());
+    }
+
+    #[test]
+    fn faulty_processor_output_fails_independent_verification_without_publish() {
+        let faults = [
+            TrimOutputFault::PcmOneByte,
+            TrimOutputFault::ChannelsOnly,
+            TrimOutputFault::BitsBlockAlign,
+            TrimOutputFault::SampleRate,
+            TrimOutputFault::SameLengthContent,
+        ];
+        for fault in faults {
+            let data = TempDir::new().unwrap();
+            let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+            let shared_catalog = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+            let mut catalog = shared_catalog.lock().unwrap();
+            let source_bytes = ot_audio::test_minimal_wav(200);
+            let source_hash = hash_bytes(&source_bytes);
+            let before = source_hash.clone();
+            catalog
+                .upsert_derived_file(&DerivedFileUpsert {
+                    content_hash: source_hash.clone(),
+                    byte_size: source_bytes.len() as u64,
+                    relative_path: format!("fixtures/fault-{fault:?}.wav"),
+                    modified_at_unix_ns: None,
+                })
+                .unwrap();
+            let range = FrameRange::new(PcmFrame::new(40), PcmFrame::new(120)).unwrap();
+            let intent = TrimIntent::new(source_hash.clone(), range);
+            let processor = FaultyOtAudioTrimProcessor { fault };
+            let verifier = OtAudioTrimVerifier;
+            let mut apply = ApplyTrimDerivation::new(
+                &processor,
+                &verifier,
+                &mut runtime,
+                &mut *catalog,
+                "2026-09-20T12:00:00.000Z",
+            );
+            assert!(
+                matches!(
+                    apply.execute(&intent, &source_bytes, &source_hash, &before),
+                    Err(TrimApplyError::Verification { .. })
+                ),
+                "fault {:?} should fail verification",
+                fault
+            );
+            assert_faulty_trim_has_no_side_effects(&runtime, &*catalog, &source_bytes, &before);
+        }
     }
 
     #[test]
