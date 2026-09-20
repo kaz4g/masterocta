@@ -70,6 +70,12 @@ export interface SlicePreview {
   frameCount: string;
   byteLength: number;
 }
+export interface SliceExportResult {
+  derivedAssetId: string;
+  sourceUnchanged: boolean;
+  startFrame: string;
+  endExclusive: string;
+}
 export function createSliceApi(client: IpcClient = ipcClient) {
   return {
     start: (rootId: string, fileInstanceId: string, region?: SliceRange) =>
@@ -90,6 +96,18 @@ export function createSliceApi(client: IpcClient = ipcClient) {
       client.request<SlicePreview>("v2_audio_preview_region_create", { rootId, jobId, range }),
     readPreview: (rootId: string, jobId: string, previewToken: string) =>
       client.request<ArrayBuffer | number[]>("v2_audio_preview_region_read", { rootId, jobId, previewToken }),
+    exportDerived: (
+      rootId: string,
+      fileInstanceId: string,
+      markerId: string,
+      expectedRevision: number,
+    ) =>
+      client.request<SliceExportResult>("v2_slice_export_apply", {
+        rootId,
+        fileInstanceId,
+        markerId,
+        expectedRevision,
+      }),
   };
 }
 export type SliceApi = ReturnType<typeof createSliceApi>;

@@ -72,6 +72,15 @@ describe("sliceErrors", () => {
     expect(sliceErrorSummary(tEn, expired)).toBe(tEn("slicing.error.ANALYSIS_EXPIRED"));
   });
 
+  it("translates derived export error codes", () => {
+    const stale = normalizeSliceError({
+      code: "STALE_DRAFT",
+      message: "the draft changed; reload it before exporting",
+    });
+    expect(sliceErrorSummary(tJa, stale)).toBe(tJa("slicing.error.STALE_DRAFT"));
+    expect(sliceErrorSummary(tEn, stale)).toBe(tEn("slicing.error.STALE_DRAFT"));
+  });
+
   it("normalizes string and Error inputs", () => {
     expect(normalizeSliceError("Region end must follow its start.")).toEqual({
       detail: "Region end must follow its start.",

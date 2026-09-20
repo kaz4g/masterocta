@@ -303,6 +303,17 @@ export const enMessages = {
     'Draft edits are saved in Masta-Octa. Octatrack .ot export is not available yet.',
   'slicing.reanalyze48000':
     ' Octatrack output will require a separate 44.1 kHz asset and re-analysis.',
+  'slicing.sliceExportHeading': 'Slice Export',
+  'slicing.sliceExportReview': '{displayName} · slice {markerId}',
+  'slicing.sliceExportRangeFrames': 'Frames [{start}, {end})',
+  'slicing.sliceExportRangeDuration': 'Duration {duration}',
+  'slicing.sliceExportRangeFrameCount': 'Length {frames} frames',
+  'slicing.sliceExportConfirmPrompt': 'Export this slice as derived audio. Continue?',
+  'slicing.exportDerived': 'Export as derived sample',
+  'slicing.exportDerivedConfirm': 'Run export',
+  'slicing.exportDerivedCancel': 'Cancel',
+  'slicing.exportDerivedSuccess': 'Derived sample exported.',
+  'slicing.exportDerivedSuccessId': 'Derived asset ID: {derivedAssetId}',
   'slicing.error.generic': 'Slice operation could not complete.',
   'slicing.error.genericDetail': 'Slice operation could not complete. {detail}',
   'slicing.error.ANALYSIS_REGION_MISMATCH':
@@ -317,6 +328,13 @@ export const enMessages = {
     'Source exceeds the current snapshot or analysis size limit.',
   'slicing.error.INVALID_SLICE_REQUEST': 'The analysis request was invalid.',
   'slicing.error.REQUEST_SUPERSEDED': 'A newer request replaced this one.',
+  'slicing.error.STALE_DRAFT': 'The draft changed; reload it before exporting.',
+  'slicing.error.SLICE_MISSING': 'The selected slice is not present in the draft.',
+  'slicing.error.RANGE_CHANGED': 'The slice range changed; reload the draft before exporting.',
+  'slicing.error.NO_OP_DERIVATION': 'Export would not change the source audio.',
+  'slicing.error.CONFLICTING_LINEAGE': 'This conflicts with an existing derived lineage.',
+  'slicing.error.DERIVED_AUDIO_VERIFICATION_FAILED': 'Derived audio verification failed.',
+  'slicing.error.DERIVED_AUDIO_PUBLISH_FAILED': 'Derived audio could not be saved.',
 } as const
 
 export type MessageKey = keyof typeof enMessages

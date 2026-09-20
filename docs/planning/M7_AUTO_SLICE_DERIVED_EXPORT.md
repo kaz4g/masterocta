@@ -1,8 +1,9 @@
 # M7 Auto Slice → Derived export (1 slice)
 
-- Work ID: `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`
-- Status: **IMPLEMENTED** (application vertical slice; no production UI/IPC)
-- Updated: 2026-09-20
+- Work IDs:
+  - `MO-M7-AUTO-SLICE-DERIVED-EXPORT-1` — application vertical slice (**MERGED** #152)
+  - `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1` — opaque IPC + Slice Workspace export (**IN_PROGRESS**)
+- Updated: 2026-09-21
 
 ## Purpose
 
@@ -46,14 +47,30 @@ equal `SLICE_EXPORT` lineage registration is a no-op.
 If the same output hash already has **TRIM** (or other) lineage, registration returns
 `ConflictingLineage` (1 output = 1 parent).
 
-## Explicit non-goals (this Work ID)
+## Production IPC (`v2_slice_export_apply`)
+
+Opaque inputs only: `rootId`, `fileInstanceId`, `markerId`, `expectedRevision`.
+The backend reloads the persisted draft, resolves `marker_range`, verifies live WAV
+bytes against the catalog hash (64 MiB cap), and runs `ApplySliceExportDerivation`
+via shared `DerivedAudioRuntime` + catalog mutex. Response:
+`derivedAssetId`, `sourceUnchanged`, `startFrame`, `endExclusive` (decimal strings;
+no raw hash/path). Errors map to `STALE_DRAFT`, `SLICE_MISSING`, `SOURCE_CHANGED`,
+`RANGE_CHANGED`, `NO_OP_DERIVATION`, `CONFLICTING_LINEAGE`,
+`DERIVED_AUDIO_VERIFICATION_FAILED`, `DERIVED_AUDIO_PUBLISH_FAILED`.
+
+## Slice Workspace UI
+
+Single selected marker: review (name, frames, duration) → lightweight confirm →
+「派生素材として書き出す」. Success is shown in-workspace (opaque id). Library
+Browser does **not** rescan OT roots; `mac_derived` remains outside OT library list
+until `MO-M7-DERIVED-QUERY-API-1`.
+
+## Explicit non-goals
 
 - Multi-slice batch export
 - Sample chain, `.ot` writer, Octatrack media Apply
-- Production Tauri IPC / Slice Inspector Export button
-- Native operator acceptance (NOT_RUN until UI wired)
+- Derived assets in OT `v2_library_list` refresh
 
 ## Next
 
-- `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1` — opaque IPC + minimal Inspector export
-- `MO-M7-DERIVED-QUERY-API-1` — read-only lineage query
+- `MO-M7-DERIVED-QUERY-API-1` — read-only derived / lineage query IPC

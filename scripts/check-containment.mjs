@@ -391,6 +391,7 @@ const expectedV2Commands = [
   "v2_slice_draft_get",
   "v2_slice_proposal_create",
   "v2_slice_draft_update",
+  "v2_slice_export_apply",
   "v2_audio_waveform_range_get",
   "v2_audio_preview_region_create",
   "v2_audio_preview_region_read",

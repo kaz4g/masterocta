@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import {
   defaultOnsetParameters, sliceApi, type OnsetParameters, type SliceApi,
   type SliceDraft, type SliceEdit, type SliceJob, type SliceMarker,
-  type SliceProposal, type SliceRange, type SliceWaveform,
+  type SliceExportResult, type SliceProposal, type SliceRange, type SliceWaveform,
 } from "../../api/slices";
 import { useTranslate } from "../../i18n";
-import { formatPreviewFrameTimeSeconds } from "../waveform/frameMath";
+import { durationLabelForFrame, formatPreviewFrameTimeSeconds } from "../waveform/frameMath";
 import type { LibraryCommittedGeometryRange } from "../waveform/WaveformPreview";
 import { frame, frameAt, inRange, position, previewChannels } from "./frames";
 import { SliceErrorAlert } from "./SliceErrorAlert";
@@ -75,6 +75,14 @@ function SliceSession({
   const [playing, setPlaying] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [analysisSessionInvalid, setAnalysisSessionInvalid] = useState(false);
+  const [exportReview, setExportReview] = useState<{
+    markerId: string;
+    expectedRevision: number;
+    startFrame: string;
+    endExclusive: string;
+  } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<SliceExportResult | null>(null);
   const alive = useRef(true);
   const generation = useRef(0);
   const jobId = useRef<string | null>(null);
@@ -123,6 +131,7 @@ function SliceSession({
     onRequestStopLibraryPlayback?.();
     setStarting(true);
     setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
+    setExportReview(null); setExportResult(null);
     try {
       const next = await api.start(rootId, fileInstanceId, region);
       if (!alive.current || epoch !== generation.current) {
@@ -374,6 +383,74 @@ function SliceSession({
   const busy = starting || job?.phase === "reading" || job?.phase === "analyzing";
   const mutationDisabled = editing || analysisSessionInvalid;
   const selectedMarker = draft?.markers.find(m => m.markerId === selected);
+  const exportReady = Boolean(
+    draft
+      && draft.revision > 0
+      && selectedMarker
+      && !analysisSessionInvalid
+      && !editing
+      && !exporting,
+  );
+
+  useEffect(() => {
+    setExportReview(null);
+    setExportResult(null);
+  }, [
+    selected,
+    fileInstanceId,
+    rootId,
+    draft?.revision,
+    selectedMarker?.startFrame,
+    selectedMarker?.endExclusive,
+  ]);
+
+  useEffect(() => {
+    if (editing) setExportReview(null);
+  }, [editing]);
+
+  async function runDerivedExport() {
+    if (editBusy.current || !exportReady || !draft || !selectedMarker) return;
+    if (!exportReview) {
+      setExportReview({
+        markerId: selectedMarker.markerId,
+        expectedRevision: draft.revision,
+        startFrame: selectedMarker.startFrame,
+        endExclusive: selectedMarker.endExclusive,
+      });
+      setExportResult(null);
+      return;
+    }
+    if (
+      exportReview.markerId !== selectedMarker.markerId
+      || exportReview.expectedRevision !== draft.revision
+      || exportReview.startFrame !== selectedMarker.startFrame
+      || exportReview.endExclusive !== selectedMarker.endExclusive
+    ) {
+      setExportReview(null);
+      return;
+    }
+    const epoch = generation.current;
+    setExporting(true);
+    setError(null);
+    try {
+      const result = await api.exportDerived(
+        rootId,
+        fileInstanceId,
+        exportReview.markerId,
+        exportReview.expectedRevision,
+      );
+      if (alive.current && epoch === generation.current) {
+        setExportResult(result);
+        setExportReview(null);
+      }
+    } catch (e) {
+      if (alive.current && epoch === generation.current) {
+        noteCommandError(e, { session: false });
+      }
+    } finally {
+      if (alive.current && epoch === generation.current) setExporting(false);
+    }
+  }
   const warnings = proposal?.candidates.filter(c => c.warnings.length > 0) ?? [];
   const analysisRegion = job?.region ?? draft?.region ?? null;
   const displayedError =
@@ -558,6 +635,49 @@ function SliceSession({
         {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
       </tbody></table></div>
       {draft.markers.length > PAGE && <div className="slice-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous boundaries</button><span>Page {page + 1} / {Math.ceil(draft.markers.length / PAGE)}</span><button disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>Next boundaries</button></div>}
+      {selectedMarker && draft.revision > 0 && !analysisSessionInvalid ? (
+        <section className="slice-export" aria-labelledby="slice-export-heading">
+          <h3 id="slice-export-heading">{t("slicing.sliceExportHeading")}</h3>
+          <p>{t("slicing.sliceExportReview", { displayName, markerId: selectedMarker.markerId })}</p>
+          <p>{t("slicing.sliceExportRangeFrames", {
+            start: selectedMarker.startFrame,
+            end: selectedMarker.endExclusive,
+          })}</p>
+          <p>{(() => {
+            const frames = (frame(selectedMarker.endExclusive) - frame(selectedMarker.startFrame)).toString();
+            if (job?.sampleRate) {
+              const label = durationLabelForFrame(frames, job.sampleRate);
+              if (label) return t("slicing.sliceExportRangeDuration", { duration: label });
+            }
+            return t("slicing.sliceExportRangeFrameCount", { frames });
+          })()}</p>
+          {exportReview ? (
+            <>
+              <p>{t("slicing.sliceExportConfirmPrompt")}</p>
+              <div className="slice-actions">
+                <button type="button" disabled={!exportReady} onClick={() => void runDerivedExport()}>
+                  {t("slicing.exportDerivedConfirm")}
+                </button>
+                <button type="button" disabled={exporting} onClick={() => setExportReview(null)}>
+                  {t("slicing.exportDerivedCancel")}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="slice-actions">
+              <button type="button" disabled={!exportReady} onClick={() => void runDerivedExport()}>
+                {t("slicing.exportDerived")}
+              </button>
+            </div>
+          )}
+          {exportResult ? (
+            <p role="status" data-testid="slice-export-success">
+              {t("slicing.exportDerivedSuccess")}{" "}
+              {t("slicing.exportDerivedSuccessId", { derivedAssetId: exportResult.derivedAssetId })}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
       <p className="slice-notice">
         {t("slicing.exportNotice")}
         {job?.sampleRate === 48000 ? t("slicing.reanalyze48000") : ""}
