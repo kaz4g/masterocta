@@ -34,14 +34,20 @@ and absolute paths are not exposed to the UI.
 | Step | Behavior |
 | --- | --- |
 | Input | Verified source bytes + `TrimIntent` (source hash + half-open `FrameRange`) |
+| Bind | Re-hash source bytes before processing; mismatch with intent/caller → `SourceMismatch` (no side effects) |
 | Process | Integer PCM WAV only (16/24-bit, mono/stereo, 44.1/48 kHz); byte-preserving data slice |
-| Staging | `{data_dir}/MasterOCTa/derived-audio/staging/` |
-| Publish | `{data_dir}/MasterOCTa/derived-audio/published/v1/{sha256}.wav` (no overwrite on hash mismatch) |
-| Catalog | Incremental `upsert_derived_file` — does **not** replace other derived instances |
+| No-op | Output content hash equals source → `NoOpDerivation` before publish/catalog/lineage |
+| Staging | `{data_dir}/MasterOCTa/derived-audio/staging/`; `.part` files removed on write/sync/rename failure |
+| Publish | `{data_dir}/MasterOCTa/derived-audio/published/v1/{sha256}.wav`; symlinks/non-regular paths rejected; no overwrite on hash mismatch |
+| Catalog | Incremental `upsert_derived_file` with scan session + root pointer in one transaction (reuse repairs stale pointer, never downgrades) |
 | Lineage | `DerivationKind::Trim` with `v1\|kind=trim\|start=\|end=` envelope; processor `masterocta-trim` / `pcm-wav-v1` |
 
 Idempotency: same source + TRIM parameters → same output hash → reuse published file;
 semantically equal lineage → registration no-op.
+
+**Read compatibility:** catalog rows written under migration 12 with `TRIM` + `v1|kind=empty`
+load as legacy unspecified parameters (`parameters_unavailable`); new writes still require typed
+trim envelopes.
 
 ## Provenance
 
@@ -97,9 +103,10 @@ Original source bytes and hash are unchanged.
 
 ## M7-06 status
 
-**IN_PROGRESS.** Delivered on branch `feat/m7-derived-audioasset-2`:
+**IN_PROGRESS.** On `main` after #148; post-merge hardening in `fix/m7-derived-audioasset-2-postmerge-1`:
 
 - Lineage registration and persistence (#147 on `main`).
-- TRIM derived WAV pipeline (domain, ot-audio, catalog upsert, application orchestration, integration test).
+- TRIM derived WAV pipeline (#148): domain, ot-audio, catalog upsert, application orchestration.
+- P2 fixes: source-byte binding, staging cleanup, catalog root pointer repair, publish symlink guard, no-op TRIM rejection, v12 empty-trim read compat.
 
 Still open for v0.1: query IPC, stem/normalize/resample, operator workflows, production wiring.

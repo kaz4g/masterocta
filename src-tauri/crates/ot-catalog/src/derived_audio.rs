@@ -10,22 +10,43 @@ const DERIVED_ROOT_DISPLAY: &str = "Mac derived audio";
 
 impl SqliteCatalog {
     fn ensure_derived_scan_session(&mut self, root_row_id: i64) -> Result<i64, CatalogError> {
-        let existing: Option<i64> = self
+        let transaction = self
             .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        let existing: Option<(i64, i64)> = transaction
             .query_row(
-                "SELECT scan_sessions.id FROM scan_sessions \
-                 JOIN roots ON roots.id = scan_sessions.root_id \
-                 WHERE roots.id = ?1 AND scan_sessions.status = 'completed' \
-                 ORDER BY scan_sessions.revision DESC LIMIT 1",
+                "SELECT scan_sessions.id, scan_sessions.revision FROM scan_sessions \
+                 WHERE root_id = ?1 AND status = 'completed' \
+                 ORDER BY revision DESC LIMIT 1",
                 params![root_row_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(unavailable)?;
-        if let Some(scan_id) = existing {
+        if let Some((scan_id, revision)) = existing {
+            let pointer: Option<i64> = transaction
+                .query_row(
+                    "SELECT latest_completed_scan_revision FROM roots WHERE id = ?1",
+                    params![root_row_id],
+                    |row| row.get(0),
+                )
+                .map_err(unavailable)?;
+            let needs_repair = pointer.is_none_or(|stored| stored < revision);
+            if needs_repair {
+                transaction
+                    .execute(
+                        "UPDATE roots SET latest_completed_scan_revision = ?1 \
+                         WHERE id = ?2 AND (latest_completed_scan_revision IS NULL \
+                             OR latest_completed_scan_revision < ?1)",
+                        params![revision, root_row_id],
+                    )
+                    .map_err(unavailable)?;
+            }
+            transaction.commit().map_err(unavailable)?;
             return Ok(scan_id);
         }
-        self.connection
+        transaction
             .execute(
                 "INSERT INTO scan_sessions (root_id, revision, status, started_at, completed_at) \
                  VALUES (?1, 1, 'completed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), \
@@ -33,13 +54,14 @@ impl SqliteCatalog {
                 params![root_row_id],
             )
             .map_err(unavailable)?;
-        let scan_id = self.connection.last_insert_rowid();
-        self.connection
+        let scan_id = transaction.last_insert_rowid();
+        transaction
             .execute(
                 "UPDATE roots SET latest_completed_scan_revision = 1 WHERE id = ?1",
                 params![root_row_id],
             )
             .map_err(unavailable)?;
+        transaction.commit().map_err(unavailable)?;
         Ok(scan_id)
     }
 }
@@ -173,5 +195,80 @@ mod tests {
             SampleStorageScope::MacDerived
         );
         assert_eq!(snapshot.file_instances[0].content_hash, asset);
+    }
+
+    #[test]
+    fn repairs_root_pointer_when_completed_scan_exists_without_pointer() {
+        let directory = TempDir::new().unwrap();
+        let mut catalog = SqliteCatalog::open(database_path(&directory)).unwrap();
+        let identity = catalog.ensure_derived_root().unwrap();
+        let root_row_id = catalog.root_row_id(&identity).unwrap().unwrap();
+        catalog
+            .connection
+            .execute(
+                "INSERT INTO scan_sessions (root_id, revision, status, started_at, completed_at) \
+                 VALUES (?1, 1, 'completed', '2026-09-20T00:00:00.000Z', '2026-09-20T00:00:00.000Z')",
+                params![root_row_id],
+            )
+            .unwrap();
+        catalog
+            .connection
+            .execute(
+                "UPDATE roots SET latest_completed_scan_revision = NULL WHERE id = ?1",
+                params![root_row_id],
+            )
+            .unwrap();
+        assert!(catalog.load_latest_snapshot(&identity).unwrap().is_none());
+        catalog
+            .upsert_derived_file(&DerivedFileUpsert {
+                content_hash: hash(20),
+                byte_size: 32,
+                relative_path: "v1/2000000000000000000000000000000000000000000000000000000000000000.wav"
+                    .into(),
+                modified_at_unix_ns: None,
+            })
+            .unwrap();
+        assert!(catalog.load_latest_snapshot(&identity).unwrap().is_some());
+    }
+
+    #[test]
+    fn does_not_downgrade_newer_root_pointer_on_reuse() {
+        let directory = TempDir::new().unwrap();
+        let mut catalog = SqliteCatalog::open(database_path(&directory)).unwrap();
+        let identity = catalog.ensure_derived_root().unwrap();
+        let root_row_id = catalog.root_row_id(&identity).unwrap().unwrap();
+        catalog
+            .connection
+            .execute(
+                "INSERT INTO scan_sessions (root_id, revision, status, started_at, completed_at) \
+                 VALUES (?1, 1, 'completed', '2026-09-20T00:00:00.000Z', '2026-09-20T00:00:00.000Z')",
+                params![root_row_id],
+            )
+            .unwrap();
+        catalog
+            .connection
+            .execute(
+                "UPDATE roots SET latest_completed_scan_revision = 5 WHERE id = ?1",
+                params![root_row_id],
+            )
+            .unwrap();
+        catalog
+            .upsert_derived_file(&DerivedFileUpsert {
+                content_hash: hash(21),
+                byte_size: 32,
+                relative_path: "v1/2100000000000000000000000000000000000000000000000000000000000000.wav"
+                    .into(),
+                modified_at_unix_ns: None,
+            })
+            .unwrap();
+        let pointer: i64 = catalog
+            .connection
+            .query_row(
+                "SELECT latest_completed_scan_revision FROM roots WHERE id = ?1",
+                params![root_row_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(pointer, 5);
     }
 }
