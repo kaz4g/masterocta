@@ -35,7 +35,7 @@ impl StoredDerivationRow {
                 field: "derivation_source_hash_evidence",
             }
         })?;
-        AssetDerivation::new(
+        AssetDerivation::from_stored(
             self.output_hash,
             self.source_hash,
             kind,
@@ -492,6 +492,76 @@ mod tests {
             catalog.register_asset_derivation(&missing),
             Err(CatalogError::AssetNotFound)
         ));
+    }
+
+    fn insert_legacy_v12_trim_row(
+        connection: &Connection,
+        source: &ContentHash,
+        output: &ContentHash,
+    ) {
+        insert_asset(connection, source, 100);
+        insert_asset(connection, output, 80);
+        let source_id: i64 = connection
+            .query_row(
+                "SELECT id FROM audio_assets WHERE content_hash = ?1",
+                params![source.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let output_id: i64 = connection
+            .query_row(
+                "SELECT id FROM audio_assets WHERE content_hash = ?1",
+                params![output.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO asset_derivations (\
+                    output_audio_asset_id, source_audio_asset_id, kind, \
+                    processor_name, processor_revision, parameters_envelope, \
+                    source_hash_evidence, created_at) \
+                 VALUES (?1, ?2, 'TRIM', 'trim', '1', 'v1|kind=empty', ?3, '2026-09-20T00:00:00.000Z')",
+                params![output_id, source_id, source.as_str()],
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn legacy_v12_trim_empty_row_loads_with_unavailable_parameters() {
+        let source = hash(50);
+        let output = hash(51);
+        let (_directory, catalog) = {
+            let directory = TempDir::new().unwrap();
+            let path = database_path(&directory, "legacy-trim.sqlite3");
+            let catalog = SqliteCatalog::open(&path).unwrap();
+            insert_legacy_v12_trim_row(&catalog.connection, &source, &output);
+            (directory, catalog)
+        };
+        let loaded = catalog.load_asset_derivation(&output).unwrap().unwrap();
+        assert_eq!(loaded.kind(), DerivationKind::Trim);
+        assert!(loaded.parameters_unavailable());
+        assert_eq!(loaded.parameters().encode(), "v1|kind=empty");
+        let children = catalog.list_derived_children(&source).unwrap();
+        assert_eq!(children.len(), 1);
+        assert!(children[0].parameters_unavailable());
+    }
+
+    #[test]
+    fn new_trim_with_empty_envelope_is_rejected_on_write() {
+        let source = hash(52);
+        let output = hash(53);
+        let (_directory, _catalog) = open_catalog_with_assets(&[(&source, 100), (&output, 90)]);
+        let derivation = AssetDerivation::new(
+            output,
+            source.clone(),
+            DerivationKind::Trim,
+            ProcessorIdentity::new("trim", "1").unwrap(),
+            DerivationParameterEnvelope::empty(),
+            source,
+            "2026-09-20T00:00:00.000Z",
+        );
+        assert!(derivation.is_err());
     }
 
     #[test]

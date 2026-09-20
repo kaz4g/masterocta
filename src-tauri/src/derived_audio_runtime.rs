@@ -1,8 +1,9 @@
-use ot_application::{DerivedAudioPublisher, TrimApplyError, TrimWavProcessor};
+use ot_application::{
+    DerivedAudioPublisher, TrimApplyError, TrimDerivationVerifier, TrimWavProcessor,
+};
 use ot_audio::trim_wav_integer_pcm;
 use ot_domain::ContentHash;
 use ot_domain::{ExpectedTrimOutput, TrimIntent, TrimPlan};
-use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -70,6 +71,11 @@ impl DerivedAudioRuntime {
         }
         Ok(candidate)
     }
+
+    #[cfg(test)]
+    pub(crate) fn staging_directory_for_tests(&self) -> PathBuf {
+        self.staging_directory()
+    }
 }
 
 pub struct OtAudioTrimProcessor;
@@ -98,6 +104,87 @@ impl TrimWavProcessor for OtAudioTrimProcessor {
     }
 }
 
+pub struct OtAudioTrimVerifier;
+
+impl TrimDerivationVerifier for OtAudioTrimVerifier {
+    fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
+        Ok(ot_audio::content_hash_for_bytes(bytes))
+    }
+}
+
+struct StagingPartGuard {
+    path: PathBuf,
+    armed: bool,
+}
+
+impl StagingPartGuard {
+    fn new(path: PathBuf) -> Self {
+        Self { path, armed: true }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for StagingPartGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+#[cfg(test)]
+static PUBLISH_FAIL_STAGE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+#[cfg(test)]
+pub(crate) fn set_publish_fail_stage(stage: u8) {
+    PUBLISH_FAIL_STAGE.store(stage, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn clear_publish_fail_stage() {
+    PUBLISH_FAIL_STAGE.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn publish_fail_stage() -> u8 {
+    #[cfg(test)]
+    {
+        PUBLISH_FAIL_STAGE.load(std::sync::atomic::Ordering::SeqCst)
+    }
+    #[cfg(not(test))]
+    {
+        0
+    }
+}
+
+fn reject_non_regular_destination(path: &Path) -> Result<(), TrimApplyError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            let file_type = metadata.file_type();
+            if file_type.is_symlink() {
+                return Err(TrimApplyError::Publish(
+                    "derived publish path is a symlink".into(),
+                ));
+            }
+            if metadata.is_dir() {
+                return Err(TrimApplyError::Publish(
+                    "derived publish path is a directory".into(),
+                ));
+            }
+            if !file_type.is_file() {
+                return Err(TrimApplyError::Publish(
+                    "derived publish path is not a regular file".into(),
+                ));
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(TrimApplyError::Publish(error.to_string())),
+    }
+}
+
 impl DerivedAudioPublisher for DerivedAudioRuntime {
     fn publish_trim_output(
         &mut self,
@@ -108,12 +195,11 @@ impl DerivedAudioPublisher for DerivedAudioRuntime {
         let destination = self
             .published_path(plan.published_relative_path())
             .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-        if destination.exists() {
+        reject_non_regular_destination(&destination)?;
+        if fs::symlink_metadata(&destination).is_ok() {
             let existing = fs::read(&destination)
                 .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-            let existing_hash =
-                ContentHash::parse(format!("sha256:{:x}", Sha256::digest(&existing)))
-                    .map_err(|_| TrimApplyError::Publish("invalid existing hash".into()))?;
+            let existing_hash = ot_audio::content_hash_for_bytes(&existing);
             if existing_hash == *output_hash {
                 return Ok(());
             }
@@ -131,20 +217,28 @@ impl DerivedAudioPublisher for DerivedAudioRuntime {
             std::process::id()
         );
         let staging_path = self.staging_directory().join(staging_name);
-        {
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&staging_path)
-                .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-            file.write_all(wav_bytes)
-                .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-            file.sync_all()
-                .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
+        let mut guard = StagingPartGuard::new(staging_path.clone());
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging_path)
+            .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
+        if publish_fail_stage() == 1 {
+            return Err(TrimApplyError::Publish("injected write failure".into()));
+        }
+        file.write_all(wav_bytes)
+            .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
+        if publish_fail_stage() == 2 {
+            return Err(TrimApplyError::Publish("injected sync failure".into()));
+        }
+        file.sync_all()
+            .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
+        if publish_fail_stage() == 3 {
+            return Err(TrimApplyError::Publish("injected rename failure".into()));
         }
         fs::rename(&staging_path, &destination)
             .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-        let _ = output_hash;
+        guard.disarm();
         Ok(())
     }
 }
@@ -238,6 +332,22 @@ fn ensure_subdirectory(parent: &Path, directory: &Path) -> Result<(), DerivedAud
     Ok(())
 }
 
+fn staging_part_files(staging_directory: &Path) -> Vec<PathBuf> {
+    fs::read_dir(staging_directory)
+        .map(|read_dir| {
+            read_dir
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.ends_with(".part"))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +360,29 @@ mod tests {
 
     fn hash_bytes(bytes: &[u8]) -> ContentHash {
         ContentHash::parse(format!("sha256:{:x}", Sha256::digest(bytes))).unwrap()
+    }
+
+    fn sample_plan(output_hash: &ContentHash) -> TrimPlan {
+        let source = ContentHash::parse(format!("sha256:{:064x}", 1)).unwrap();
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let expected = ExpectedTrimOutput {
+            sample_rate: 44_100,
+            channels: 1,
+            bits_per_sample: 16,
+            frame_count: range.frame_count(),
+        };
+        let parameters = ot_domain::DerivationParameterEnvelope::trim(range).unwrap();
+        let processor = ot_domain::standard_trim_processor().unwrap();
+        TrimPlan::new(
+            source.clone(),
+            source,
+            range,
+            expected,
+            processor,
+            parameters,
+            output_hash,
+        )
+        .unwrap()
     }
 
     #[test]
@@ -271,10 +404,12 @@ mod tests {
         let range = FrameRange::new(PcmFrame::new(40), PcmFrame::new(120)).unwrap();
         let intent = TrimIntent::new(source_hash.clone(), range);
         let processor = OtAudioTrimProcessor;
+        let verifier = OtAudioTrimVerifier;
         let before = hash_bytes(&source_bytes);
         let output = {
             let mut apply = ApplyTrimDerivation::new(
                 &processor,
+                &verifier,
                 &mut runtime,
                 &mut *catalog,
                 "2026-09-20T12:00:00.000Z",
@@ -292,6 +427,7 @@ mod tests {
         {
             let mut apply = ApplyTrimDerivation::new(
                 &processor,
+                &verifier,
                 &mut runtime,
                 &mut *catalog,
                 "2026-09-20T12:00:00.000Z",
@@ -300,5 +436,91 @@ mod tests {
                 .execute(&intent, &source_bytes, &source_hash, &before)
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn full_range_trim_is_rejected_as_noop() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let shared_catalog = crate::catalog_runtime::open_shared_catalog(data.path()).unwrap();
+        let mut catalog = shared_catalog.lock().unwrap();
+        let source_bytes = ot_audio::test_minimal_wav(200);
+        let source_hash = hash_bytes(&source_bytes);
+        let cancelled = AtomicBool::new(false);
+        let layout = ot_audio::pcm::inspect_wav_layout(&source_bytes, &cancelled).unwrap();
+        let full_range =
+            FrameRange::new(PcmFrame::new(0), PcmFrame::new(layout.info.frame_count)).unwrap();
+        let intent = TrimIntent::new(source_hash.clone(), full_range);
+        let processor = OtAudioTrimProcessor;
+        let verifier = OtAudioTrimVerifier;
+        let before = hash_bytes(&source_bytes);
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut runtime,
+            &mut *catalog,
+            "2026-09-20T12:00:00.000Z",
+        );
+        assert!(matches!(
+            apply.execute(&intent, &source_bytes, &source_hash, &before),
+            Err(TrimApplyError::NoOpDerivation)
+        ));
+        assert!(catalog.list_derivation_edges().unwrap().is_empty());
+        assert!(staging_part_files(&runtime.staging_directory_for_tests()).is_empty());
+    }
+
+    #[test]
+    fn publish_rejects_symlink_destination() {
+        #[cfg(not(unix))]
+        return;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let data = TempDir::new().unwrap();
+            let outside = TempDir::new().unwrap();
+            let outside_file = outside.path().join("secret.wav");
+            fs::write(&outside_file, b"outside").unwrap();
+            let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+            let output_hash = hash_bytes(b"payload");
+            let plan = sample_plan(&output_hash);
+            let destination = runtime
+                .published_path(plan.published_relative_path())
+                .unwrap();
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+            symlink(&outside_file, &destination).unwrap();
+            let err = runtime
+                .publish_trim_output(&plan, b"payload", &output_hash)
+                .unwrap_err();
+            assert!(matches!(err, TrimApplyError::Publish(_)));
+            assert_eq!(fs::read(&outside_file).unwrap(), b"outside");
+        }
+    }
+
+    #[test]
+    fn staging_part_removed_after_write_sync_or_rename_failure() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let staging = runtime.staging_directory_for_tests();
+        let output_hash = hash_bytes(b"wav");
+        let plan = sample_plan(&output_hash);
+        let wav = b"wav-bytes";
+        for stage in 1..=3 {
+            clear_publish_fail_stage();
+            set_publish_fail_stage(stage);
+            let _ = runtime.publish_trim_output(&plan, wav, &output_hash);
+            assert!(
+                staging_part_files(&staging).is_empty(),
+                "stage {stage} left .part residue"
+            );
+        }
+        clear_publish_fail_stage();
+        runtime
+            .publish_trim_output(&plan, wav, &output_hash)
+            .unwrap();
+        assert!(staging_part_files(&staging).is_empty());
+        clear_publish_fail_stage();
     }
 }

@@ -93,8 +93,14 @@ impl StemRole {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DerivationParameters {
     Empty,
-    Stem { role: StemRole },
-    Trim { range: FrameRange },
+    Stem {
+        role: StemRole,
+    },
+    Trim {
+        range: FrameRange,
+    },
+    /// v12 TRIM rows stored as `v1|kind=empty` without frame range (read-only compatibility).
+    LegacyTrimUnspecified,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -124,13 +130,21 @@ impl DerivationParameterEnvelope {
         })
     }
 
+    pub fn legacy_trim_unspecified() -> Self {
+        Self {
+            parameters: DerivationParameters::LegacyTrimUnspecified,
+        }
+    }
+
     pub fn parameters(&self) -> &DerivationParameters {
         &self.parameters
     }
 
     pub fn encode(&self) -> String {
         match &self.parameters {
-            DerivationParameters::Empty => format!("{ENVELOPE_VERSION}|kind=empty"),
+            DerivationParameters::Empty | DerivationParameters::LegacyTrimUnspecified => {
+                format!("{ENVELOPE_VERSION}|kind=empty")
+            }
             DerivationParameters::Stem { role } => {
                 format!("{ENVELOPE_VERSION}|kind=stem|role={}", role.token())
             }
@@ -295,6 +309,45 @@ impl AssetDerivation {
         })
     }
 
+    /// Load persisted catalog rows (read path). Allows legacy TRIM + empty envelope.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_stored(
+        output: ContentHash,
+        source: ContentHash,
+        kind: DerivationKind,
+        processor: ProcessorIdentity,
+        parameters: DerivationParameterEnvelope,
+        source_hash_evidence: ContentHash,
+        created_at: impl Into<String>,
+    ) -> Result<Self, InvalidDerivation> {
+        if output == source {
+            return Err(InvalidDerivation::SelfReference);
+        }
+        if source_hash_evidence != source {
+            return Err(InvalidDerivation::StaleSourceEvidence);
+        }
+        let created_at = created_at.into();
+        validate_created_at(&created_at)?;
+        let parameters = normalize_stored_parameters(kind, parameters);
+        validate_stored_kind_parameters(kind, &parameters)?;
+        Ok(Self {
+            output,
+            source,
+            kind,
+            processor,
+            parameters,
+            source_hash_evidence,
+            created_at,
+        })
+    }
+
+    pub fn parameters_unavailable(&self) -> bool {
+        matches!(
+            self.parameters.parameters(),
+            DerivationParameters::LegacyTrimUnspecified
+        )
+    }
+
     pub fn output(&self) -> &ContentHash {
         &self.output
     }
@@ -334,6 +387,18 @@ fn validate_created_at(value: &str) -> Result<(), InvalidDerivation> {
     Ok(())
 }
 
+fn normalize_stored_parameters(
+    kind: DerivationKind,
+    envelope: DerivationParameterEnvelope,
+) -> DerivationParameterEnvelope {
+    if kind == DerivationKind::Trim && matches!(envelope.parameters(), DerivationParameters::Empty)
+    {
+        DerivationParameterEnvelope::legacy_trim_unspecified()
+    } else {
+        envelope
+    }
+}
+
 fn validate_kind_parameters(
     kind: DerivationKind,
     envelope: &DerivationParameterEnvelope,
@@ -341,22 +406,53 @@ fn validate_kind_parameters(
     match kind {
         DerivationKind::Stem => match envelope.parameters() {
             DerivationParameters::Stem { .. } => Ok(()),
-            DerivationParameters::Empty | DerivationParameters::Trim { .. } => {
+            DerivationParameters::Empty
+            | DerivationParameters::Trim { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
         },
         DerivationKind::Trim => match envelope.parameters() {
             DerivationParameters::Trim { .. } => Ok(()),
-            DerivationParameters::Empty | DerivationParameters::Stem { .. } => {
+            DerivationParameters::Empty
+            | DerivationParameters::Stem { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
         },
         _ => match envelope.parameters() {
             DerivationParameters::Empty => Ok(()),
-            DerivationParameters::Stem { .. } | DerivationParameters::Trim { .. } => {
+            DerivationParameters::Stem { .. }
+            | DerivationParameters::Trim { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
                 Err(InvalidDerivation::InvalidParameters)
             }
         },
+    }
+}
+
+fn validate_stored_kind_parameters(
+    kind: DerivationKind,
+    envelope: &DerivationParameterEnvelope,
+) -> Result<(), InvalidDerivation> {
+    match kind {
+        DerivationKind::Stem => match envelope.parameters() {
+            DerivationParameters::Stem { .. } => Ok(()),
+            DerivationParameters::Empty
+            | DerivationParameters::Trim { .. }
+            | DerivationParameters::LegacyTrimUnspecified => {
+                Err(InvalidDerivation::InvalidParameters)
+            }
+        },
+        DerivationKind::Trim => match envelope.parameters() {
+            DerivationParameters::Trim { .. } | DerivationParameters::LegacyTrimUnspecified => {
+                Ok(())
+            }
+            DerivationParameters::Empty | DerivationParameters::Stem { .. } => {
+                Err(InvalidDerivation::InvalidParameters)
+            }
+        },
+        _ => validate_kind_parameters(kind, envelope),
     }
 }
 
@@ -507,6 +603,24 @@ mod tests {
             DerivationParameterEnvelope::decode(&envelope.encode()).unwrap(),
             envelope
         );
+    }
+
+    #[test]
+    fn from_stored_accepts_legacy_trim_empty_envelope() {
+        let source = hash(3);
+        let output = hash(4);
+        let derivation = AssetDerivation::from_stored(
+            output.clone(),
+            source.clone(),
+            DerivationKind::Trim,
+            ProcessorIdentity::new("trim", "1").unwrap(),
+            DerivationParameterEnvelope::empty(),
+            source.clone(),
+            "2026-09-20T00:00:00.000Z",
+        )
+        .unwrap();
+        assert!(derivation.parameters_unavailable());
+        assert_eq!(derivation.parameters().encode(), "v1|kind=empty");
     }
 
     #[test]

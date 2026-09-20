@@ -16,6 +16,7 @@ pub struct TrimApplyResult {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TrimApplyError {
     SourceMismatch,
+    NoOpDerivation,
     Catalog(CatalogError),
     Processor(String),
     Publish(String),
@@ -26,7 +27,10 @@ impl fmt::Display for TrimApplyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::SourceMismatch => {
-                formatter.write_str("verified source hash does not match intent")
+                formatter.write_str("verified source hash does not match intent or source bytes")
+            }
+            Self::NoOpDerivation => {
+                formatter.write_str("trim output is identical to source content")
             }
             Self::Catalog(error) => write!(formatter, "catalog error: {error}"),
             Self::Processor(message) => write!(formatter, "trim processor error: {message}"),
@@ -59,6 +63,10 @@ pub trait TrimWavProcessor {
     ) -> Result<TrimWavResult, TrimApplyError>;
 }
 
+pub trait TrimDerivationVerifier {
+    fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError>;
+}
+
 pub trait DerivedAudioPublisher {
     fn publish_trim_output(
         &mut self,
@@ -68,27 +76,31 @@ pub trait DerivedAudioPublisher {
     ) -> Result<(), TrimApplyError>;
 }
 
-pub struct ApplyTrimDerivation<'a, P, S, C> {
+pub struct ApplyTrimDerivation<'a, P, V, S, C> {
     processor: &'a P,
+    verifier: &'a V,
     publisher: &'a mut S,
     catalog: &'a mut C,
     created_at: &'a str,
 }
 
-impl<'a, P, S, C> ApplyTrimDerivation<'a, P, S, C>
+impl<'a, P, V, S, C> ApplyTrimDerivation<'a, P, V, S, C>
 where
     P: TrimWavProcessor,
+    V: TrimDerivationVerifier,
     S: DerivedAudioPublisher,
     C: DerivedAudioCatalog + AssetDerivationCatalog,
 {
     pub fn new(
         processor: &'a P,
+        verifier: &'a V,
         publisher: &'a mut S,
         catalog: &'a mut C,
         created_at: &'a str,
     ) -> Self {
         Self {
             processor,
+            verifier,
             publisher,
             catalog,
             created_at,
@@ -102,21 +114,29 @@ where
         verified_source_hash: &ContentHash,
         source_hash_before: &ContentHash,
     ) -> Result<TrimApplyResult, TrimApplyError> {
-        if intent.source() != verified_source_hash || intent.source() != source_hash_before {
+        let actual_source_hash = self.verifier.content_hash(verified_source_bytes)?;
+        if intent.source() != verified_source_hash
+            || intent.source() != source_hash_before
+            || actual_source_hash != *verified_source_hash
+        {
             return Err(TrimApplyError::SourceMismatch);
         }
         let TrimWavResult {
             wav_bytes,
             expected,
-            output_hash,
+            output_hash: _claimed_output_hash,
         } = self.processor.trim_wav(verified_source_bytes, intent)?;
+        let output_hash = self.verifier.content_hash(&wav_bytes)?;
+        if output_hash == actual_source_hash {
+            return Err(TrimApplyError::NoOpDerivation);
+        }
         let parameters = DerivationParameterEnvelope::trim(intent.range())
             .map_err(|error| TrimApplyError::Plan(error.to_string()))?;
         let processor =
             standard_trim_processor().map_err(|error| TrimApplyError::Plan(error.to_string()))?;
         let plan = TrimPlan::new(
-            verified_source_hash.clone(),
-            verified_source_hash.clone(),
+            actual_source_hash.clone(),
+            actual_source_hash.clone(),
             intent.range(),
             expected,
             processor.clone(),
@@ -134,18 +154,316 @@ where
         })?;
         let derivation = AssetDerivation::new(
             output_hash.clone(),
-            verified_source_hash.clone(),
+            actual_source_hash.clone(),
             DerivationKind::Trim,
             processor,
             parameters,
-            verified_source_hash.clone(),
+            actual_source_hash.clone(),
             self.created_at,
         )
         .map_err(|error| TrimApplyError::Plan(error.to_string()))?;
         self.catalog.register_asset_derivation(&derivation)?;
         Ok(TrimApplyResult {
             output: output_hash,
-            source_unchanged: source_hash_before == verified_source_hash,
+            source_unchanged: source_hash_before == &actual_source_hash,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ot_domain::slicing::{FrameRange, PcmFrame};
+    use std::cell::RefCell;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct RecordingProcessor {
+        calls: AtomicUsize,
+        result: TrimWavResult,
+    }
+
+    impl TrimWavProcessor for RecordingProcessor {
+        fn trim_wav(
+            &self,
+            _source_bytes: &[u8],
+            _intent: &TrimIntent,
+        ) -> Result<TrimWavResult, TrimApplyError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.result.clone())
+        }
+    }
+
+    struct LabelVerifier;
+
+    impl TrimDerivationVerifier for LabelVerifier {
+        fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
+            if bytes.len() == 64 {
+                Ok(hash(2))
+            } else {
+                Ok(hash(1))
+            }
+        }
+    }
+
+    struct FixedVerifier(ContentHash);
+
+    impl TrimDerivationVerifier for FixedVerifier {
+        fn content_hash(&self, _bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
+            Ok(self.0.clone())
+        }
+    }
+
+    struct BeforeAfterVerifier {
+        before: ContentHash,
+        after: ContentHash,
+    }
+
+    impl TrimDerivationVerifier for BeforeAfterVerifier {
+        fn content_hash(&self, bytes: &[u8]) -> Result<ContentHash, TrimApplyError> {
+            if bytes == b"before" {
+                Ok(self.before.clone())
+            } else {
+                Ok(self.after.clone())
+            }
+        }
+    }
+
+    struct RecordingPublisher {
+        calls: AtomicUsize,
+    }
+
+    impl DerivedAudioPublisher for RecordingPublisher {
+        fn publish_trim_output(
+            &mut self,
+            _plan: &TrimPlan,
+            _wav_bytes: &[u8],
+            _output_hash: &ContentHash,
+        ) -> Result<(), TrimApplyError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    struct FakeCatalog {
+        upsert_calls: RefCell<usize>,
+    }
+
+    impl FakeCatalog {
+        fn new() -> Self {
+            Self {
+                upsert_calls: RefCell::new(0),
+            }
+        }
+    }
+
+    impl DerivedAudioCatalog for FakeCatalog {
+        fn ensure_derived_root(
+            &mut self,
+        ) -> Result<ot_storage_ports::CatalogRootIdentity, CatalogError> {
+            ot_storage_ports::CatalogRootIdentity::new(
+                ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+            )
+            .map_err(|_| CatalogError::InvalidRootIdentity)
+        }
+
+        fn upsert_derived_file(&mut self, _upsert: &DerivedFileUpsert) -> Result<(), CatalogError> {
+            *self.upsert_calls.borrow_mut() += 1;
+            Ok(())
+        }
+    }
+
+    impl AssetDerivationCatalog for FakeCatalog {
+        fn register_asset_derivation(
+            &mut self,
+            _derivation: &AssetDerivation,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        fn load_asset_derivation(
+            &self,
+            _output: &ContentHash,
+        ) -> Result<Option<AssetDerivation>, CatalogError> {
+            Ok(None)
+        }
+
+        fn list_derived_children(
+            &self,
+            _source: &ContentHash,
+        ) -> Result<Vec<AssetDerivation>, CatalogError> {
+            Ok(Vec::new())
+        }
+
+        fn list_derivation_edges(&self) -> Result<Vec<(ContentHash, ContentHash)>, CatalogError> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn hash(label: u8) -> ContentHash {
+        ContentHash::parse(format!("sha256:{label:064x}")).unwrap()
+    }
+
+    fn sample_result(output: ContentHash) -> TrimWavResult {
+        TrimWavResult {
+            wav_bytes: vec![0_u8; 64],
+            expected: ExpectedTrimOutput {
+                sample_rate: 44_100,
+                channels: 1,
+                bits_per_sample: 16,
+                frame_count: 10,
+            },
+            output_hash: output,
+        }
+    }
+
+    #[test]
+    fn correct_bytes_and_hash_passes() {
+        let source = hash(1);
+        let output = hash(2);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(output),
+        };
+        let verifier = LabelVerifier;
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        apply
+            .execute(&intent, b"source-bytes", &source, &source)
+            .unwrap();
+        assert_eq!(processor.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(publisher.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn wrong_bytes_with_matching_caller_hash_rejects_before_processor() {
+        let source = hash(3);
+        let output = hash(4);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(output),
+        };
+        let verifier = FixedVerifier(hash(99));
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        assert!(matches!(
+            apply.execute(&intent, b"other-bytes", &source, &source),
+            Err(TrimApplyError::SourceMismatch)
+        ));
+        assert_eq!(processor.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(publisher.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(*catalog.upsert_calls.borrow(), 0);
+    }
+
+    #[test]
+    fn stale_caller_hash_rejects() {
+        let source = hash(5);
+        let stale = hash(6);
+        let output = hash(7);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(output),
+        };
+        let verifier = FixedVerifier(source.clone());
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        assert!(matches!(
+            apply.execute(&intent, b"x", &stale, &stale),
+            Err(TrimApplyError::SourceMismatch)
+        ));
+        assert_eq!(processor.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn changed_source_bytes_after_hash_snapshot_rejects() {
+        let source = hash(8);
+        let output = hash(9);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(output),
+        };
+        let verifier = BeforeAfterVerifier {
+            before: source.clone(),
+            after: hash(10),
+        };
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        apply.execute(&intent, b"before", &source, &source).unwrap();
+        assert!(matches!(
+            apply.execute(&intent, b"after", &source, &source),
+            Err(TrimApplyError::SourceMismatch)
+        ));
+    }
+
+    #[test]
+    fn noop_trim_rejects_before_publish() {
+        let source = hash(11);
+        let range = FrameRange::new(PcmFrame::new(0), PcmFrame::new(10)).unwrap();
+        let intent = TrimIntent::new(source.clone(), range);
+        let processor = RecordingProcessor {
+            calls: AtomicUsize::new(0),
+            result: sample_result(source.clone()),
+        };
+        let verifier = FixedVerifier(source.clone());
+        let mut publisher = RecordingPublisher {
+            calls: AtomicUsize::new(0),
+        };
+        let mut catalog = FakeCatalog::new();
+        let mut apply = ApplyTrimDerivation::new(
+            &processor,
+            &verifier,
+            &mut publisher,
+            &mut catalog,
+            "2026-09-20T00:00:00.000Z",
+        );
+        assert!(matches!(
+            apply.execute(&intent, b"x", &source, &source),
+            Err(TrimApplyError::NoOpDerivation)
+        ));
+        assert_eq!(publisher.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(*catalog.upsert_calls.borrow(), 0);
     }
 }
