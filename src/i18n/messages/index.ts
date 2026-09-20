@@ -41,7 +41,9 @@ export type MessageParams = {
   'slicing.sliceExportRangeDuration': { duration: string }
   'slicing.sliceExportRangeFrameCount': { frames: string }
   'slicing.exportDerivedSuccessId': { derivedAssetId: string }
-  'slicing.error.genericDetail': { detail: string }
+  'slicing.error.genericDetail': { detail: string },
+  'inspector.derivationRangeFrames': { start: string; end: string },
+  'inspector.derivationRangeTime': { start: string; end: string }
 }
 
 export type MessageKeyWithParams = keyof MessageParams

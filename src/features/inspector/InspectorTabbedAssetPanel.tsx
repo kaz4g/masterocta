@@ -23,6 +23,7 @@ import { UsageGraphPanel } from "../usage";
 import type { LibraryCommittedGeometryRange } from "../waveform/WaveformPreview";
 import { WaveformPreview } from "../waveform/WaveformPreview";
 import { InspectorSampleInfo } from "./InspectorSampleInfo";
+import { InspectorSampleDerivation } from "./InspectorSampleDerivation";
 import "./InspectorTabbedAssetPanel.css";
 
 export type InspectorTabId = "preview" | "slice" | "info" | "usage" | "notes";
@@ -56,6 +57,7 @@ export interface InspectorTabbedAssetPanelProps {
   sliceAnalysisBusy?: boolean;
   onRequestExpandSliceWorkspace?: () => void;
   onSliceAnalysisCancel?: () => void;
+  derivationRefreshGeneration?: number;
 }
 
 function tabIndexForTabs(active: InspectorTabId): Record<InspectorTabId, number> {
@@ -92,6 +94,7 @@ export function InspectorTabbedAssetPanel({
   sliceAnalysisBusy: sliceAnalysisBusyProp,
   onRequestExpandSliceWorkspace,
   onSliceAnalysisCancel,
+  derivationRefreshGeneration = 0,
 }: InspectorTabbedAssetPanelProps) {
   const t = useTranslate();
   const tablistId = useId();
@@ -300,6 +303,13 @@ export function InspectorTabbedAssetPanel({
           hidden={activeTab !== "info"}
         >
           <InspectorSampleInfo file={file} />
+          <InspectorSampleDerivation
+            rootId={rootId}
+            assetId={file.assetId}
+            sampleRate={librarySourceSampleRate}
+            refreshGeneration={derivationRefreshGeneration}
+            enabled={activeTab === "info"}
+          />
         </TabPanel>
         <TabPanel
           id={`${tablistId}-panel-usage`}

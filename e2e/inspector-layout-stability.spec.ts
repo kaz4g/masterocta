@@ -7,6 +7,7 @@ import {
   attachLayoutDiagnostics,
   attachLayoutMetrics,
 } from "./layoutDiagnostics";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 import {
   expectNarrowBreakpointMatches,
   expectNarrowShellClass,
@@ -35,6 +36,7 @@ async function installLocale(page: Page, localeId: "ja" | "en") {
 }
 
 async function seedLayoutFixture(page: Page, displayName: string) {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript((name: string) => {
     const source = window as any;
     source.__E2E_ROOT_PATH__ = "/tmp/synthetic-inspector-layout-root";
@@ -131,6 +133,8 @@ async function seedLayoutFixture(page: Page, displayName: string) {
             }],
           };
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

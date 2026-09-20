@@ -31,6 +31,7 @@ interface Props {
   hostElement?: HTMLElement | null;
   /** @deprecated Layout uses slice-expanded container queries; kept for test compatibility. */
   narrowExpanded?: boolean;
+  onDerivedExportApplied?: () => void;
 }
 const WIDTH = 640;
 const PAGE = 50;
@@ -53,6 +54,7 @@ function SliceSession({
   layout = "compact",
   hostElement = null,
   narrowExpanded = false,
+  onDerivedExportApplied,
 }: Props) {
   const t = useTranslate();
   const [job, setJob] = useState<SliceJob | null>(null);
@@ -442,6 +444,7 @@ function SliceSession({
       if (alive.current && epoch === generation.current) {
         setExportResult(result);
         setExportReview(null);
+        onDerivedExportApplied?.();
       }
     } catch (e) {
       if (alive.current && epoch === generation.current) {

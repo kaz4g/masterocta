@@ -61,6 +61,21 @@ vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: vi.fn(),
 }))
 
+vi.mock('../api/derivations', () => ({
+  derivationsApi: {
+    getAssetDerivation: vi.fn().mockResolvedValue({
+      assetId: '',
+      isDerived: false,
+      derivation: null,
+    }),
+    listDerivedChildren: vi.fn().mockResolvedValue({
+      assetId: '',
+      children: [],
+    }),
+  },
+  createDerivationsApi: vi.fn(),
+}))
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

@@ -187,6 +187,8 @@ const v2Commands = [
 ];
 const expectedV2Commands = [
   // Read-only source PCM and revision-checked local drafts; no media Apply.
+  "v2_asset_derivation_get",
+  "v2_asset_derivation_list_children",
   "v2_asset_metadata_get",
   "v2_asset_metadata_replace",
   "v2_audio_onsets_cancel",

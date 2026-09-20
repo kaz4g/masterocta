@@ -2,8 +2,10 @@ import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { expectNarrowShellClass, showInspectorFromContextBar } from "./narrowWorkspace";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 async function seedSliceFixture(page: import("@playwright/test").Page) {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript(() => {
     const source = window as any;
     source.__E2E_ROOT_PATH__ = "/tmp/synthetic-slice-workspace-root";
@@ -105,6 +107,8 @@ async function seedSliceFixture(page: import("@playwright/test").Page) {
             }],
           };
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

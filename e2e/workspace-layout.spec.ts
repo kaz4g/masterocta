@@ -3,6 +3,7 @@ import { catalogFileRowLocator, clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { expectNarrowShellClass, expectNoDocumentHorizontalOverflow, showInspectorFromContextBar } from "./narrowWorkspace";
 import { LOCALE_STORAGE_KEY } from "../src/i18n/registry";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 async function installJaLocale(page: import("@playwright/test").Page) {
   await page.addInitScript(
@@ -19,12 +20,13 @@ async function chooseRoot(page: import("@playwright/test").Page) {
   await chooseRootButton.click();
 }
 
-function installWorkspaceFixture(page: import("@playwright/test").Page) {
+async function installWorkspaceFixture(page: import("@playwright/test").Page) {
+  await installDerivationIpcDefaults(page);
   return page.addInitScript(() => {
     (window as Window & { __E2E_ROOT_PATH__?: string }).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
     (window as any).__TAURI_INTERNALS__ = {
       transformCallback: () => {},
-      invoke: async (cmd: string) => {
+      invoke: async (cmd: string, args: any = {}) => {
         if (cmd === "v2_root_register") {
           return {
             rootId: "root-opaque",
@@ -79,6 +81,8 @@ function installWorkspaceFixture(page: import("@playwright/test").Page) {
         if (cmd === "v2_asset_metadata_get") {
           return { tags: [], note: "" };
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         throw new Error(`Unexpected IPC in workspace-layout fixture: ${cmd}`);
       },
     };

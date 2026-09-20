@@ -82,7 +82,11 @@ Each lineage row records:
 1. Source exists on an approved Octatrack root (or catalog fixture in tests).
 2. **TRIM:** `ApplyTrimDerivation` verifies source hash and PCM, stages WAV, publishes, upserts catalog, registers lineage.
 3. **Future:** Other processors follow the same pattern (new kinds / scopes as designed).
-4. Queries (`LoadAssetDerivation`, `ListDerivedChildren`) serve read models for later UI/IPC (`MO-M7-DERIVED-QUERY-API-1`).
+4. Queries (`LoadAssetDerivation`, `ListDerivedChildren`) are exposed read-only as
+   `v2_asset_derivation_get` / `v2_asset_derivation_list_children` (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`).
+   Opaque `asset:v1:` IDs only; raw content hashes and paths are not returned.
+   `parentAvailable=false` when the source has catalog lineage but no current `FileInstance`.
+   Legacy v12 TRIM rows load as `parameters.status=unavailable` (no invented frame range).
 
 Deletion of catalog assets referenced by lineage is blocked via `ON DELETE RESTRICT`.
 
@@ -96,7 +100,7 @@ Original source bytes and hash are unchanged.
 
 | Track | Connection |
 | --- | --- |
-| Auto Slice | **1-slice export on branch** (`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`): draft + `marker_id` + revision → shared TRIM engine → `SLICE_EXPORT` lineage. See [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md). UI/IPC still open. |
+| Auto Slice | **1-slice export** (#152 backend, #153 UI): draft + `marker_id` + revision → shared TRIM engine → `SLICE_EXPORT` lineage. Inspector Info shows **original → children** via lineage query (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`). See [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md). |
 | Stem separation | Multiple outputs from one source via `STEM` + `StemRole` parameters |
 | Node recording | `NODE_RECORDING_PROCESS` / `IMPORT_PROCESS` kinds without PerformanceSession in core |
 
@@ -115,4 +119,6 @@ Original source bytes and hash are unchanged.
 
 - **Slice export (1 slice):** `ApplySliceExportDerivation` + typed `SLICE_EXPORT` envelope (`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`; application/tests only).
 
-Still open for v0.1: query IPC, stem/normalize/resample, operator workflows, production UI wiring for slice export.
+- **Lineage query IPC + Inspector Info** (`MO-M7-DERIVED-LINEAGE-QUERY-UI-1`): parent get + children list; mac_derived not injected into Library browse.
+
+Still open for v0.1: stem/normalize/resample, derived asset browse projection, operator workflows beyond read-only lineage.

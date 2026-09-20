@@ -1,6 +1,21 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../api/derivations", () => ({
+  derivationsApi: {
+    getAssetDerivation: vi.fn().mockResolvedValue({
+      assetId: "asset:v1:pool",
+      isDerived: false,
+      derivation: null,
+    }),
+    listDerivedChildren: vi.fn().mockResolvedValue({
+      assetId: "asset:v1:pool",
+      children: [],
+    }),
+  },
+}));
 import type { LibraryAudioFile, LibrarySnapshot } from "../../api";
+import { derivationsApi } from "../../api/derivations";
 import { tJa } from "../../i18n/testStrings";
 import { InspectorTabbedAssetPanel } from "./InspectorTabbedAssetPanel";
 
@@ -41,7 +56,84 @@ const metadataClient = {
   replaceManualAssetMetadata: vi.fn(),
 };
 
+const panelProps = {
+  rootId: "root-opaque",
+  snapshot,
+  audioClient,
+  metadataClient,
+  geometrySelectionGeneration: 1,
+  librarySelectionRange: null,
+  stopPlaybackToken: 0,
+  renameRecovery: null,
+  renameBlocked: true,
+  copyBlocked: true,
+  renameBusy: false,
+  writeEnabled: false,
+  onRename: vi.fn(),
+  onCopy: vi.fn(),
+  onCommittedGeometryRangeChange: vi.fn(),
+  onRequestStopLibraryPlayback: vi.fn(),
+} satisfies Omit<
+  import("./InspectorTabbedAssetPanel").InspectorTabbedAssetPanelProps,
+  "file"
+>;
+
 describe("InspectorTabbedAssetPanel", () => {
+  beforeEach(() => {
+    vi.mocked(derivationsApi.getAssetDerivation).mockClear();
+    vi.mocked(derivationsApi.listDerivedChildren).mockClear();
+    audioClient.queryWaveform.mockClear();
+  });
+
+  it("does not query lineage while Preview, Slice, Usage, or Notes is active", async () => {
+    const { rerender } = render(
+      <InspectorTabbedAssetPanel {...panelProps} file={file} />,
+    );
+    await waitFor(() => expect(audioClient.queryWaveform).toHaveBeenCalled());
+    expect(derivationsApi.getAssetDerivation).not.toHaveBeenCalled();
+    expect(derivationsApi.listDerivedChildren).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabSlice") }));
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabUsage") }));
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabNotes") }));
+    const otherFile: LibraryAudioFile = { ...file, assetId: "asset:v1:other", displayName: "OTHER.wav" };
+    rerender(<InspectorTabbedAssetPanel {...panelProps} file={otherFile} />);
+    expect(derivationsApi.getAssetDerivation).not.toHaveBeenCalled();
+    expect(derivationsApi.listDerivedChildren).not.toHaveBeenCalled();
+  });
+
+  it("queries lineage only after switching to Info, and not after leaving Info", async () => {
+    const { rerender } = render(
+      <InspectorTabbedAssetPanel {...panelProps} file={file} />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabInfo") }));
+    await waitFor(() => expect(derivationsApi.getAssetDerivation).toHaveBeenCalledTimes(1));
+    expect(derivationsApi.listDerivedChildren).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabPreview") }));
+    const nextFile: LibraryAudioFile = { ...file, assetId: "asset:v1:next", displayName: "NEXT.wav" };
+    rerender(<InspectorTabbedAssetPanel {...panelProps} file={nextFile} />);
+    expect(derivationsApi.getAssetDerivation).toHaveBeenCalledTimes(1);
+    expect(derivationsApi.listDerivedChildren).toHaveBeenCalledTimes(1);
+  });
+
+  it("queries the newly selected asset while Info is active", async () => {
+    const { rerender } = render(
+      <InspectorTabbedAssetPanel {...panelProps} file={file} />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: tJa("inspector.tabInfo") }));
+    await waitFor(() => expect(derivationsApi.getAssetDerivation).toHaveBeenCalledWith(
+      "root-opaque",
+      "asset:v1:pool",
+    ));
+    const nextFile: LibraryAudioFile = { ...file, assetId: "asset:v1:next", displayName: "NEXT.wav" };
+    rerender(<InspectorTabbedAssetPanel {...panelProps} file={nextFile} />);
+    await waitFor(() => expect(derivationsApi.getAssetDerivation).toHaveBeenCalledWith(
+      "root-opaque",
+      "asset:v1:next",
+    ));
+  });
+
   it("switches tabs without remounting waveform query on tab change alone", async () => {
     render(
       <InspectorTabbedAssetPanel

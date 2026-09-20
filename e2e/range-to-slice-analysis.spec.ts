@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
+import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 test("library range selection flows into explicit slice analysis", async ({ page }) => {
+  await installDerivationIpcDefaults(page);
   await page.addInitScript(() => {
     const source = window as any;
     source.__E2E_ROOT_PATH__ = "/tmp/synthetic-range-slice-root";
@@ -132,6 +134,8 @@ test("library range selection flows into explicit slice analysis", async ({ page
             canRedo: false,
           };
         }
+        const __derivationMock = (window as any).__MO_E2E_TRY_DERIVATION_IPC__?.(cmd, args ?? {});
+        if (__derivationMock !== undefined) return __derivationMock;
         return null;
       },
     };

@@ -91,6 +91,58 @@ impl SqliteCatalog {
         Ok(Self { connection })
     }
 
+    /// Ensures an `audio_assets` row exists without creating a file instance (catalog-only identity).
+    pub fn ensure_audio_asset_row(
+        &mut self,
+        content_hash: &ContentHash,
+        byte_size: u64,
+    ) -> Result<(), CatalogError> {
+        self.connection
+            .execute(
+                "INSERT INTO audio_assets (content_hash, byte_size) VALUES (?1, ?2) \
+                 ON CONFLICT(content_hash) DO NOTHING",
+                params![content_hash.as_str(), byte_size as i64],
+            )
+            .map_err(unavailable)?;
+        Ok(())
+    }
+
+    /// Lists every persisted audio asset content hash (read-only identity scan).
+    pub fn list_audio_asset_content_hashes(&self) -> Result<Vec<ContentHash>, CatalogError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT content_hash FROM audio_assets ORDER BY content_hash COLLATE BINARY")
+            .map_err(unavailable)?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(unavailable)?;
+        let mut hashes = Vec::new();
+        for row in rows {
+            let raw = row.map_err(unavailable)?;
+            hashes.push(
+                ContentHash::parse(raw).map_err(|_| CatalogError::InvalidStoredData {
+                    field: "audio_asset_content_hash",
+                })?,
+            );
+        }
+        Ok(hashes)
+    }
+
+    /// Returns whether any file instance in the catalog references this content hash.
+    pub fn audio_asset_has_file_instance(&self, asset: &ContentHash) -> Result<bool, CatalogError> {
+        let count: i64 = self
+            .connection
+            .query_row(
+                "SELECT COUNT(*) FROM file_instances \
+                 JOIN audio_assets ON audio_assets.id = file_instances.audio_asset_id \
+                 WHERE audio_assets.content_hash = ?1",
+                params![asset.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(unavailable)?;
+        Ok(count > 0)
+    }
+
     /// Returns whether the catalog's observational projection may have been
     /// damaged by a pre-remediation schema migration and still requires rescan.
     pub fn observational_projection_untrusted(
