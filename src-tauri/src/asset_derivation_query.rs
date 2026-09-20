@@ -72,7 +72,7 @@ pub fn asset_derivation_get_sync(
     let derivation = LoadAssetDerivation::new(&*catalog_guard)
         .execute(&content_hash)
         .map_err(catalog_error)?;
-    let parent_available = parent_source_available(&*catalog_guard, derivation.as_ref())?;
+    let parent_available = parent_source_available(&catalog_guard, derivation.as_ref())?;
     Ok(AssetDerivationGetDto {
         asset_id: asset_id.to_owned(),
         is_derived: derivation.is_some(),
@@ -96,7 +96,7 @@ pub fn asset_derivation_list_children_sync(
         .map_err(catalog_error)?;
     let mut dtos = Vec::with_capacity(children.len());
     for child in &children {
-        let parent_available = parent_source_available(&*catalog_guard, Some(child))?;
+        let parent_available = parent_source_available(&catalog_guard, Some(child))?;
         dtos.push(derivation_to_dto(child, child.output(), parent_available));
     }
     Ok(AssetDerivationListChildrenDto {
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn invalid_and_unknown_asset_ids_fail_closed() {
-        let (_ot, _data, registry, catalog, _derived, root_id, _file_id, file) = fixture();
+        let (_ot, _data, registry, catalog, _derived, root_id, _file_id, _file) = fixture();
         let invalid =
             asset_derivation_get_sync(&registry, &catalog, &root_id, "asset:v1:not-valid-hex")
                 .unwrap_err();
