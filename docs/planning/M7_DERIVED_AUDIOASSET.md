@@ -36,6 +36,7 @@ and absolute paths are not exposed to the UI.
 | Input | Verified source bytes + `TrimIntent` (source hash + half-open `FrameRange`) |
 | Bind | Re-hash source bytes before processing; mismatch with intent/caller → `SourceMismatch` (no side effects) |
 | Process | Integer PCM WAV only (16/24-bit, mono/stereo, 44.1/48 kHz); byte-preserving data slice |
+| Verify | Apply re-parses source/output WAV and requires **exact PCM payload match** for the trim range (metadata + frame count + payload length); processor `expected` / claimed hashes are not trusted; failures → `Verification` before publish |
 | No-op | Output content hash equals source → `NoOpDerivation` before publish/catalog/lineage |
 | Staging | `{data_dir}/MasterOCTa/derived-audio/staging/`; `.part` files removed on write/sync/rename failure |
 | Publish | `{data_dir}/MasterOCTa/derived-audio/published/v1/{sha256}.wav`; symlinks/non-regular paths rejected; no overwrite on hash mismatch |
@@ -79,7 +80,7 @@ Each lineage row records:
 ## Lifecycle
 
 1. Source exists on an approved Octatrack root (or catalog fixture in tests).
-2. **TRIM:** `ApplyTrimDerivation` verifies source hash, stages WAV, publishes, upserts catalog, registers lineage.
+2. **TRIM:** `ApplyTrimDerivation` verifies source hash and PCM, stages WAV, publishes, upserts catalog, registers lineage.
 3. **Future:** Other processors follow the same pattern (new kinds / scopes as designed).
 4. Queries (`LoadAssetDerivation`, `ListDerivedChildren`) serve read models for later UI/IPC (`MO-M7-DERIVED-QUERY-API-1`).
 
