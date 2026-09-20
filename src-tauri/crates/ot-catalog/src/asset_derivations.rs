@@ -565,6 +565,30 @@ mod tests {
     }
 
     #[test]
+    fn legacy_trim_from_stored_cannot_be_registered() {
+        let source = hash(54);
+        let output = hash(55);
+        let (_directory, mut catalog) = open_catalog_with_assets(&[(&source, 100), (&output, 90)]);
+        let legacy = AssetDerivation::from_stored(
+            output,
+            source.clone(),
+            DerivationKind::Trim,
+            ProcessorIdentity::new("trim", "1").unwrap(),
+            DerivationParameterEnvelope::empty(),
+            source,
+            "2026-09-20T00:00:00.000Z",
+        )
+        .unwrap();
+        assert!(legacy.parameters_unavailable());
+        assert!(matches!(
+            catalog.register_asset_derivation(&legacy),
+            Err(CatalogError::Derivation(
+                InvalidDerivation::InvalidParameters
+            ))
+        ));
+    }
+
+    #[test]
     fn stem_role_persists_through_catalog() {
         let source = hash(40);
         let output = hash(41);

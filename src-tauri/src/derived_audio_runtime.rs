@@ -7,7 +7,7 @@ use ot_domain::{ExpectedTrimOutput, TrimIntent, TrimPlan};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 const PRODUCT_DIRECTORY: &str = "MasterOCTa";
 const DERIVED_DIRECTORY: &str = "derived-audio";
@@ -16,6 +16,8 @@ const PUBLISHED_DIRECTORY: &str = "published";
 
 pub struct DerivedAudioRuntime {
     product_directory: PathBuf,
+    #[cfg(test)]
+    test_publish_fail_stage: AtomicU8,
 }
 
 impl DerivedAudioRuntime {
@@ -31,7 +33,32 @@ impl DerivedAudioRuntime {
         ensure_subdirectory(&product_directory, &derived_root)?;
         ensure_subdirectory(&derived_root, &derived_root.join(STAGING_DIRECTORY))?;
         ensure_subdirectory(&derived_root, &derived_root.join(PUBLISHED_DIRECTORY))?;
-        Ok(Self { product_directory })
+        Ok(Self {
+            product_directory,
+            #[cfg(test)]
+            test_publish_fail_stage: AtomicU8::new(0),
+        })
+    }
+
+    #[cfg(test)]
+    pub fn set_test_publish_fail_stage(&self, stage: u8) {
+        self.test_publish_fail_stage.store(stage, Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub fn clear_test_publish_fail_stage(&self) {
+        self.test_publish_fail_stage.store(0, Ordering::SeqCst);
+    }
+
+    fn publish_fail_stage(&self) -> u8 {
+        #[cfg(test)]
+        {
+            self.test_publish_fail_stage.load(Ordering::SeqCst)
+        }
+        #[cfg(not(test))]
+        {
+            0
+        }
     }
 
     fn derived_root(&self) -> PathBuf {
@@ -135,30 +162,6 @@ impl Drop for StagingPartGuard {
     }
 }
 
-#[cfg(test)]
-static PUBLISH_FAIL_STAGE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-#[cfg(test)]
-pub(crate) fn set_publish_fail_stage(stage: u8) {
-    PUBLISH_FAIL_STAGE.store(stage, std::sync::atomic::Ordering::SeqCst);
-}
-
-#[cfg(test)]
-pub(crate) fn clear_publish_fail_stage() {
-    PUBLISH_FAIL_STAGE.store(0, std::sync::atomic::Ordering::SeqCst);
-}
-
-fn publish_fail_stage() -> u8 {
-    #[cfg(test)]
-    {
-        PUBLISH_FAIL_STAGE.load(std::sync::atomic::Ordering::SeqCst)
-    }
-    #[cfg(not(test))]
-    {
-        0
-    }
-}
-
 fn reject_non_regular_destination(path: &Path) -> Result<(), TrimApplyError> {
     match fs::symlink_metadata(path) {
         Ok(metadata) => {
@@ -217,23 +220,23 @@ impl DerivedAudioPublisher for DerivedAudioRuntime {
             std::process::id()
         );
         let staging_path = self.staging_directory().join(staging_name);
-        let mut guard = StagingPartGuard::new(staging_path.clone());
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&staging_path)
             .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-        if publish_fail_stage() == 1 {
+        let mut guard = StagingPartGuard::new(staging_path.clone());
+        if self.publish_fail_stage() == 1 {
             return Err(TrimApplyError::Publish("injected write failure".into()));
         }
         file.write_all(wav_bytes)
             .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-        if publish_fail_stage() == 2 {
+        if self.publish_fail_stage() == 2 {
             return Err(TrimApplyError::Publish("injected sync failure".into()));
         }
         file.sync_all()
             .map_err(|error| TrimApplyError::Publish(error.to_string()))?;
-        if publish_fail_stage() == 3 {
+        if self.publish_fail_stage() == 3 {
             return Err(TrimApplyError::Publish("injected rename failure".into()));
         }
         fs::rename(&staging_path, &destination)
@@ -508,19 +511,41 @@ mod tests {
         let plan = sample_plan(&output_hash);
         let wav = b"wav-bytes";
         for stage in 1..=3 {
-            clear_publish_fail_stage();
-            set_publish_fail_stage(stage);
+            runtime.clear_test_publish_fail_stage();
+            runtime.set_test_publish_fail_stage(stage);
             let _ = runtime.publish_trim_output(&plan, wav, &output_hash);
             assert!(
                 staging_part_files(&staging).is_empty(),
                 "stage {stage} left .part residue"
             );
         }
-        clear_publish_fail_stage();
+        runtime.clear_test_publish_fail_stage();
         runtime
             .publish_trim_output(&plan, wav, &output_hash)
             .unwrap();
         assert!(staging_part_files(&staging).is_empty());
-        clear_publish_fail_stage();
+        runtime.clear_test_publish_fail_stage();
+    }
+
+    #[test]
+    fn create_new_failure_does_not_delete_preexisting_part() {
+        let data = TempDir::new().unwrap();
+        let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();
+        let output_hash = hash_bytes(b"wav");
+        let plan = sample_plan(&output_hash);
+        let staging_name = format!(
+            "trim-{}-{}.part",
+            output_hash.as_str().replace(':', ""),
+            std::process::id()
+        );
+        let staging_path = runtime.staging_directory_for_tests().join(staging_name);
+        fs::write(&staging_path, b"owned-by-other-publisher").unwrap();
+        assert!(runtime
+            .publish_trim_output(&plan, b"wav-bytes", &output_hash)
+            .is_err());
+        assert_eq!(
+            fs::read(&staging_path).unwrap(),
+            b"owned-by-other-publisher"
+        );
     }
 }

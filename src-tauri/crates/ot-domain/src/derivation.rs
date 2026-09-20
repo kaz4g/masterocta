@@ -310,6 +310,7 @@ impl AssetDerivation {
     }
 
     /// Load persisted catalog rows (read path). Allows legacy TRIM + empty envelope.
+    /// Not for new registration — `validate_new_derivation` rejects legacy parameters.
     #[allow(clippy::too_many_arguments)]
     pub fn from_stored(
         output: ContentHash,
@@ -536,6 +537,9 @@ pub fn validate_new_derivation(
     existing: &[DerivationEdge],
     derivation: &AssetDerivation,
 ) -> Result<(), InvalidDerivation> {
+    if derivation.parameters_unavailable() {
+        return Err(InvalidDerivation::InvalidParameters);
+    }
     if existing
         .iter()
         .any(|edge| edge.output == *derivation.output())
