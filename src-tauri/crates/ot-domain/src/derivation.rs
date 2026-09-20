@@ -130,7 +130,7 @@ impl DerivationParameterEnvelope {
         })
     }
 
-    pub fn legacy_trim_unspecified() -> Self {
+    pub(crate) fn legacy_trim_unspecified() -> Self {
         Self {
             parameters: DerivationParameters::LegacyTrimUnspecified,
         }
@@ -309,8 +309,10 @@ impl AssetDerivation {
         })
     }
 
-    /// Load persisted catalog rows (read path). Allows legacy TRIM + empty envelope.
-    /// Not for new registration — `validate_new_derivation` rejects legacy parameters.
+    /// Rehydrate a row loaded from catalog persistence (read path only).
+    /// Allows legacy TRIM + `v1|kind=empty`. Do not use for new writes:
+    /// `register_asset_derivation` and `validate_new_derivation` reject
+    /// `parameters_unavailable()` values.
     #[allow(clippy::too_many_arguments)]
     pub fn from_stored(
         output: ContentHash,
@@ -606,6 +608,26 @@ mod tests {
         assert_eq!(
             DerivationParameterEnvelope::decode(&envelope.encode()).unwrap(),
             envelope
+        );
+    }
+
+    #[test]
+    fn validate_new_derivation_rejects_unavailable_parameters() {
+        let source = hash(12);
+        let output = hash(13);
+        let legacy = AssetDerivation::from_stored(
+            output,
+            source.clone(),
+            DerivationKind::Trim,
+            ProcessorIdentity::new("trim", "1").unwrap(),
+            DerivationParameterEnvelope::empty(),
+            source,
+            "2026-09-20T00:00:00.000Z",
+        )
+        .unwrap();
+        assert_eq!(
+            validate_new_derivation(&[], &legacy).unwrap_err(),
+            InvalidDerivation::InvalidParameters
         );
     }
 

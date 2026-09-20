@@ -160,6 +160,11 @@ where
     }
 
     pub fn execute(&mut self, derivation: &AssetDerivation) -> Result<(), CatalogError> {
+        if derivation.parameters_unavailable() {
+            return Err(CatalogError::Derivation(
+                ot_domain::InvalidDerivation::InvalidParameters,
+            ));
+        }
         self.catalog.register_asset_derivation(derivation)
     }
 }
@@ -563,6 +568,34 @@ mod tests {
             RegisterAssetDerivation::new(&mut catalog).execute(&missing_asset),
             Err(CatalogError::AssetNotFound)
         ));
+    }
+
+    #[test]
+    fn register_asset_derivation_rejects_legacy_parameters_before_catalog() {
+        let source = content_hash(12);
+        let output = content_hash(13);
+        let mut catalog = FakeDerivationCatalog {
+            assets: [source.clone(), output.clone()].into_iter().collect(),
+            derivations: Vec::new(),
+        };
+        let legacy = AssetDerivation::from_stored(
+            output,
+            source.clone(),
+            ot_domain::DerivationKind::Trim,
+            ot_domain::ProcessorIdentity::new("trim", "1").unwrap(),
+            ot_domain::DerivationParameterEnvelope::empty(),
+            source,
+            "2026-09-20T00:00:00.000Z",
+        )
+        .unwrap();
+        assert!(legacy.parameters_unavailable());
+        assert!(matches!(
+            RegisterAssetDerivation::new(&mut catalog).execute(&legacy),
+            Err(CatalogError::Derivation(
+                ot_domain::InvalidDerivation::InvalidParameters
+            ))
+        ));
+        assert!(catalog.derivations.is_empty());
     }
 
     #[test]

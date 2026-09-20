@@ -528,6 +528,26 @@ mod tests {
     }
 
     #[test]
+    fn publish_fail_stage_isolated_per_runtime_instance() {
+        let data_a = TempDir::new().unwrap();
+        let data_b = TempDir::new().unwrap();
+        let mut runtime_a = DerivedAudioRuntime::open(data_a.path()).unwrap();
+        let mut runtime_b = DerivedAudioRuntime::open(data_b.path()).unwrap();
+        let output_a = hash_bytes(b"runtime-a");
+        let output_b = hash_bytes(b"runtime-b");
+        let plan_a = sample_plan(&output_a);
+        let plan_b = sample_plan(&output_b);
+        runtime_a.set_test_publish_fail_stage(3);
+        assert!(runtime_a
+            .publish_trim_output(&plan_a, b"wav-a", &output_a)
+            .is_err());
+        runtime_b
+            .publish_trim_output(&plan_b, b"wav-b", &output_b)
+            .unwrap();
+        runtime_a.clear_test_publish_fail_stage();
+    }
+
+    #[test]
     fn create_new_failure_does_not_delete_preexisting_part() {
         let data = TempDir::new().unwrap();
         let mut runtime = DerivedAudioRuntime::open(data.path()).unwrap();

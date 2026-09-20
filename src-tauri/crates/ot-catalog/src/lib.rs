@@ -2238,6 +2238,15 @@ fn apply_migration_11_with_projection_repair(
     migration_result
 }
 
+#[cfg(test)]
+pub(crate) fn test_apply_migrations_through_version(connection: &mut Connection, version: u64) {
+    for (migration_version, sql) in MIGRATIONS {
+        if *migration_version <= version {
+            apply_migration(connection, *migration_version, sql).unwrap();
+        }
+    }
+}
+
 fn apply_migration(
     connection: &mut Connection,
     version: u64,

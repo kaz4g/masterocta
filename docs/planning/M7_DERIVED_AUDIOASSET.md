@@ -46,8 +46,11 @@ Idempotency: same source + TRIM parameters → same output hash → reuse publis
 semantically equal lineage → registration no-op.
 
 **Read compatibility:** catalog rows written under migration 12 with `TRIM` + `v1|kind=empty`
-load as legacy unspecified parameters (`parameters_unavailable`); new writes still require typed
-trim envelopes.
+load as legacy unspecified parameters (`parameters_unavailable`); frame ranges are not invented.
+
+**Write strictness:** new registration requires typed TRIM parameters only. Legacy/unavailable
+representations are read-only; `register_asset_derivation` rejects them even when re-registering
+a loaded legacy row (no new `v1|kind=empty` rows).
 
 ## Provenance
 
@@ -103,7 +106,7 @@ Original source bytes and hash are unchanged.
 
 ## M7-06 status
 
-**IN_PROGRESS.** On `main` after #148; post-merge hardening in `fix/m7-derived-audioasset-2-postmerge-1`:
+**IN_PROGRESS.** On `main` after #148/#149; post-merge strictness in `fix/m7-derived-audioasset-2-postmerge-2`:
 
 - Lineage registration and persistence (#147 on `main`).
 - TRIM derived WAV pipeline (#148): domain, ot-audio, catalog upsert, application orchestration.
