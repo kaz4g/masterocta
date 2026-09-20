@@ -75,7 +75,12 @@ function SliceSession({
   const [playing, setPlaying] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [analysisSessionInvalid, setAnalysisSessionInvalid] = useState(false);
-  const [exportConfirming, setExportConfirming] = useState(false);
+  const [exportReview, setExportReview] = useState<{
+    markerId: string;
+    expectedRevision: number;
+    startFrame: string;
+    endExclusive: string;
+  } | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<SliceExportResult | null>(null);
   const alive = useRef(true);
@@ -126,7 +131,7 @@ function SliceSession({
     onRequestStopLibraryPlayback?.();
     setStarting(true);
     setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
-    setExportConfirming(false); setExportResult(null);
+    setExportReview(null); setExportResult(null);
     try {
       const next = await api.start(rootId, fileInstanceId, region);
       if (!alive.current || epoch !== generation.current) {
@@ -379,19 +384,49 @@ function SliceSession({
   const mutationDisabled = editing || analysisSessionInvalid;
   const selectedMarker = draft?.markers.find(m => m.markerId === selected);
   const exportReady = Boolean(
-    draft && draft.revision > 0 && selectedMarker && !analysisSessionInvalid && !exporting,
+    draft
+      && draft.revision > 0
+      && selectedMarker
+      && !analysisSessionInvalid
+      && !editing
+      && !exporting,
   );
 
   useEffect(() => {
-    setExportConfirming(false);
+    setExportReview(null);
     setExportResult(null);
-  }, [selected, fileInstanceId, rootId]);
+  }, [
+    selected,
+    fileInstanceId,
+    rootId,
+    draft?.revision,
+    selectedMarker?.startFrame,
+    selectedMarker?.endExclusive,
+  ]);
+
+  useEffect(() => {
+    if (editing) setExportReview(null);
+  }, [editing]);
 
   async function runDerivedExport() {
-    if (!exportReady || !draft || !selectedMarker) return;
-    if (!exportConfirming) {
-      setExportConfirming(true);
+    if (editBusy.current || !exportReady || !draft || !selectedMarker) return;
+    if (!exportReview) {
+      setExportReview({
+        markerId: selectedMarker.markerId,
+        expectedRevision: draft.revision,
+        startFrame: selectedMarker.startFrame,
+        endExclusive: selectedMarker.endExclusive,
+      });
       setExportResult(null);
+      return;
+    }
+    if (
+      exportReview.markerId !== selectedMarker.markerId
+      || exportReview.expectedRevision !== draft.revision
+      || exportReview.startFrame !== selectedMarker.startFrame
+      || exportReview.endExclusive !== selectedMarker.endExclusive
+    ) {
+      setExportReview(null);
       return;
     }
     const epoch = generation.current;
@@ -401,12 +436,12 @@ function SliceSession({
       const result = await api.exportDerived(
         rootId,
         fileInstanceId,
-        selectedMarker.markerId,
-        draft.revision,
+        exportReview.markerId,
+        exportReview.expectedRevision,
       );
       if (alive.current && epoch === generation.current) {
         setExportResult(result);
-        setExportConfirming(false);
+        setExportReview(null);
       }
     } catch (e) {
       if (alive.current && epoch === generation.current) {
@@ -616,14 +651,14 @@ function SliceSession({
             }
             return t("slicing.sliceExportRangeFrameCount", { frames });
           })()}</p>
-          {exportConfirming ? (
+          {exportReview ? (
             <>
               <p>{t("slicing.sliceExportConfirmPrompt")}</p>
               <div className="slice-actions">
                 <button type="button" disabled={!exportReady} onClick={() => void runDerivedExport()}>
                   {t("slicing.exportDerivedConfirm")}
                 </button>
-                <button type="button" disabled={exporting} onClick={() => setExportConfirming(false)}>
+                <button type="button" disabled={exporting} onClick={() => setExportReview(null)}>
                   {t("slicing.exportDerivedCancel")}
                 </button>
               </div>

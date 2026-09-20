@@ -627,6 +627,70 @@ describe("attack slicing workbench", () => {
     await waitFor(() => expect(api.exportDerived).toHaveBeenCalledTimes(1));
   });
 
+  it("invalidates export confirmation while a draft edit is pending", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api);
+    let finishEdit!: () => void;
+    vi.mocked(api.edit).mockReturnValueOnce(new Promise((resolve) => {
+      finishEdit = () => resolve({
+        ...empty,
+        revision: 2,
+        canUndo: true,
+        markers: [{
+          markerId: "candidate-1",
+          startFrame: "1000",
+          endExclusive: "44100",
+          manual: true,
+          locked: false,
+        }],
+      });
+    }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    const markerInput = screen.getByDisplayValue("956");
+    fireEvent.change(markerInput, { target: { value: "1000" } });
+    fireEvent.blur(markerInput);
+    await waitFor(() => expect(
+      screen.queryByRole("button", { name: tJa("slicing.exportDerivedConfirm") }),
+    ).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: tJa("slicing.exportDerived") })).toBeDisabled();
+    expect(api.exportDerived).not.toHaveBeenCalled();
+    finishEdit();
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: tJa("slicing.exportDerived") }),
+    ).toBeEnabled());
+    expect(api.exportDerived).not.toHaveBeenCalled();
+  });
+
+  it("clears export success when the reviewed draft range changes", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(
+      screen.getByTestId("slice-export-success"),
+    ).toHaveTextContent("asset-export-1"));
+    vi.mocked(api.edit).mockResolvedValueOnce({
+      ...empty,
+      revision: 2,
+      canUndo: true,
+      markers: [{
+        markerId: "candidate-1",
+        startFrame: "1000",
+        endExclusive: "44100",
+        manual: true,
+        locked: false,
+      }],
+    });
+    const markerInput = screen.getByDisplayValue("956");
+    fireEvent.change(markerInput, { target: { value: "1000" } });
+    fireEvent.blur(markerInput);
+    await waitFor(() => expect(
+      screen.queryByTestId("slice-export-success"),
+    ).not.toBeInTheDocument());
+    expect(await screen.findByDisplayValue("1000")).toBeInTheDocument();
+    expect(api.exportDerived).toHaveBeenCalledTimes(1);
+  });
+
   it("shows translated export errors without invalidating the analysis session", async () => {
     const api = client();
     vi.mocked(api.exportDerived).mockRejectedValue({
