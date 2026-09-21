@@ -1,5 +1,7 @@
 # M7 Derived lineage query — native acceptance
 
+> Historical Work ID checklist. **NOT_RUN** unchanged. Superseding evidence when PASS: [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE.md).
+
 **Work ID:** `MO-M7-DERIVED-LINEAGE-QUERY-UI-1`  
 **Status:** **NOT_RUN** (operator checklist; do not mark PASS until completed)  
 **Harness:** `scripts/prepare-ui-workspace-native-acceptance.sh` (fixture `SET/AUDIO/RANGE.wav`)

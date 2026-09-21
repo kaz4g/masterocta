@@ -166,11 +166,13 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Candidate:** finish `MO-M7-DERIVED-LINEAGE-QUERY-UI-1` (Draft PR) + Native acceptance PASS ([`M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)).
+**Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
 
-**Reason:** Slice export (#153) merged; lineage visibility (original → children, derived → parent) is the remaining M7-06 operator-facing read path before mac_derived Library browse.
+**Evidence:** [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md) (**NOT_RUN**). Merge Draft PR #155 (exit audit) before relying on updated M7 status rows on `main`.
 
-**Dependencies:** M5 COMPLETE; M7-01–03 and M7-02 on `main`; Gate C boundaries unchanged.
+**Reason:** Integrated operator Native for derived export + lineage + restart + #153/#154 checklist rows (historical docs stay **NOT_RUN**).
+
+**Dependencies:** M5 COMPLETE; #147–#154 on `main`; Gate C unchanged.
 
 ---
 

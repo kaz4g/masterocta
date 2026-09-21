@@ -335,9 +335,9 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**進行中 Work ID:** `MO-M7-DERIVED-LINEAGE-QUERY-UI-1`（read-only
-`v2_asset_derivation_get` / `v2_asset_derivation_list_children` + Inspector Info
-derivation section。branch `feat/m7-derived-lineage-query-ui-1`）。
+**進行中 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（統合 Native 証跡:
+[`docs/testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md) **NOT_RUN**）。
+#154 lineage UI **MERGED**。**Draft PR #155**（exit audit）merge 後に status 正本を `main` で確定。
 Slice export UI **#153 MERGED**。正本:
 [`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
 [`docs/planning/M7_DERIVED_AUDIOASSET.md`](planning/M7_DERIVED_AUDIOASSET.md)。

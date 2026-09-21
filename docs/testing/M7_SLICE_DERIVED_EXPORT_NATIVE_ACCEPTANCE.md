@@ -1,5 +1,7 @@
 # M7 Slice derived export — native acceptance
 
+> Historical Work ID checklist. **NOT_RUN** unchanged. Superseding evidence when PASS: [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE.md).
+
 **Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1`  
 **Status:** **NOT_RUN** (do not mark PASS until operator completes checklist)  
 **Harness:** `scripts/prepare-ui-workspace-native-acceptance.sh` (fixture `SET/AUDIO/RANGE.wav`)
