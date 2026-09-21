@@ -1,5 +1,7 @@
 # M7 Slice derived export — native acceptance
 
+> Historical Work ID checklist. **Status remains NOT_RUN.** Current M7 map: [`../planning/M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md). Do not rewrite this file to PASS; superseding evidence (if any) is recorded in the exit audit.
+
 **Work ID:** `MO-M7-AUTO-SLICE-DERIVED-EXPORT-UI-1`  
 **Status:** **NOT_RUN** (do not mark PASS until operator completes checklist)  
 **Harness:** `scripts/prepare-ui-workspace-native-acceptance.sh` (fixture `SET/AUDIO/RANGE.wav`)

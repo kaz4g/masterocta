@@ -1,17 +1,19 @@
 # Development status (canonical)
 
-- Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
+- Work ID: `MO-M7-EXIT-AUDIT-1` (M7 rows); earlier canonicalization: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
 - Updated: 2026-09-21
-- Baseline: GitHub `origin/main` **`e4f4ebdfc1b6dc011aca641229cb5893f5ee5221`** (merge PR #153)
+- Baseline: GitHub `origin/main` **`37f86c9603e74bbb59735a98fa79dc51d888ec24`** (merge PR #154)
 
-Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).  
+Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
+**M7 completion map:** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 ## Status vocabulary
 
 | Label | Meaning |
 | --- | --- |
 | **COMPLETE** | Exit criteria met for this row’s scope on `main`, including agreed acceptance where applicable |
+| **READY_FOR_FINAL_ACCEPTANCE** | Exit Gate **implementation** on `main`; remaining gap is required operator/Native only. **Explicitly DEFERRED** WPs (documented in [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)) do not count as missing. Exit Gate rows still **PARTIAL** (e.g. stereo UI) prevent this label |
 | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | Merged to `main`; automated tests may pass; native/hardware/operator acceptance incomplete |
 | **IN_PROGRESS** | Partial delivery on `main`; material WPs remain |
 | **PLANNED** | Defined in v0.1; no substantial `main` implementation |
@@ -20,18 +22,19 @@ Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENE
 
 Do **not** conflate: code exists · merged to `main` · CI/automated tests · native acceptance · hardware acceptance.
 
-## GitHub audit snapshot (start of canonicalization)
+## GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
 ```text
-origin/main:     95ca4cbda8fb3846fd41b892f705785b7bc23558
-PR #145:         MERGED
-#145 final head: 820183b5a7795302d960bc77cc43c7db62b65c44
-#145 merge SHA:  95ca4cbda8fb3846fd41b892f705785b7bc23558
-open PRs:        none (2026-09-20)
-CI (#145 push):  success — run 35469399221
+origin/main:     37f86c9603e74bbb59735a98fa79dc51d888ec24
+PR #154:         MERGED
+#154 final head: 6a5ec66b9be48de37613240b262a3f352cadcc9b
+#154 merge SHA:  37f86c9603e74bbb59735a98fa79dc51d888ec24
+open PRs:        none (2026-09-21)
+CI (#154 push):  success — run 35545049683
+catalog schema:  13
 ```
 
-WFM2 implementation evidence: [`../testing/MO_M7_WFM2_MULTIRES_CACHE_1.md`](../testing/MO_M7_WFM2_MULTIRES_CACHE_1.md), `src-tauri/crates/ot-audio/src/wfm2.rs`, `waveform_v2.rs`.
+Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementation. See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §1–3.
 
 ---
 
@@ -41,7 +44,7 @@ WFM2 implementation evidence: [`../testing/MO_M7_WFM2_MULTIRES_CACHE_1.md`](../t
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | WF2 query/cache/zoom/transient on main; derived asset/stem/Canvas open |
+| **M7** | **IN_PROGRESS** | Exit Gate stereo display **PARTIAL**; M7-05/M7-06 Native open; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -85,16 +88,16 @@ Judged by **responsibility**, not exact v0.1 widget names.
 
 | WP | Status | Main merge / evidence | Automated | Native | Notes |
 | --- | --- | --- | --- | --- | --- |
-| M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | — | `v2_audio_waveform_query` |
-| M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads; proportional buckets — verified on `main` |
-| M7-03 stereo/channel representation | **COMPLETE** | #124 | Tests | — | Per-channel peaks in v2 query |
-| M7-04 zoom / range / scroll UI | **IN_PROGRESS** | #129, #130 | CI + frontend tests | — | Button zoom/pan/drag range; **Canvas renderer / scroll** not implemented (WAVEFORM_V2 §13.5) |
-| M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI tests | Range→slice native **PASS** on `main` `0f39f50` (integrated; see below) | Onsets + Library range→analysis. [`M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md`](../testing/M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md) A–D **NOT_RUN** at #131 head is **superseded** by [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](../testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) post-#142. v0.1 “non-blocking job” for all analysis still open |
-| M7-06 derived AudioAsset framework | **IN_PROGRESS** | #147–#153 + `MO-M7-DERIVED-LINEAGE-QUERY-UI-1` (branch) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info | Native lineage query **NOT_RUN** | Lineage (#147); Mac TRIM (#148–#151); `SLICE_EXPORT` (#152); slice export UI (#153); read-only `v2_asset_derivation_*` + Inspector derivation section in flight. **#153 slice export Native acceptance remains NOT_RUN** ([`M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](../testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)). Do not mark M7-06 COMPLETE without canonical exit re-audit. |
-| M7-07 stem separation adapter spike | **PLANNED** | — | — | — | Explicitly out of AUTO-SLICE-1 scope |
-| M7-08 optional stem separation workflow | **PLANNED** | — | — | — | — |
+| M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
+| M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
+| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145 | Tests | PARTIAL | Per-channel peaks in query/cache; **UI overlays channels** ([`WaveformPreview.tsx`](../../src/features/waveform/WaveformPreview.tsx)) — Exit Gate “独立表示” **PARTIAL**. Follow-on: `MO-M7-STEREO-CHANNEL-LANES-1` |
+| M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
+| M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PARTIAL** on `0f39f50` | Implementation on main. Native: A/B/D exercised; **C post-quit SQLite not recorded**. Integrated Native must include quit + `slice_drafts` SELECT. 100-clip / `.ot` are Auto Slice / M11 |
+| M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **NOT_RUN** (#153 + #154 checklists) | Lineage, Mac TRIM, `SLICE_EXPORT` UI, Inspector parent/children **on main**. mac_derived Library browse / derived waveform / batch / `.ot` are **non-goals**. Exit blocker = integrated Native (original SHA + restart lineage) |
+| M7-07 stem separation adapter spike | **DEFERRED** | enum `STEM` / `StemRole` only | — | — | Not in v0.1 Exit Gate; spike deferred to **M11 prep** (enum-only ≠ spike). See audit §11 |
+| M7-08 optional stem separation workflow | **DEFERRED** | — | — | — | Optional WP; production stem is **M11**. Not an M7 exit blocker |
 
-**M7 exit gate (v0.1):** Not met (M7-06+; Canvas optional in docs but width-driven WF2 largely met).
+**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display PARTIAL**; analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
 
 ---
 
@@ -127,7 +130,7 @@ Boundary on `main` per [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_
 
 ---
 
-## PR map (#122–#145, selected)
+## PR map (#122–#154, selected)
 
 | PR | Theme |
 | --- | --- |
@@ -142,6 +145,9 @@ Boundary on `main` per [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_
 | #141–#142 | Slice analysis session recovery |
 | #143–#144 | Native acceptance harness docs |
 | #145 | M7-02 WFM2 multi-res cache |
+| #147–#151 | M7-06 lineage + TRIM generation / verify |
+| #152–#153 | Slice Draft → `SLICE_EXPORT` + UI |
+| #154 | Lineage query IPC + Inspector Info |
 
 #103 / #104 / #105 remain **closed** — do not reopen.
 
@@ -153,9 +159,9 @@ Boundary on `main` per [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_
 M5 (COMPLETE)
   → M6 Library shell (IN_PROGRESS)
   → M7 WF2 + analysis (IN_PROGRESS)
-  → M7-06 derived AudioAsset (IN_PROGRESS)
+  → M7-06 derived Native (IMPLEMENTED_NOT_FULLY_ACCEPTED; exit blocker)
   → safe sample/slice `.ot` output (PLANNED / M11)
-  → M7-07/08 stem (PLANNED)
+  → M7-07/08 stem (DEFERRED → M11)
   → M8 MockNode + protocol (PLANNED)
   → M9 hardware → M10 integration
 ```
@@ -166,11 +172,13 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Candidate:** finish `MO-M7-DERIVED-LINEAGE-QUERY-UI-1` (Draft PR) + Native acceptance PASS ([`M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)).
+**Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
 
-**Reason:** Slice export (#153) merged; lineage visibility (original → children, derived → parent) is the remaining M7-06 operator-facing read path before mac_derived Library browse.
+**Reason:** Sole remaining M7 Exit Gate gap is operator Native on current `main`: Waveform → Slice → Derived export → Inspector lineage → restart, with original SHA unchanged. Do not rewrite #153/#154 historical **NOT_RUN** checklists to PASS.
 
-**Dependencies:** M5 COMPLETE; M7-01–03 and M7-02 on `main`; Gate C boundaries unchanged.
+**Dependencies:** M5 COMPLETE; #147–#154 on `main`; Gate C boundaries unchanged.
+
+**Secondary (not next):** Auto Slice 100-clip quality; WFM2 dedicated Native; stem adapter spike; Canvas renderer. See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §15–17.
 
 ---
 
@@ -190,7 +198,7 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 | C | Apply candidates; draft + SQLite after quit | **Partial** — Apply + draft revision PASS; persistence verified via **file switch**, not documented post-quit `SELECT` |
 | D | Range B → `ANALYSIS_REGION_MISMATCH` | **Yes** — fail-closed mismatch PASS |
 
-**Conclusion:** Treat range→slice **native product acceptance** as **PASS** on integrated `main` at `0f39f50`. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` as historical #131 evidence; do not cite its NOT_COMPLETE as current blocker. Re-run on newer `main` (e.g. post-#145) only if slice/range UI changes.
+**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`) must record quit + isolated-catalog `slice_drafts` evidence before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
 
 ---
 
@@ -198,17 +206,18 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 1. **M6-06:** Operations Drawer (#134) vs v0.1 Operation Modal vs Gate C Change Drawer — three UX surfaces coexist; document operator path in future UX ADR if consolidating.
 2. **M6-08:** Persisted pane widths / workspace layout — no canonical acceptance doc marking COMPLETE.
-3. **M7-04:** Canvas deferred indefinitely or required for M7 exit — WAVEFORM_V2 lists Canvas as follow-on.
+3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.
 
 ---
 
-## Docs-only canonicalization (this PR)
+## Docs-only indexes
 
 | Artifact | Path |
 | --- | --- |
 | Milestone numbers | [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md) |
 | This status | [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) |
+| M7 exit audit | [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | ADR list | [`ADR_INDEX.md`](./ADR_INDEX.md) |
 | v0.1 verbatim | [`sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md`](./sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md) |

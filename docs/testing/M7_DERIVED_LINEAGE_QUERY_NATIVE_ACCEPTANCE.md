@@ -1,5 +1,7 @@
 # M7 Derived lineage query — native acceptance
 
+> Historical Work ID checklist. **Status remains NOT_RUN.** Current M7 map: [`../planning/M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md). Do not rewrite this file to PASS; superseding evidence (if any) is recorded in the exit audit.
+
 **Work ID:** `MO-M7-DERIVED-LINEAGE-QUERY-UI-1`  
 **Status:** **NOT_RUN** (operator checklist; do not mark PASS until completed)  
 **Harness:** `scripts/prepare-ui-workspace-native-acceptance.sh` (fixture `SET/AUDIO/RANGE.wav`)
