@@ -331,9 +331,9 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **READY_FOR_FINAL_ACCEPTANCE**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
-M7-01–05 **COMPLETE**。M7-06 **IMPLEMENTED_NOT_FULLY_ACCEPTED**（#147–#154 on `main`、
-Native **NOT_RUN**）。M7-07 **PLANNED**。M7-08 **DEFERRED**（M11）。
+**M7:** **IN_PROGRESS**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)（#155 review-fix 反映）。
+Exit Gate stereo **PARTIAL**（UI lanes）。M7-05/M7-06 Native 未。M7-07/08 **DEFERRED**（M11）。
+**次 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（#155 merge 後に Native 開始）。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`

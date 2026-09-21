@@ -41,7 +41,7 @@ From v0.1 §21 (risks / ADR candidates) and §14–§15 — **do not implement a
 | Node transport (Ethernet vs USB roles) | v0.1 §21 | — |
 | Clock authority (MIDI jitter / master) | v0.1 §21 | v0.1 §2.2: Mac not clock-required path |
 | Realtime engine language (Rust vs C++) | v0.1 §21 | — |
-| Stem model policy | v0.1 §21 | M7-07 PLANNED / M7-08 DEFERRED to M11 ([`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)) |
+| Stem model policy | v0.1 §21 | M7-07/08 **DEFERRED** to M11 ([`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)) |
 | AudioAsset storage identity | v0.1 §21 | Overlaps ADR-006; M7-06 framework on main, Native open ([`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)) |
 | Session schema versioning | v0.1 §21 | M8 PerformanceSession |
 | Workspace boundary (anti-DAW scope) | v0.1 §21 | — |
