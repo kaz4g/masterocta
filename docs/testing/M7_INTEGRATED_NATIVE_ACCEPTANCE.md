@@ -81,10 +81,17 @@ set -euo pipefail
 git remote get-url origin                  # must be kaz4g/masterocta
 # Stop on a different repository; do not mutate upstream.
 git fetch origin
+BASELINE_SHA="b2c7765772bd3894472ba936664cabc0db92fcf1"
 PRODUCT_SHA="$(git rev-parse origin/main)"
-git merge-base --is-ancestor b2c7765772bd3894472ba936664cabc0db92fcf1 "$PRODUCT_SHA"
-git diff --name-status b2c7765772bd3894472ba936664cabc0db92fcf1 "$PRODUCT_SHA"
-# If main moved, review the delta and acceptance scope before continuing.
+if ! git merge-base --is-ancestor "$BASELINE_SHA" "$PRODUCT_SHA"; then
+  echo "STOP: origin/main is not descended from recorded baseline $BASELINE_SHA" >&2
+  exit 1
+fi
+if [ "$PRODUCT_SHA" != "$BASELINE_SHA" ]; then
+  echo "STOP: origin/main moved to $PRODUCT_SHA. Review delta and update this doc baseline before continuing:" >&2
+  git diff --name-status "$BASELINE_SHA" "$PRODUCT_SHA"
+  exit 1
+fi
 SESSION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/masterocta-m7-accept.XXXXXX")"
 git worktree add --detach "$SESSION_DIR/worktree" "$PRODUCT_SHA"
 cd "$SESSION_DIR/worktree"
@@ -105,10 +112,17 @@ the child process. Do not globally replace HOME/PATH or repair the product to
 work around a launcher/environment problem. Port/process collisions: record and
 stop; do not kill unrelated development processes.
 
-After registering/scanning the fixture, verify the **live Tauri app process**
-holds the expected isolated catalog with `lsof`, not just that a DB file exists.
+**Isolation gate (before A02 — mandatory):** As soon as the Tauri dev process is
+running, verify the **live app process** catalog binding with `lsof` (or
+equivalent). Do **not** register, scan, or select the fixture until this passes.
+Startup opens the catalog before any operator registration
+([`RootRegistryPanel`](../../src/components/RootRegistryPanel.tsx) writes later).
+If `HOME` isolation is wrong, registration would contaminate the real user catalog.
+
 On macOS `/tmp` may appear as `/private/tmp`; compare canonical paths. Inspect
-all catalog handles for that process and stop if any point at the real HOME.
+**all** catalog-related open files for the `masterocta` process. **STOP** if any
+handle resolves outside `$ISOLATED_HOME` (especially the operator's real HOME).
+File existence under isolated HOME alone is not proof.
 
 Expected paths (code-derived; not runtime proof):
 
@@ -128,8 +142,8 @@ outside the fixture root. Never delete an unverified directory for cleanup.
 
 | ID | Required observation | Result | Evidence to retain |
 | --- | --- | --- | --- |
-| A01 | Launch exact reviewed main SHA in isolated HOME; prove live catalog binding | **NOT_RUN** | SHA, OS/tool versions, sanitized process/catalog binding |
-| A02 | Register read-only fixture, scan, select RANGE; Info initially has no children | **NOT_RUN** | Root-relative fixture inventory and initial Info screenshot |
+| A01 | Launch exact reviewed main SHA in isolated HOME; **lsof catalog binding before any register/scan** | **NOT_RUN** | SHA, OS/tool versions, sanitized `lsof` on live process; stop if real HOME |
+| A02 | After A01 PASS: register read-only fixture, scan, select RANGE; Info initially has no children | **NOT_RUN** | Root-relative fixture inventory and initial Info screenshot |
 | A03 | Waveform renders; resize/zoom/pan and range preview Play/Stop work | **NOT_RUN** | Viewport/range and screenshots; distinguish mono from stereo |
 | A04 | Analyze/apply or verify an existing saved draft; marker/select/preview work | **NOT_RUN** | Opaque draft identity, range, revision and marker/slice state |
 | A05 | Export selected slice: review → confirm → success | **NOT_RUN** | Selected source-frame interval, success UI, opaque child asset id |
@@ -141,7 +155,7 @@ outside the fixture root. Never delete an unverified directory for cleanup.
 | A11 | Retry identical slice export is idempotent | **NOT_RUN** | Same child id/output SHA; per-source lineage and published inventories unchanged |
 | A12 | Advance draft revision during pending review; stale export fails closed | **NOT_RUN** | Old/new revision; disabled/rejected confirm; no new derived file or lineage |
 | A13 | Quit app; read saved draft from isolated catalog with read-only SQL | **NOT_RUN** | Post-quit slice_drafts SELECT matching the latest pre-quit revision/range/markers |
-| A14 | Relaunch same HOME; original Info still has same child; draft persists | **NOT_RUN** | Second process binding, Info/draft screenshots, child/revision comparison |
+| A14 | Relaunch same HOME; **re-register fixture, rescan, reselect RANGE** (in-memory roots are not persisted); then Info shows same child and draft persists | **NOT_RUN** | Second A01 binding; register+scan evidence; child/revision comparison vs pre-quit |
 | A15 | Final source/fixture invariant and derived/lineage inventories hold | **NOT_RUN** | Final manifests after retry, stale attempt, quit and restart |
 | Q01 | Info-tab lazy loading (completion-quality observation, not an added Exit blocker): no lineage query while Preview/Slice only | **NOT_RUN** | Native IPC observation using existing diagnostics; visual tab switching alone is insufficient |
 | B01 | Reviewed synthetic stereo fixture has distinct left/right data | **NOT_RUN** | Generator/spec provenance, 2-channel header and pre-SHA/manifest |

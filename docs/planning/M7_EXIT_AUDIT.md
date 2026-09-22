@@ -165,7 +165,7 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 | Main | #124, #145 |
 | Automated | **PASS** (query); UI overlap not fixture-tested |
 | E2E | **PARTIAL** |
-| Native | **PARTIAL** |
+| Native | **NOT_RUN** | Acceptance fixture is mono; group B (B01–B03) not executed. No stereo operator evidence |
 | Hardware | **N/A** |
 
 **Exit blocker:** **yes** for Exit Gate row “stereo independently displayable” until lanes or equivalent UI (product fix: `MO-M7-STEREO-CHANNEL-LANES-1`, not this audit).
@@ -300,7 +300,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | M7-01 | PASS | PASS | PASS | PASS | N/A | N/A | COMPLETE |
 | M7-02 | PASS | PASS | PASS | N/A | NOT_RUN | N/A | COMPLETE |
-| M7-03 | PARTIAL (UI) | PASS | PASS (query) | PARTIAL | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
+| M7-03 | PARTIAL (UI) | PASS | PASS (query) | PARTIAL | NOT_RUN | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-04 | PASS | PASS | PASS | PASS | PARTIAL | N/A | COMPLETE |
 | M7-05 | PASS | PASS | PASS | PASS | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-06 | PASS | PASS | PASS | PASS | NOT_RUN | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
@@ -401,6 +401,7 @@ Do not require Canvas, production stem engine, `.ot`, or Library injection.
 | F7 | Codex: stereo Exit PASS vs overlapping SVG paths | Exit **PARTIAL**; M7-03 downgraded |
 | F8 | Codex: integrated Native omitted #153 WAV/retry | §15.A checklist expanded |
 | F9 | Codex: M7-05 Native PASS vs partial step C | M7-05 **PARTIAL** Native |
+| F10 | Codex: M7-03 Native PARTIAL without stereo run | Native column **NOT_RUN**; UI stays PARTIAL in Implementation |
 | F10 | #156 still assumed #155 unmerged | Reconciled to `b2c7765`; no new Native result |
 | F11 | §15.B called stereo lanes non-blocking despite §6/§18 | Moved to §15.A.2; Exit row 3 remains **PARTIAL** |
 | F12 | Existing acceptance `RANGE.wav` is mono | Separate synthetic stereo fixture required; stereo Native **NOT_RUN** in the current session |
