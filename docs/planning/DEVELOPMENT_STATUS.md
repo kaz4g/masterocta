@@ -1,8 +1,8 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-EXIT-AUDIT-1` (M7 rows); earlier canonicalization: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
-- Updated: 2026-09-21
-- Baseline: GitHub `origin/main` **`37f86c9603e74bbb59735a98fa79dc51d888ec24`** (merge PR #154)
+- Updated: 2026-09-23 (PR #156 premise reconciliation; no Native execution)
+- Baseline: GitHub `origin/main` **`b2c7765772bd3894472ba936664cabc0db92fcf1`** (merge PR #155; product baseline inherited from #154)
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -22,7 +22,17 @@ Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENE
 
 Do **not** conflate: code exists · merged to `main` · CI/automated tests · native acceptance · hardware acceptance.
 
-## GitHub audit snapshot (M7 exit audit, 2026-09-21)
+## Current reconciliation snapshot (2026-09-23)
+
+PR #155 is **MERGED** at `b2c7765772bd3894472ba936664cabc0db92fcf1`
+(2026-09-21 19:22:56 UTC / 2026-09-22 04:22:56 JST).
+PR #156 remains **Draft**. Its integrated Native record is
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md):
+**NOT_RUN**. The former "#155 unmerged" start blocker is removed, not converted
+into Native PASS. Stereo independent display remains an implementation/acceptance
+gap; M7 is **IN_PROGRESS**, not READY_FOR_FINAL_ACCEPTANCE or COMPLETE.
+
+## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
 ```text
 origin/main:     37f86c9603e74bbb59735a98fa79dc51d888ec24
@@ -90,7 +100,7 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | --- | --- | --- | --- | --- | --- |
 | M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
 | M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
-| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145 | Tests | PARTIAL | Per-channel peaks in query/cache; **UI overlays channels** ([`WaveformPreview.tsx`](../../src/features/waveform/WaveformPreview.tsx)) — Exit Gate “独立表示” **PARTIAL**. Follow-on: `MO-M7-STEREO-CHANNEL-LANES-1` |
+| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145 | Tests | **NOT_RUN** | Per-channel peaks in query/cache; **UI overlays channels** (implementation audit **PARTIAL**). Native stereo **NOT_RUN** (mono fixture; B01–B03). Follow-on: `MO-M7-STEREO-CHANNEL-LANES-1` |
 | M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
 | M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PARTIAL** on `0f39f50` | Implementation on main. Native: A/B/D exercised; **C post-quit SQLite not recorded**. Integrated Native must include quit + `slice_drafts` SELECT. 100-clip / `.ot` are Auto Slice / M11 |
 | M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **NOT_RUN** (#153 + #154 checklists) | Lineage, Mac TRIM, `SLICE_EXPORT` UI, Inspector parent/children **on main**. mac_derived Library browse / derived waveform / batch / `.ot` are **non-goals**. Exit blocker = integrated Native (original SHA + restart lineage) |
@@ -174,9 +184,11 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 **Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
 
-**Reason:** Sole remaining M7 Exit Gate gap is operator Native on current `main`: Waveform → Slice → Derived export → Inspector lineage → restart, with original SHA unchanged. Do not rewrite #153/#154 historical **NOT_RUN** checklists to PASS.
+**Reason:** One remaining M7 Exit Gate gap is operator Native on current `main`: Waveform → Slice → Derived export → Inspector lineage → restart, with original SHA unchanged. Do not rewrite #153/#154 historical **NOT_RUN** checklists to PASS.
 
-**Dependencies:** M5 COMPLETE; #147–#154 on `main`; Gate C boundaries unchanged.
+**Other Exit blocker:** `MO-M7-STEREO-CHANNEL-LANES-1` — stereo must be independently displayable, not merely per-channel data. Implement/accept separately; existing mono `RANGE.wav` does not cover it. The integrated record separates derived-flow group A from stereo group B; both are needed for full M7 closure.
+
+**Dependencies:** M5 COMPLETE; #147–#155 on `main`; Gate C boundaries unchanged.
 
 **Secondary (not next):** Auto Slice 100-clip quality; WFM2 dedicated Native; stem adapter spike; Canvas renderer. See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §15–17.
 

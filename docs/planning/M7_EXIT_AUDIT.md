@@ -3,13 +3,23 @@
 - Work ID: `MO-M7-EXIT-AUDIT-1`
 - Date: 2026-09-21
 - Kind: **docs-only** (no product / Rust / frontend / catalog / CI change)
-- Baseline: GitHub `origin/main` **`37f86c9603e74bbb59735a98fa79dc51d888ec24`** (merge PR #154)
+- Historical audit baseline: GitHub `origin/main` **`37f86c9603e74bbb59735a98fa79dc51d888ec24`** (merge PR #154)
 
 This document is the **current** M7 completion map. It does not rewrite Gate C, RC7/RC8, or historical Native checklists.
 
 ---
 
 ## 1. Audit identity
+
+**Reconciled for PR #156 (2026-09-23):** canonical `main` is
+`b2c7765772bd3894472ba936664cabc0db92fcf1` (PR #155 merge).
+#155 merged at **2026-09-21 19:22:56 UTC / 2026-09-22 04:22:56 JST**.
+Its earlier PR-body summary is not the review-fixed completion map.
+The old merge prerequisite is satisfied; this is **not** Native execution evidence.
+Integrated Native remains **NOT_RUN** and M7 remains **IN_PROGRESS**.
+The operator record is [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md).
+
+**Historical audit-start snapshot (2026-09-21; not the current branch state):**
 
 ```text
 origin/main:     37f86c9603e74bbb59735a98fa79dc51d888ec24
@@ -155,7 +165,7 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 | Main | #124, #145 |
 | Automated | **PASS** (query); UI overlap not fixture-tested |
 | E2E | **PARTIAL** |
-| Native | **PARTIAL** |
+| Native | **NOT_RUN** | Acceptance fixture is mono; group B (B01–B03) not executed. No stereo operator evidence |
 | Hardware | **N/A** |
 
 **Exit blocker:** **yes** for Exit Gate row “stereo independently displayable” until lanes or equivalent UI (product fix: `MO-M7-STEREO-CHANNEL-LANES-1`, not this audit).
@@ -290,7 +300,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | M7-01 | PASS | PASS | PASS | PASS | N/A | N/A | COMPLETE |
 | M7-02 | PASS | PASS | PASS | N/A | NOT_RUN | N/A | COMPLETE |
-| M7-03 | PASS | PASS | PASS | PARTIAL | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
+| M7-03 | PARTIAL (UI) | PASS | PASS (query) | PARTIAL | NOT_RUN | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-04 | PASS | PASS | PASS | PASS | PARTIAL | N/A | COMPLETE |
 | M7-05 | PASS | PASS | PASS | PASS | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-06 | PASS | PASS | PASS | PASS | NOT_RUN | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
@@ -303,12 +313,12 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 ### A. M7 EXIT BLOCKER
 
-1. **Integrated Native acceptance** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)) on current `main` (`37f86c9` or later). **Supersedes** #153/#154 operator intent only when every row below is **PASS** in the new doc; **do not** edit historical #153/#154 checklists to PASS.
+1. **Integrated Native acceptance** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)) on current `main` (reconciliation baseline `b2c7765`; record the exact executed SHA). **Supersedes** #153/#154 operator intent only when every derived-flow row in §15.A.1 / integrated record group A is **PASS** with evidence; **do not** edit historical #153/#154 checklists to PASS.
 
    Required sequence (sanitized evidence):
 
    - Isolated launch + fixture register + `RANGE.wav` select
-   - Waveform: render, zoom/pan, range, preview (stereo: record observation — lanes expected **PARTIAL** until product fix)
+   - Waveform: render, zoom/pan, range, preview. Stereo independent display is the separate Exit blocker §15.A.2, not a PASS inferred from mono `RANGE.wav`.
    - Slice: draft/marker/select (existing draft OK)
    - Export: review → confirm → success UI
    - **Published WAV** under `MasterOCTa/derived-audio/published/v1/`; record output SHA; **no** `.part`, symlinks, or duplicate files
@@ -319,12 +329,13 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
    - **Quit + relaunch** same isolated HOME: lineage child unchanged
    - **Slice draft persistence:** post-quit `slice_drafts` SELECT on isolated catalog (sanitized)
 
+2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): implement lanes or equivalent independently readable UI in a separate, minimal product WP, then record Native observation on a reviewed synthetic **two-channel** fixture. The existing fixture generator sets `CHANNELS = 1`; `RANGE.wav` cannot prove this criterion. Keep Exit row 3 **PARTIAL** until implementation and acceptance are evidenced on main. This corrects its former misclassification in §15.B; it does not add an Exit criterion.
+
 ### B. M7 COMPLETION QUALITY (not Exit Gate)
 
 1. Dedicated WFM2 Native / long-file operator observation (#145 Native NOT_RUN).
 2. Dedicated zoom/pan Native row (beyond `0f39f50` preview-range).
-3. Stereo **independent lanes** in Library waveform (`MO-M7-STEREO-CHANNEL-LANES-1`).
-4. Canvas renderer / wheel-scroll (WAVEFORM_V2 follow-on).
+3. Canvas renderer / wheel-scroll (WAVEFORM_V2 follow-on).
 
 ### C. POST-M7 / FUTURE
 
@@ -343,7 +354,7 @@ Do **not** reopen #153/#154 Native as separate historical PASSes.
 
 One operator session on latest main, isolated `HOME`, existing fixture harness (`scripts/prepare-ui-workspace-native-acceptance.sh`). Record results in a **new** current Native doc. Leave `M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md` and `M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md` as **NOT_RUN** historical Work ID checklists, with a pointer to the integrated doc once it exists.
 
-Until integrated Native **PASS** (full checklist §15.A), M7-06 stays **IMPLEMENTED_NOT_FULLY_ACCEPTED**. M7 milestone stays **IN_PROGRESS** while Exit Gate stereo is **PARTIAL** and/or Native gaps remain (not **COMPLETE**).
+Until derived-flow Native **PASS** (full checklist §15.A.1 / integrated record group A), M7-06 stays **IMPLEMENTED_NOT_FULLY_ACCEPTED**. M7 milestone stays **IN_PROGRESS** while Exit Gate stereo is **PARTIAL** and/or Native gaps remain (not **COMPLETE**).
 
 ---
 
@@ -368,7 +379,7 @@ Call M7 **COMPLETE** only when:
 1. Exit Gate rows 1–2 and 4 are **PASS** on main (including Native where required),
 2. Exit Gate row 3 (stereo **independently displayable**) is **PASS** (not data-only),
 3. Exit Gate row 5 (derived originals unchanged) is **PASS** via integrated Native,
-4. Integrated Native checklist §15.A is **PASS** in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md),
+4. Integrated Native groups A (derived flow, §15.A.1) and B (stereo, §15.A.2) are **PASS**, bound to the final reviewed main product baseline, in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md),
 5. M7-07/08 remain **DEFERRED** to M11 (documented; not silently required).
 
 Do not require Canvas, production stem engine, `.ot`, or Library injection.
@@ -390,6 +401,10 @@ Do not require Canvas, production stem engine, `.ot`, or Library injection.
 | F7 | Codex: stereo Exit PASS vs overlapping SVG paths | Exit **PARTIAL**; M7-03 downgraded |
 | F8 | Codex: integrated Native omitted #153 WAV/retry | §15.A checklist expanded |
 | F9 | Codex: M7-05 Native PASS vs partial step C | M7-05 **PARTIAL** Native |
+| F10 | Codex: M7-03 Native PARTIAL without stereo run | Native column **NOT_RUN**; UI stays PARTIAL in Implementation |
+| F10 | #156 still assumed #155 unmerged | Reconciled to `b2c7765`; no new Native result |
+| F11 | §15.B called stereo lanes non-blocking despite §6/§18 | Moved to §15.A.2; Exit row 3 remains **PARTIAL** |
+| F12 | Existing acceptance `RANGE.wav` is mono | Separate synthetic stereo fixture required; stereo Native **NOT_RUN** in the current session |
 
 ---
 
