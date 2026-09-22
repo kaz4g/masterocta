@@ -116,7 +116,7 @@ stop; do not kill unrelated development processes.
 running, verify the **live app process** catalog binding with `lsof` (or
 equivalent). Do **not** register, scan, or select the fixture until this passes.
 Startup opens the catalog before any operator registration
-([`RootRegistryPanel`](../../src/components/RootRegistryPanel.tsx) writes later).
+([`RootRegistryPanel`](../../src/features/roots/RootRegistryPanel.tsx) writes later).
 If `HOME` isolation is wrong, registration would contaminate the real user catalog.
 
 On macOS `/tmp` may appear as `/private/tmp`; compare canonical paths. Inspect
