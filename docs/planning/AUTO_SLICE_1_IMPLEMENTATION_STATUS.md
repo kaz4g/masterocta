@@ -1,11 +1,16 @@
 # AUTO-SLICE-1 実装状況
 
+> Current M7 / derived-export status: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
+> Remaining items in §残る実装・評価 are Auto Slice / M11 quality, not v0.1 M7 Exit Gate.
+
 設計基準: [AUTO_SLICE_1_TECHNICAL_DESIGN.md](AUTO_SLICE_1_TECHNICAL_DESIGN.md)
 
 AS-0〜AS-4のローカル編集機能を接続した。Libraryの音声Inspectorから
 **Detect attacks → 候補確認 → Apply candidates to draft → 手修正・区間試聴**を行える。
 ドラフトはアプリ内SQLiteに保存する。`.ot`出力と媒体へのApplyは未実装。
-**Mac Derived 1-slice export**（`MO-M7-AUTO-SLICE-DERIVED-EXPORT-1`）は application 層で Slice Draft → 既存 TRIM パイプライン → `SLICE_EXPORT` lineage まで接続済み（UI/IPC なし）。詳細は [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md)。
+**Mac Derived 1-slice export** は application + production IPC/UI まで接続済み
+（#152/#153 MERGED）。Inspector lineage は #154 MERGED。Native は **NOT_RUN**。
+詳細は [`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md)。
 設計全体の完了や、媒体書き込みGateの通過を意味しない。
 
 ## 実装した経路

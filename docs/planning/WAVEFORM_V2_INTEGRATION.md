@@ -3,6 +3,7 @@
 - Work ID: `MO-WAVEFORM-V2-INTEGRATION-DESIGN-1`
 - Status: Design complete (docs-only); **implementation status:** [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md), [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md)
 - Date: 2026-09-12 (design); status sync 2026-09-20
+- Current M7 status: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) (this file’s GitHub `main` SHA below is **HISTORICAL** #122-era)
 - Audience: M7 Waveform v2 実装 PR 着手前
 
 ## 1. 目的

@@ -24,7 +24,8 @@ Current M5 status is **COMPLETE** (rename / reference-safe) on RC8. Gate C is
 Prepare STOP boundaries remain in
 `docs/testing/GATE_C_RC7_PREPARE_ARTIFACT.md`.
 Post-M5 Waveform v2: `docs/planning/WAVEFORM_V2_INTEGRATION.md` (M6 #122; M7 WF2
-query/range/zoom on main; **WFM2 cache #145 MERGED**). Do not reopen #103–#105.
+query/range/zoom on main; **WFM2 cache #145 MERGED**). **M7 completion map:**
+`docs/planning/M7_EXIT_AUDIT.md`. Do not reopen #103–#105.
 
 ## Non-negotiable data-safety rules
 

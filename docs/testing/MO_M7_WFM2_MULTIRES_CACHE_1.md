@@ -1,5 +1,8 @@
 # MO-M7-WFM2-MULTIRES-CACHE-1
 
+> Historical implementation evidence for #145. Native **NOT_RUN** is unchanged.
+> Current M7 map: [`../planning/M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md).
+
 Work ID: `MO-M7-WFM2-MULTIRES-CACHE-1`  
 Branch: `feat/m7-wfm2-multires-cache-1`  
 Baseline `origin/main`: `954863063f25bf5315cec289928eff2127fb8ea1` (#144 merge)

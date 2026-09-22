@@ -39,8 +39,9 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
-GitHub `main` 基準: `e4f4ebdfc1b6dc011aca641229cb5893f5ee5221`（PR #153 merge。
-#147–#153 derived lineage / TRIM / slice export UI を含む）。
+GitHub `main` 基準: `37f86c9603e74bbb59735a98fa79dc51d888ec24`（PR #154 merge。
+#147–#154 derived lineage / TRIM / slice export / Inspector lineage を含む）。
+M7 完了判定の正本: [`docs/planning/M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
 比較対象、移行期間中の利用可能なアプリとして残し、legacy adapter越しに段階的に
@@ -193,8 +194,8 @@ GitHub `main` 基準: `e4f4ebdfc1b6dc011aca641229cb5893f5ee5221`（PR #153 merge
 - M5-C2 rename Mac staging: **完了**
 - M5-C3 rename clone apply / rollback: **#69 マージ済み**（`373a755`）
 - M5-C4 Gate C automated clone-rescan proof: **#70 マージ済み**（`15eef67`）
-- SQLite schema: **v12** on `feat/m7-derived-audioasset-1`（`asset_derivations` lineage）。
-  `main` @ #146 は **v11**（0010 observational trust、0011 projection-trust repair）。
+- SQLite schema: **v13** on `main` @ #154（0012 `asset_derivations`、0013 `mac_derived`）。
+  Historical: **v12** landed on `feat/m7-derived-audioasset-1`; `main` @ #146 was **v11**。
 - Developer ID signing / notarization / public distribution は別release gate
 - M5-A contract 正本: `docs/planning/M5_A_SAMPLE_RENAME_IMPACT.md`
 - M5-B contract 正本: `docs/planning/M5_B_REFERENCE_REWRITE.md`
@@ -326,30 +327,31 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 ## 6. 次のCodex作業
 
-### 6.0 現在の次作業（2026-09-20）
+### 6.0 現在の次作業（2026-09-21）
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **IN_PROGRESS**。**M7-02 WFM2:** **COMPLETE** on `main`（#145 merge、`820183b`）。
+**M7:** **IN_PROGRESS**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)（#155 review-fix 反映）。
+Exit Gate stereo **PARTIAL**（UI lanes）。M7-05/M7-06 Native 未。M7-07/08 **DEFERRED**（M11）。
+**次 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（#155 merge 後に Native 開始）。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**進行中 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（統合 Native 証跡:
-[`docs/testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md) **NOT_RUN**）。
-#154 lineage UI **MERGED**。**Draft PR #155**（exit audit）merge 後に status 正本を `main` で確定。
-Slice export UI **#153 MERGED**。正本:
-[`docs/planning/M7_AUTO_SLICE_DERIVED_EXPORT.md`](planning/M7_AUTO_SLICE_DERIVED_EXPORT.md)、
-[`docs/planning/M7_DERIVED_AUDIOASSET.md`](planning/M7_DERIVED_AUDIOASSET.md)。
-#153 Native export acceptance: [`docs/testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)（**NOT_RUN** — 捏造しない）。
-Lineage query Native: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
+**次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
+（最新 `main` で Waveform → Slice → Derived export → Inspector lineage → restart。
+#153/#154 個別 Native 文書の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
+
+**履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
+Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
+#153 Native export: [`docs/testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
 
 **M7-05 native:** 統合受入 **PASS**（`main` `0f39f50`、
 `docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md` § post-#142）。
 `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` の A–D NOT_RUN は #131 時点の歴史。
 
-**直近 merge 参考:** #145 WFM2、#142 session recovery、#134 Operations Drawer、
-#132–#133 workspace/inspector。open PR なし（2026-09-20 監査）。
+**直近 merge 参考:** #154 lineage UI、#153 slice export UI、#145 WFM2、#142 session recovery。
+open PR なし（2026-09-21 監査開始時）。
 
 公開配布・RC8 再ビルド・#103/#104/#105 再開 — **禁止**（従来どおり）。
 

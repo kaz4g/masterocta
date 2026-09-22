@@ -1,6 +1,6 @@
 # M7 Derived lineage query — native acceptance
 
-> Historical Work ID checklist. **NOT_RUN** unchanged. Superseding evidence when PASS: [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE.md).
+> Historical Work ID checklist. **Status remains NOT_RUN.** Current M7 map: [`../planning/M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md). Do not rewrite this file to PASS; superseding evidence (if any) is recorded in the exit audit.
 
 **Work ID:** `MO-M7-DERIVED-LINEAGE-QUERY-UI-1`  
 **Status:** **NOT_RUN** (operator checklist; do not mark PASS until completed)  

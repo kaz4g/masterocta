@@ -6,7 +6,7 @@
 > **`0f39f5056c25e996f1e3ff69b7a51ca20b0c45bb`** (post-#142) is documented in
 > [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](./MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md)
 > § “Real native acceptance on `main` post-#142” (Slice / Range, persistence /
-> mismatch, session recovery). **Current status:** [`../planning/DEVELOPMENT_STATUS.md`](../planning/DEVELOPMENT_STATUS.md).
+> mismatch, session recovery). **Current M7 map:** [`../planning/M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md).
 
 **Work ID:** `MO-M7-RANGE-TO-SLICE-NATIVE-ACCEPTANCE-1`  
 **Pull Request:** https://github.com/kaz4g/masterocta/pull/131  
