@@ -68,6 +68,17 @@ remains **NOT_APPLICABLE** to this acceptance scope, not an unperformed PASS.
 
 ## 3. Isolated Mac execution procedure — NOT_RUN
 
+**Harness note (macOS realpath, `MO-M7-NATIVE-HARNESS-MACOS-REALPATH-FIX-1`):** On
+Darwin, invoking `scripts/generate-ui-workspace-native-fixture.mjs` or
+`scripts/verify-ui-workspace-range-sha.mjs` via a logical absolute path (for example
+`/var/...` while the module resolves under `/private/var/...`) previously failed the
+direct-run guard and exited **0 with empty stdout**, so
+`scripts/prepare-ui-workspace-native-acceptance.sh` could proceed with an empty manifest.
+Harness scripts now canonicalize invocation paths (`compare-script-invocation.mjs`),
+use `pwd -P` for `ROOT_DIR`, and fail closed on empty or invalid manifest JSON.
+That removes the preparation blocker only; **integrated Native remains NOT_RUN** until
+an operator records A/B matrix evidence on isolated macOS.
+
 Read `AGENTS.md`, `docs/CODEX_HANDOFF.md`, and the fixture-safety / PR-gate skills.
 Keep the currently running app and unrelated worktrees untouched. Use a new
 acceptance worktree at the current, reviewed `origin/main` and record its full

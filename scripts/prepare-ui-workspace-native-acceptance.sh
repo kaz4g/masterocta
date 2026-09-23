@@ -2,7 +2,7 @@
 # Isolated HOME + managed synthetic Set for MO-UI-WORKSPACE-NATIVE-ACCEPTANCE-1.
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 SHORT="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -15,12 +15,30 @@ echo "commit=${COMMIT}"
 echo "isolated_home=${ISOLATED_HOME}"
 
 MANIFEST_JSON="$(node "${ROOT_DIR}/scripts/generate-ui-workspace-native-fixture.mjs")"
+
+if [ -z "${MANIFEST_JSON//[[:space:]]/}" ]; then
+  echo "fixture generation produced empty manifest" >&2
+  exit 1
+fi
+
 echo "${MANIFEST_JSON}" > "${ISOLATED_HOME}/fixture-manifest.json"
 
 FIXTURE_ROOT="$(printf '%s' "${MANIFEST_JSON}" | node -e "
-  let s=''; process.stdin.on('data',d=>s+=d); process.stdin.on('end',()=>{
-    const m=JSON.parse(s);
-    process.stdout.write(m.fixtureRoot);
+  let s='';
+  process.stdin.on('data', (d) => { s += d; });
+  process.stdin.on('end', () => {
+    try {
+      const m = JSON.parse(s);
+      const root = m && m.fixtureRoot;
+      if (typeof root !== 'string' || root.trim() === '') {
+        console.error('fixture manifest missing fixtureRoot');
+        process.exit(1);
+      }
+      process.stdout.write(root);
+    } catch {
+      console.error('fixture manifest is not valid JSON');
+      process.exit(1);
+    }
   });
 ")"
 RANGE_WAV="${FIXTURE_ROOT}/SET/AUDIO/RANGE.wav"
