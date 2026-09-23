@@ -1,6 +1,6 @@
 import { accessSync, constants } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isDirectScriptInvocation } from "./compare-script-invocation.mjs";
 
 function isExecutable(filePath) {
   try {
@@ -168,10 +168,7 @@ function parseArgs(argv) {
   return args;
 }
 
-const isCli =
-  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-
-if (isCli) {
+if (isDirectScriptInvocation(import.meta.url)) {
   const args = parseArgs(process.argv);
   const realHome = args.realHome ?? resolveRealHome(process.env);
   const result = buildNativeAcceptanceChildEnv({

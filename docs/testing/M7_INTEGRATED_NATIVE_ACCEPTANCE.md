@@ -79,6 +79,15 @@ use `pwd -P` for `ROOT_DIR`, and fail closed on empty or invalid manifest JSON.
 That removes the preparation blocker only; **integrated Native remains NOT_RUN** until
 an operator records A/B matrix evidence on isolated macOS.
 
+**Harness note (macOS realpath, `MO-M7-NATIVE-HARNESS-MACOS-REALPATH-FIX-2`):** The same
+logical-vs-physical path mismatch affected
+`scripts/launch-native-acceptance-env.mjs` when invoked from
+`scripts/launch-native-acceptance-tauri.sh` with a logical repo root (`/var/...`), causing
+**exit 0 with empty stdout** and downstream `JSON.parse` failures before Tauri start.
+The launcher now canonicalizes `ROOT_DIR`, reuses `compare-script-invocation.mjs` for the env
+helper CLI guard, and fails closed on empty or invalid child-environment JSON. This removes
+the launcher preparation blocker only; **integrated Native remains NOT_RUN**.
+
 Read `AGENTS.md`, `docs/CODEX_HANDOFF.md`, and the fixture-safety / PR-gate skills.
 Keep the currently running app and unrelated worktrees untouched. Use a new
 acceptance worktree at the current, reviewed `origin/main` and record its full

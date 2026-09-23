@@ -21,7 +21,7 @@
     "test:frontend": "vitest run",
     "test:gate-c-manifest": "node --test scripts/gate-c-byte-manifest.test.mjs",
     "test:gate-c-candidate": "node --test scripts/gate-c-candidate-contract.test.mjs",
-    "test:ui-native-fixture": "node --test scripts/generate-ui-workspace-native-fixture.test.mjs",
+    "test:ui-native-fixture": "node --test scripts/generate-ui-workspace-native-fixture.test.mjs scripts/prepare-ui-workspace-native-acceptance.test.mjs scripts/launch-native-acceptance-tauri.test.mjs",
     "test:legacy-containment": "node --test scripts/legacy-command-containment.test.mjs",
     "test:workspace-css": "node --test scripts/app-shell-workspace-css.test.mjs",
     "test:e2e": "playwright test",

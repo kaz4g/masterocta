@@ -3,7 +3,7 @@
 # Parent shell HOME/PATH are not exported or mutated.
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 
 usage() {
   echo "Usage: $0 <isolated_home> [repo_root]" >&2
@@ -23,6 +23,7 @@ fi
 
 ISOLATED_HOME="$1"
 ROOT_DIR="${2:-${ROOT_DIR}}"
+ROOT_DIR="$(cd "${ROOT_DIR}" && pwd -P)"
 
 REAL_HOME="${REAL_HOME:-${HOME}}"
 REAL_PATH="${PATH:-}"
@@ -42,6 +43,35 @@ prepend_dir_if_command() {
 prepend_dir_if_command node
 prepend_dir_if_command pnpm
 
+validate_child_env_json() {
+  local json="$1"
+  if [[ -z "${json//[[:space:]]/}" ]]; then
+    echo "launch-native-acceptance-tauri: environment helper returned empty JSON" >&2
+    return 1
+  fi
+  printf '%s' "${json}" | node -e "
+    let s = '';
+    process.stdin.on('data', (d) => { s += d; });
+    process.stdin.on('end', () => {
+      let env;
+      try {
+        env = JSON.parse(s);
+      } catch {
+        console.error('launch-native-acceptance-tauri: environment helper returned invalid JSON');
+        process.exit(1);
+      }
+      const required = ['HOME', 'PATH', 'CARGO_HOME', 'RUSTUP_HOME'];
+      for (const key of required) {
+        const value = env && env[key];
+        if (typeof value !== 'string' || value.trim() === '') {
+          console.error('launch-native-acceptance-tauri: child environment missing ' + key);
+          process.exit(1);
+        }
+      }
+    });
+  "
+}
+
 CHILD_ENV_JSON="$(
   node "${ROOT_DIR}/scripts/launch-native-acceptance-env.mjs" \
     --real-home "${REAL_HOME}" \
@@ -53,6 +83,8 @@ CHILD_ENV_JSON="$(
   echo "launch-native-acceptance-tauri: failed to resolve Rust toolchain for child process" >&2
   exit 1
 }
+
+validate_child_env_json "${CHILD_ENV_JSON}" || exit 1
 
 if [[ "${PRINT_CHILD_ENV}" -eq 1 ]]; then
   printf '%s\n' "${CHILD_ENV_JSON}"
