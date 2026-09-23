@@ -4,12 +4,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
@@ -123,6 +124,56 @@ test("supports unicode temp parent path", async () => {
     );
   } finally {
     rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+function parseFixtureManifest(stdout) {
+  assert.ok(stdout.trim().length > 0, "expected non-empty CLI stdout");
+  const manifest = JSON.parse(stdout);
+  assert.ok(typeof manifest.fixtureRoot === "string" && manifest.fixtureRoot.length > 0);
+  return manifest;
+}
+
+test("CLI via relative script path emits non-empty JSON manifest", () => {
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/generate-ui-workspace-native-fixture.mjs"],
+    { cwd: join(dirname(fileURLToPath(import.meta.url)), ".."), encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  parseFixtureManifest(result.stdout);
+});
+
+test("CLI via canonical absolute script path emits non-empty JSON manifest", () => {
+  const scriptPath = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "generate-ui-workspace-native-fixture.mjs",
+  );
+  const canonical = realpathSync(scriptPath);
+  const result = spawnSync(process.execPath, [canonical], {
+    cwd: join(dirname(fileURLToPath(import.meta.url)), ".."),
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  parseFixtureManifest(result.stdout);
+});
+
+test("CLI via logical symlink path emits non-empty JSON manifest", () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const logicalParent = mkdtempSync(join(tmpdir(), "mo-native-logical-parent-"));
+  const logicalRepo = join(logicalParent, "checkout");
+  symlinkSync(repoRoot, logicalRepo);
+  const logicalScript = join(logicalRepo, "scripts/generate-ui-workspace-native-fixture.mjs");
+  try {
+    const result = spawnSync(process.execPath, [logicalScript], {
+      cwd: logicalRepo,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    parseFixtureManifest(result.stdout);
+    assert.notEqual(resolve(logicalScript), realpathSync(logicalScript));
+  } finally {
+    rmSync(logicalParent, { recursive: true, force: true });
   }
 });
 

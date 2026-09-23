@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDirectScriptInvocation } from "./compare-script-invocation.mjs";
 import {
   cleanupOwnedFixtureRoot,
   createManagedFixtureRoot,
@@ -233,13 +234,7 @@ async function main() {
   console.log(JSON.stringify(manifest, null, 2));
 }
 
-function isMainModule() {
-  const selfPath = fileURLToPath(import.meta.url);
-  const invoked = process.argv[1] ? resolve(process.argv[1]) : "";
-  return selfPath === invoked;
-}
-
-if (isMainModule()) {
+if (isDirectScriptInvocation(import.meta.url)) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

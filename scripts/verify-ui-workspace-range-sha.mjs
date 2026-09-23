@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isDirectScriptInvocation } from "./compare-script-invocation.mjs";
 
 export const M7_RANGE_SHA256 =
   "43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1";
@@ -45,6 +45,6 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+if (isDirectScriptInvocation(import.meta.url)) {
   main();
 }
