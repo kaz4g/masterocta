@@ -135,27 +135,31 @@ function parseFixtureManifest(stdout) {
 }
 
 test("CLI via relative script path emits non-empty JSON manifest", () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const result = spawnSync(
     process.execPath,
     ["scripts/generate-ui-workspace-native-fixture.mjs"],
-    { cwd: join(dirname(fileURLToPath(import.meta.url)), ".."), encoding: "utf8" },
+    { cwd: repoRoot, encoding: "utf8" },
   );
   assert.equal(result.status, 0, result.stderr);
-  parseFixtureManifest(result.stdout);
+  const manifest = parseFixtureManifest(result.stdout);
+  cleanupOwnedFixtureRoot(manifest.fixtureRoot);
 });
 
 test("CLI via canonical absolute script path emits non-empty JSON manifest", () => {
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const scriptPath = join(
     dirname(fileURLToPath(import.meta.url)),
     "generate-ui-workspace-native-fixture.mjs",
   );
   const canonical = realpathSync(scriptPath);
   const result = spawnSync(process.execPath, [canonical], {
-    cwd: join(dirname(fileURLToPath(import.meta.url)), ".."),
+    cwd: repoRoot,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
-  parseFixtureManifest(result.stdout);
+  const manifest = parseFixtureManifest(result.stdout);
+  cleanupOwnedFixtureRoot(manifest.fixtureRoot);
 });
 
 test("CLI via logical symlink path emits non-empty JSON manifest", () => {
@@ -164,15 +168,20 @@ test("CLI via logical symlink path emits non-empty JSON manifest", () => {
   const logicalRepo = join(logicalParent, "checkout");
   symlinkSync(repoRoot, logicalRepo);
   const logicalScript = join(logicalRepo, "scripts/generate-ui-workspace-native-fixture.mjs");
+  let fixtureRoot;
   try {
     const result = spawnSync(process.execPath, [logicalScript], {
       cwd: logicalRepo,
       encoding: "utf8",
     });
     assert.equal(result.status, 0, result.stderr);
-    parseFixtureManifest(result.stdout);
+    const manifest = parseFixtureManifest(result.stdout);
+    fixtureRoot = manifest.fixtureRoot;
     assert.notEqual(resolve(logicalScript), realpathSync(logicalScript));
   } finally {
+    if (fixtureRoot) {
+      cleanupOwnedFixtureRoot(fixtureRoot);
+    }
     rmSync(logicalParent, { recursive: true, force: true });
   }
 });
@@ -187,5 +196,3 @@ test("CLI generation exits non-zero when RANGE path missing for verify script", 
   });
   assert.notEqual(missing.status, 0);
 });
-
-await import("./launch-native-acceptance-tauri.test.mjs");

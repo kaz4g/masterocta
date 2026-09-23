@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -13,6 +22,7 @@ import {
 
 const ROOT_DIR = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const LAUNCHER = join(ROOT_DIR, "scripts/launch-native-acceptance-tauri.sh");
+const REAL_NODE = process.execPath;
 
 function fakeCargoBin(root) {
   const binDir = join(root, "bin");
@@ -21,6 +31,76 @@ function fakeCargoBin(root) {
   writeFileSync(cargoPath, "#!/bin/sh\nexit 0\n");
   chmodSync(cargoPath, 0o755);
   return cargoPath;
+}
+
+/**
+ * @param {string} stdout
+ * @param {string} isolatedHome
+ */
+function parseChildEnv(stdout, isolatedHome) {
+  assert.ok(stdout.trim().length > 0, "expected non-empty child env JSON");
+  const childEnv = JSON.parse(stdout.trim());
+  for (const key of ["HOME", "PATH", "CARGO_HOME", "RUSTUP_HOME"]) {
+    assert.ok(typeof childEnv[key] === "string" && childEnv[key].length > 0, key);
+  }
+  assert.equal(childEnv.HOME, isolatedHome);
+  return childEnv;
+}
+
+function spawnPrintChildEnv(launcherPath, isolatedHome, repoRoot, env = {}) {
+  const nodeBinDir = dirname(process.execPath);
+  return spawnSync(
+    "bash",
+    [launcherPath, "--print-child-env", isolatedHome, repoRoot],
+    {
+      env: {
+        ...process.env,
+        PATH: `${nodeBinDir}:/usr/bin:/bin`,
+        ...env,
+      },
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+}
+
+function makeHarnessEnv(isolatedHome, realHomeTmp) {
+  fakeCargoBin(join(realHomeTmp, ".cargo"));
+  mkdirSync(isolatedHome, { recursive: true });
+  return {
+    REAL_HOME: realHomeTmp,
+    HOME: process.env.HOME,
+  };
+}
+
+/**
+ * @param {string} helperStdout
+ * @param {() => import("node:child_process").SpawnSyncReturns<string>} run
+ */
+function withStubbedEnvHelper(helperStdout, run) {
+  const stubDir = mkdtempSync(join(tmpdir(), "mo-native-node-stub-"));
+  const stubNode = join(stubDir, "node");
+  const payload = helperStdout.replace(/'/g, `'\\''`);
+  writeFileSync(
+    stubNode,
+    `#!/usr/bin/env bash
+set -euo pipefail
+REAL_NODE='${REAL_NODE.replace(/'/g, "'\\''")}'
+joined="$*"
+if [[ "$joined" == *launch-native-acceptance-env.mjs* ]]; then
+  printf '%s' '${payload}'
+  exit 0
+fi
+exec "$REAL_NODE" "$@"
+`,
+    { encoding: "utf8" },
+  );
+  chmodSync(stubNode, 0o755);
+  try {
+    return run(stubDir);
+  } finally {
+    rmSync(stubDir, { recursive: true, force: true });
+  }
 }
 
 test("Case A: cargo on PATH is used", () => {
@@ -111,6 +191,177 @@ test("Case F: launcher --print-child-env does not mutate parent HOME/PATH", () =
   assert.equal(childEnv.CARGO_HOME, join(tmp, ".cargo"));
   assert.equal(childEnv.RUSTUP_HOME, join(tmp, ".rustup"));
   assert.ok(childEnv.PATH.includes(join(tmp, ".cargo", "bin")));
+});
+
+test("launcher --print-child-env via relative script path returns valid JSON", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-rel-"));
+  const isolated = join(tmp, "isolated-home");
+  const env = makeHarnessEnv(isolated, tmp);
+  const run = spawnPrintChildEnv("scripts/launch-native-acceptance-tauri.sh", isolated, ROOT_DIR, env);
+  assert.equal(run.status, 0, run.stderr || run.stdout);
+  parseChildEnv(run.stdout, isolated);
+});
+
+test("launcher --print-child-env via canonical repo path returns valid JSON", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-can-"));
+  const isolated = join(tmp, "isolated-home");
+  const env = makeHarnessEnv(isolated, tmp);
+  const canonicalRepo = realpathSync(ROOT_DIR);
+  const run = spawnPrintChildEnv(LAUNCHER, isolated, canonicalRepo, env);
+  assert.equal(run.status, 0, run.stderr || run.stdout);
+  parseChildEnv(run.stdout, isolated);
+});
+
+test("launcher --print-child-env via logical symlink repo path returns valid JSON", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-log-"));
+  const isolated = join(tmp, "isolated-home");
+  const env = makeHarnessEnv(isolated, tmp);
+  const logicalParent = mkdtempSync(join(tmpdir(), "mo-native-launcher-logical-parent-"));
+  const logicalRepo = join(logicalParent, "checkout");
+  symlinkSync(ROOT_DIR, logicalRepo);
+  const logicalLauncher = join(logicalRepo, "scripts/launch-native-acceptance-tauri.sh");
+  try {
+    assert.notEqual(resolve(logicalRepo), realpathSync(logicalRepo));
+    const run = spawnPrintChildEnv(logicalLauncher, isolated, logicalRepo, env);
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    parseChildEnv(run.stdout, isolated);
+  } finally {
+    rmSync(logicalParent, { recursive: true, force: true });
+  }
+});
+
+test("launcher fails closed when environment helper returns empty JSON", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-empty-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  withStubbedEnvHelper("", (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /empty JSON/);
+    return run;
+  });
+});
+
+test("launcher fails closed when environment helper returns invalid JSON", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-badjson-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  withStubbedEnvHelper("{not-json", (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /invalid JSON/);
+    return run;
+  });
+});
+
+test("launcher fails closed when child environment missing HOME", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-nohome-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  const partial = JSON.stringify({
+    PATH: "/bin",
+    CARGO_HOME: "/tmp/cargo",
+    RUSTUP_HOME: "/tmp/rustup",
+  });
+  withStubbedEnvHelper(partial, (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /missing HOME/);
+    return run;
+  });
+});
+
+test("launcher fails closed when child environment missing PATH", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-nopath-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  const partial = JSON.stringify({
+    HOME: isolated,
+    CARGO_HOME: "/tmp/cargo",
+    RUSTUP_HOME: "/tmp/rustup",
+  });
+  withStubbedEnvHelper(partial, (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /missing PATH/);
+    return run;
+  });
+});
+
+test("launcher fails closed when child environment missing CARGO_HOME", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-nocargo-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  const partial = JSON.stringify({
+    HOME: isolated,
+    PATH: "/bin",
+    RUSTUP_HOME: "/tmp/rustup",
+  });
+  withStubbedEnvHelper(partial, (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /missing CARGO_HOME/);
+    return run;
+  });
+});
+
+test("launcher fails closed when child environment missing RUSTUP_HOME", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "mo-native-launcher-norustup-"));
+  const isolated = join(tmp, "isolated-home");
+  mkdirSync(isolated, { recursive: true });
+  const partial = JSON.stringify({
+    HOME: isolated,
+    PATH: "/bin",
+    CARGO_HOME: "/tmp/cargo",
+  });
+  withStubbedEnvHelper(partial, (stubDir) => {
+    const run = spawnSync(
+      "bash",
+      [LAUNCHER, "--print-child-env", isolated, ROOT_DIR],
+      {
+        env: { ...process.env, PATH: `${stubDir}:${process.env.PATH ?? ""}` },
+        encoding: "utf8",
+      },
+    );
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /missing RUSTUP_HOME/);
+    return run;
+  });
 });
 
 test("prepare script prints code-derived catalog path without bundle-id segment", () => {
