@@ -29,6 +29,8 @@ pub enum SliceEdit {
     Insert { marker_id: String, frame: PcmFrame },
     Delete { marker_id: String },
     SetLock { marker_id: String, locked: bool },
+    /// Clears markers and binds the draft to a new analysis region (revision CAS at persistence).
+    ReplaceRegion(FrameRange),
 }
 
 impl SliceDraft {
@@ -179,6 +181,15 @@ impl SliceDraft {
                     marker.manual = false;
                 }
             }
+            SliceEdit::ReplaceRegion(region) => {
+                next = SliceDraft {
+                    revision: self.revision,
+                    region,
+                    markers: Vec::new(),
+                    suppressed_candidate_ids: BTreeSet::new(),
+                    exclusions: Vec::new(),
+                };
+            }
         }
         next.markers
             .sort_by(|a, b| a.start.cmp(&b.start).then(a.id.cmp(&b.id)));
@@ -266,6 +277,22 @@ mod tests {
             .markers
             .is_empty());
     }
+    #[test]
+    fn replace_region_clears_markers_and_exclusions() {
+        let draft = SliceDraft::empty(region())
+            .edited(SliceEdit::AcceptProposal(proposal("a", 1000)), 48_000)
+            .unwrap();
+        let narrower = FrameRange::new(frame(500), frame(2_000)).unwrap();
+        let replaced = draft
+            .edited(SliceEdit::ReplaceRegion(narrower), 48_000)
+            .unwrap();
+        assert_eq!(replaced.region, narrower);
+        assert!(replaced.markers.is_empty());
+        assert!(replaced.exclusions.is_empty());
+        assert!(replaced.suppressed_candidate_ids.is_empty());
+        assert_eq!(replaced.revision, draft.revision);
+    }
+
     #[test]
     fn invalid_edit_preserves_original_and_end_is_not_a_marker() {
         let draft = SliceDraft::empty(region())
