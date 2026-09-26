@@ -756,4 +756,48 @@ describe("attack slicing workbench", () => {
     expect(screen.getByRole("button", { name: tJa("slicing.applyCandidates") })).toBeEnabled();
     expect(screen.getByText(tJa("slicing.draftSummary", { count: 0, revision: 0 }))).toBeInTheDocument();
   });
+
+  it("keeps analysis and draft when only pending range is copied from library", async () => {
+    const api = client();
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    expect(screen.getByText(tJa("slicing.pendingRangeHeading"))).toBeInTheDocument();
+    expect(api.start).toHaveBeenCalledTimes(1);
+    expect(api.edit).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: tJa("slicing.applyCandidates") })).toBeEnabled();
+  });
+
+  it("replaces region with CAS then starts analysis for pending range", async () => {
+    const api = client();
+    const pending = { startFrame: "5000", endExclusive: "10000" };
+    vi.mocked(api.edit).mockImplementation(async (_r, _j, rev, edit) => {
+      if (edit.kind === "replaceRegion") {
+        return {
+          ...empty,
+          revision: rev + 1,
+          region: pending,
+          markers: [],
+          canUndo: false,
+          canRedo: false,
+        };
+      }
+      return { ...empty, revision: 1, markers: [], canUndo: true };
+    });
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
+    await waitFor(() => expect(api.edit).toHaveBeenCalledWith(
+      "root-1",
+      "job-1",
+      0,
+      { kind: "replaceRegion", startFrame: "5000", endExclusive: "10000" },
+    ));
+    await waitFor(() => expect(api.start).toHaveBeenCalledWith("root-1", "file-1", pending));
+  });
 });

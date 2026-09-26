@@ -228,6 +228,12 @@ pub enum SliceEditDto {
         marker_id: String,
         locked: bool,
     },
+    ReplaceRegion {
+        #[serde(rename = "startFrame")]
+        start_frame: String,
+        #[serde(rename = "endExclusive")]
+        end_exclusive: String,
+    },
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -550,6 +556,15 @@ impl SliceWorkbench {
             SliceEditDto::Delete { marker_id } => Some(SliceEdit::Delete { marker_id }),
             SliceEditDto::SetLock { marker_id, locked } => {
                 Some(SliceEdit::SetLock { marker_id, locked })
+            }
+            SliceEditDto::ReplaceRegion {
+                start_frame,
+                end_exclusive,
+            } => {
+                let start = parse_frame(&start_frame)?;
+                let end = parse_frame(&end_exclusive)?;
+                let region = FrameRange::new(start, end).map_err(|_| invalid("invalid region"))?;
+                Some(SliceEdit::ReplaceRegion(region))
             }
         };
         let mut catalog = catalog.lock().map_err(|_| internal())?;
@@ -1009,6 +1024,30 @@ mod tests {
             payload.get("code").and_then(|value| value.as_str()),
             Some("ANALYSIS_REGION_MISMATCH"),
         );
+    }
+
+    #[test]
+    fn replace_region_edit_clears_markers_for_reanalysis() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        assert!(!accepted.markers.is_empty());
+        let replaced = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                accepted.revision,
+                SliceEditDto::ReplaceRegion {
+                    start_frame: "1000".into(),
+                    end_exclusive: "20000".into(),
+                },
+            )
+            .unwrap();
+        assert!(replaced.markers.is_empty());
+        assert_eq!(replaced.region.start_frame, "1000");
+        assert_eq!(replaced.region.end_exclusive, "20000");
+        assert_eq!(catalog_draft_revision(&catalog, &job), replaced.revision);
     }
 
     #[test]

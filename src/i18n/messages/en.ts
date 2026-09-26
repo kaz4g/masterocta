@@ -304,6 +304,18 @@ export const enMessages = {
   'slicing.detectingAttacks': 'Detecting attacks…',
   'slicing.analysisRegionHeading': 'Analysis region used for this job',
   'slicing.analysisRegionFrames': 'Frames [{start}, {end})',
+  'slicing.pendingRangeHeading': 'Pending reselection range',
+  'slicing.pendingRangeNone':
+    'No pending range. Use Reselect range on the waveform, or copy the library preview selection.',
+  'slicing.enterRangeReselect': 'Reselect range',
+  'slicing.exitRangeReselect': 'Done reselecting',
+  'slicing.copyLibrarySelectionToPending': 'Copy library preview selection',
+  'slicing.playPendingRange': 'Play pending range',
+  'slicing.reanalyzePendingRange': 'Analyze this range',
+  'slicing.rangeReselectHint':
+    'Drag on the waveform to choose a new range. The current analysis and draft stay until you analyze this range.',
+  'slicing.pendingDiffersFromAnalysis':
+    'Pending range differs from the current analysis region.',
   'slicing.detectionLegend': 'Detection',
   'slicing.sensitivity': 'Sensitivity',
   'slicing.minimumIntervalMs': 'Minimum interval (ms)',

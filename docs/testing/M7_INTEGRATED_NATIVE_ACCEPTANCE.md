@@ -165,7 +165,7 @@ outside the fixture root. Never delete an unverified directory for cleanup.
 | A01 | Launch exact reviewed main SHA in isolated HOME; **lsof catalog binding before any register/scan** | **NOT_RUN** | SHA, OS/tool versions, sanitized `lsof` on live process; stop if real HOME |
 | A02 | After A01 PASS: register read-only fixture, scan, select RANGE; Info initially has no children | **NOT_RUN** | Root-relative fixture inventory and initial Info screenshot |
 | A03 | Waveform renders; resize/zoom/pan and range preview Play/Stop work | **NOT_RUN** | Viewport/range and screenshots; distinguish mono from stereo |
-| A04 | Analyze/apply or verify an existing saved draft; marker/select/preview work | **NOT_RUN** | Opaque draft identity, range, revision and marker/slice state |
+| A04 | Analyze/apply or verify an existing saved draft; marker/select/preview work | **NOT_RUN** | Opaque draft identity, range, revision and marker/slice state. After first analysis, record iterative **pending range → explicit re-analyze → new candidates → draft update** in Slice workspace (library preview selection vs analysis region remain distinct). |
 | A05 | Export selected slice: review → confirm → success | **NOT_RUN** | Selected source-frame interval, success UI, opaque child asset id |
 | A06 | Published WAV is in isolated Mac storage with the expected audio range | **NOT_RUN** | Relative output name, SHA256, rate/channels/frame count; independently check selected source range |
 | A07 | No `.part`, symlink, extra published WAV, or derived file inside fixture | **NOT_RUN** | Full relative published inventory; staging check; fixture inventory |

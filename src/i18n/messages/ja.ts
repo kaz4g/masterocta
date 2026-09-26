@@ -310,6 +310,18 @@ export const jaMessages: Record<MessageKey, string> = {
   'slicing.detectingAttacks': 'アタックを検出中…',
   'slicing.analysisRegionHeading': 'このジョブの解析対象範囲',
   'slicing.analysisRegionFrames': 'フレーム [{start}, {end})',
+  'slicing.pendingRangeHeading': '再選択中のプレビュー範囲',
+  'slicing.pendingRangeNone':
+    '未選択です。波形で「範囲を再選択」するか、プレビューの選択範囲をコピーしてください。',
+  'slicing.enterRangeReselect': '範囲を再選択',
+  'slicing.exitRangeReselect': '再選択を終了',
+  'slicing.copyLibrarySelectionToPending': 'プレビュー選択範囲をコピー',
+  'slicing.playPendingRange': '選択範囲を再生',
+  'slicing.reanalyzePendingRange': 'この範囲で再解析',
+  'slicing.rangeReselectHint':
+    '波形上をドラッグして新しい範囲を指定します。「この範囲で再解析」するまで、現在の解析と draft はそのままです。',
+  'slicing.pendingDiffersFromAnalysis':
+    '再選択範囲は現在の解析範囲と異なります。',
   'slicing.detectionLegend': '検出',
   'slicing.sensitivity': '感度',
   'slicing.minimumIntervalMs': '最小間隔 (ms)',
