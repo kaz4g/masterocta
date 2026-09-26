@@ -61,6 +61,7 @@ export type SliceEdit =
   | { kind: "insert"; frame: string }
   | { kind: "delete"; markerId: string }
   | { kind: "setLock"; markerId: string; locked: boolean }
+  | { kind: "replaceRegion"; startFrame: string; endExclusive: string }
   | { kind: "undo" | "redo" };
 export interface SliceWaveform { range: SliceRange; peaks: [number, number][][] }
 export interface SlicePreview {

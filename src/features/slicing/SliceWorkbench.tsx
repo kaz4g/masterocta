@@ -24,6 +24,8 @@ interface Props {
   /** Sample rate from the Library preview that committed the selection (display only). */
   librarySourceSampleRate?: number | null;
   onRequestStopLibraryPlayback?: () => void;
+  /** When pending range is outside the current analysis PCM, delegate preview to the Library surface. */
+  onRequestPreviewLibraryRange?: (range: LibraryCommittedGeometryRange) => void;
   onAnalysisBusyChange?: (busy: boolean) => void;
   registerAnalysisCancel?: (cancel: (() => void) | null) => void;
   layout?: SliceWorkbenchLayout;
@@ -49,6 +51,7 @@ function SliceSession({
   librarySelectionRange = null,
   librarySourceSampleRate = null,
   onRequestStopLibraryPlayback,
+  onRequestPreviewLibraryRange,
   onAnalysisBusyChange,
   registerAnalysisCancel,
   layout = "compact",
@@ -77,6 +80,10 @@ function SliceSession({
   const [playing, setPlaying] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [analysisSessionInvalid, setAnalysisSessionInvalid] = useState(false);
+  const [pendingPreviewRange, setPendingPreviewRange] = useState<SliceRange | null>(null);
+  const [rangeReselectMode, setRangeReselectMode] = useState(false);
+  const [rangeSelectDrag, setRangeSelectDrag] = useState<{ anchor: string; active: string } | null>(null);
+  const rangeSelectDragRef = useRef<typeof rangeSelectDrag>(null);
   const [exportReview, setExportReview] = useState<{
     markerId: string;
     expectedRevision: number;
@@ -100,6 +107,13 @@ function SliceSession({
     sound.current = null;
     if (alive.current) { setPlaying(false); setPreviewing(false); }
   }
+  useEffect(() => {
+    setPendingPreviewRange(null);
+    setRangeReselectMode(false);
+    setRangeSelectDrag(null);
+    rangeSelectDragRef.current = null;
+  }, [rootId, fileInstanceId]);
+
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -182,6 +196,150 @@ function SliceSession({
     }
     await startAnalysis(region);
   }
+
+  function sourceFrameLimitExclusive(): bigint | null {
+    if (job?.frameCount) {
+      try {
+        return frame(job.frameCount);
+      } catch {
+        return null;
+      }
+    }
+    if (draft) {
+      try {
+        return frame(draft.region.endExclusive);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function normalizePendingRange(start: string, end: string): SliceRange | null {
+    const limit = sourceFrameLimitExclusive();
+    if (limit === null) return null;
+    try {
+      let s = frame(start);
+      let e = frame(end);
+      if (s >= e) return null;
+      if (e > limit) e = limit;
+      if (s >= e || s >= limit) return null;
+      return { startFrame: s.toString(), endExclusive: e.toString() };
+    } catch {
+      return null;
+    }
+  }
+
+  function toggleRangeReselectMode() {
+    if (rangeReselectMode) {
+      setRangeReselectMode(false);
+      setRangeSelectDrag(null);
+      rangeSelectDragRef.current = null;
+      return;
+    }
+    if (draft) {
+      setView(draft.region);
+    } else if (job?.frameCount) {
+      setView({ startFrame: "0", endExclusive: job.frameCount });
+    }
+    setRangeReselectMode(true);
+  }
+
+  function copyLibrarySelectionToPending() {
+    if (librarySelectionRange === null) return;
+    const normalized = normalizePendingRange(
+      librarySelectionRange.startFrame,
+      librarySelectionRange.endFrameExclusive,
+    );
+    if (normalized) setPendingPreviewRange(normalized);
+  }
+
+  async function reanalyzeWithPendingRange() {
+    if (!pendingPreviewRange || !draft || !readyId || busy || editing) return;
+    const region = pendingPreviewRange;
+    const epoch = generation.current;
+    setError(null);
+    stop();
+    onRequestStopLibraryPlayback?.();
+    editBusy.current = true;
+    setEditing(true);
+    try {
+      await api.edit(rootId, readyId, draft.revision, {
+        kind: "replaceRegion",
+        startFrame: region.startFrame,
+        endExclusive: region.endExclusive,
+      });
+      if (!alive.current || epoch !== generation.current) return;
+      setPendingPreviewRange(null);
+      setRangeReselectMode(false);
+      setRangeSelectDrag(null);
+      rangeSelectDragRef.current = null;
+      await startAnalysis(region);
+    } catch (e) {
+      if (alive.current && epoch === generation.current) noteCommandError(e);
+    } finally {
+      if (epoch === generation.current) {
+        editBusy.current = false;
+        if (alive.current) setEditing(false);
+      }
+    }
+  }
+
+  async function playPendingRange() {
+    if (!pendingPreviewRange) return;
+    if (draft && inRange(pendingPreviewRange.startFrame, draft.region)
+      && frame(pendingPreviewRange.endExclusive) <= frame(draft.region.endExclusive)
+      && frame(pendingPreviewRange.startFrame) >= frame(draft.region.startFrame)) {
+      await play(pendingPreviewRange);
+      return;
+    }
+    if (librarySelectionRange
+      && librarySelectionRange.startFrame === pendingPreviewRange.startFrame
+      && librarySelectionRange.endFrameExclusive === pendingPreviewRange.endExclusive) {
+      onRequestPreviewLibraryRange?.(librarySelectionRange);
+      return;
+    }
+    onRequestPreviewLibraryRange?.({
+      startFrame: pendingPreviewRange.startFrame,
+      endFrameExclusive: pendingPreviewRange.endExclusive,
+    });
+  }
+
+  function beginRangeSelect(clientX: number, svg: SVGSVGElement) {
+    if (!view) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const at = frameAt((clientX - rect.left) / rect.width, view);
+    const next = { anchor: at, active: at };
+    rangeSelectDragRef.current = next;
+    setRangeSelectDrag(next);
+  }
+
+  function updateRangeSelect(clientX: number, svg: SVGSVGElement) {
+    if (!rangeSelectDragRef.current || !view) return;
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width) return;
+    const at = frameAt((clientX - rect.left) / rect.width, view);
+    const next = { ...rangeSelectDragRef.current, active: at };
+    rangeSelectDragRef.current = next;
+    setRangeSelectDrag(next);
+  }
+
+  function endRangeSelect() {
+    const dragState = rangeSelectDragRef.current;
+    rangeSelectDragRef.current = null;
+    setRangeSelectDrag(null);
+    if (!dragState) return;
+    const start = frame(dragState.anchor) <= frame(dragState.active)
+      ? dragState.anchor
+      : dragState.active;
+    const endExclusive = (frame(dragState.anchor) <= frame(dragState.active)
+      ? frame(dragState.active) + 1n
+      : frame(dragState.anchor) + 1n).toString();
+    const normalized = normalizePendingRange(start, endExclusive);
+    if (normalized) setPendingPreviewRange(normalized);
+  }
+
   async function cancel() {
     generation.current++;
     stop();
@@ -376,6 +534,7 @@ function SliceSession({
     viewport(size, frame(view.startFrame) + size / 2n + direction * (size / 4n || 1n));
   }
   function endDrag() {
+    if (rangeReselectMode) return;
     const moved = dragRef.current;
     dragRef.current = null; setDrag(null);
     if (moved && draft?.markers.find(m => m.markerId === moved.id)?.startFrame !== moved.frame) {
@@ -383,7 +542,17 @@ function SliceSession({
     }
   }
   const busy = starting || job?.phase === "reading" || job?.phase === "analyzing";
-  const mutationDisabled = editing || analysisSessionInvalid;
+  const mutationDisabled = editing || analysisSessionInvalid || rangeReselectMode;
+  const pendingOverlayRange = rangeSelectDrag && view
+    ? normalizePendingRange(
+      frame(rangeSelectDrag.anchor) <= frame(rangeSelectDrag.active)
+        ? rangeSelectDrag.anchor
+        : rangeSelectDrag.active,
+      frame(rangeSelectDrag.anchor) <= frame(rangeSelectDrag.active)
+        ? (frame(rangeSelectDrag.active) + 1n).toString()
+        : (frame(rangeSelectDrag.anchor) + 1n).toString(),
+    )
+    : pendingPreviewRange;
   const selectedMarker = draft?.markers.find(m => m.markerId === selected);
   const exportReady = Boolean(
     draft
@@ -456,6 +625,12 @@ function SliceSession({
   }
   const warnings = proposal?.candidates.filter(c => c.warnings.length > 0) ?? [];
   const analysisRegion = job?.region ?? draft?.region ?? null;
+  const pendingDiffersFromAnalysis = Boolean(
+    pendingPreviewRange
+    && analysisRegion
+    && (pendingPreviewRange.startFrame !== analysisRegion.startFrame
+      || pendingPreviewRange.endExclusive !== analysisRegion.endExclusive),
+  );
   const displayedError =
     error
     ?? (job?.error ? normalizeSliceError(job.error) : null);
@@ -564,21 +739,110 @@ function SliceSession({
 
   const waveformBlock = readyId && draft && view ? (
     <>
+      <div className="slice-pending-range" role="region" aria-label={t("slicing.pendingRangeHeading")}>
+        <p className="slice-preview-selection__heading">{t("slicing.pendingRangeHeading")}</p>
+        {pendingPreviewRange === null ? (
+          <p className="slice-coordinate">{t("slicing.pendingRangeNone")}</p>
+        ) : (
+          <p className="slice-coordinate">
+            {t("slicing.analysisRegionFrames", {
+              start: pendingPreviewRange.startFrame,
+              end: pendingPreviewRange.endExclusive,
+            })}
+          </p>
+        )}
+        {pendingDiffersFromAnalysis ? (
+          <p className="slice-notice">{t("slicing.pendingDiffersFromAnalysis")}</p>
+        ) : null}
+        {rangeReselectMode ? (
+          <p className="slice-hint">{t("slicing.rangeReselectHint")}</p>
+        ) : null}
+        <div className="slice-actions">
+          <button type="button" disabled={busy || editing} onClick={toggleRangeReselectMode}>
+            {rangeReselectMode ? t("slicing.exitRangeReselect") : t("slicing.enterRangeReselect")}
+          </button>
+          <button
+            type="button"
+            disabled={busy || editing || librarySelectionRange === null}
+            onClick={copyLibrarySelectionToPending}
+          >
+            {t("slicing.copyLibrarySelectionToPending")}
+          </button>
+          <button
+            type="button"
+            disabled={!pendingPreviewRange}
+            onClick={() => void playPendingRange()}
+          >
+            {t("slicing.playPendingRange")}
+          </button>
+          <button
+            type="button"
+            disabled={busy || editing || !pendingPreviewRange || !pendingDiffersFromAnalysis}
+            onClick={() => void reanalyzeWithPendingRange()}
+          >
+            {t("slicing.reanalyzePendingRange")}
+          </button>
+        </div>
+      </div>
       <div className="slice-actions"><button onClick={() => zoom(true)}>Zoom in</button><button onClick={() => zoom(false)}>Zoom out</button><button aria-label="Pan earlier" onClick={() => pan(-1n)}>←</button><button aria-label="Pan later" onClick={() => pan(1n)}>→</button><button onClick={() => setView(draft.region)}>Full region</button></div>
       <p className="slice-coordinate">Frames [{view.startFrame}, {view.endExclusive}) · {job?.sampleRate} Hz</p>
       <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label="Slice waveform"
         onDoubleClick={e => {
-          if (mutationDisabled) return;
+          if (mutationDisabled || rangeReselectMode) return;
           const rect = e.currentTarget.getBoundingClientRect();
           if (rect.width) void edit({ kind: "insert", frame: frameAt((e.clientX - rect.left) / rect.width, view) });
         }}
+        onPointerDown={e => {
+          if (!rangeReselectMode || mutationDisabled) return;
+          e.preventDefault();
+          beginRangeSelect(e.clientX, e.currentTarget);
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
         onPointerMove={e => {
+          if (rangeReselectMode && rangeSelectDragRef.current) {
+            updateRangeSelect(e.clientX, e.currentTarget);
+            return;
+          }
           if (!dragRef.current) return;
           const rect = e.currentTarget.getBoundingClientRect();
           if (!rect.width) return;
           const next = { ...dragRef.current, frame: frameAt((e.clientX - rect.left) / rect.width, view) };
           dragRef.current = next; setDrag(next);
-        }} onPointerUp={endDrag} onPointerCancel={() => { dragRef.current = null; setDrag(null); }}>
+        }}
+        onPointerUp={() => {
+          if (rangeReselectMode) {
+            endRangeSelect();
+            return;
+          }
+          endDrag();
+        }}
+        onPointerCancel={() => {
+          if (rangeReselectMode) {
+            rangeSelectDragRef.current = null;
+            setRangeSelectDrag(null);
+            return;
+          }
+          dragRef.current = null;
+          setDrag(null);
+        }}>
+        {pendingOverlayRange && inRange(pendingOverlayRange.startFrame, view)
+          && frame(pendingOverlayRange.endExclusive) <= frame(view.endExclusive) ? (
+            <rect
+              className="slice-range-reselect-overlay"
+              x={position(pendingOverlayRange.startFrame, view) * WIDTH}
+              y={0}
+              width={Math.max(
+                1,
+                (position(
+                  frame(pendingOverlayRange.endExclusive) > frame(view.endExclusive)
+                    ? view.endExclusive
+                    : pendingOverlayRange.endExclusive,
+                  view,
+                ) - position(pendingOverlayRange.startFrame, view)) * WIDTH,
+              )}
+              height={160}
+            />
+          ) : null}
         {waveform?.peaks.map((peaks, ch) => {
           const height = 160 / waveform.peaks.length, center = height * (ch + 0.5);
           return <path key={ch} className="slice-peaks" d={peaks.map(([min, max], i) => `M${i * WIDTH / peaks.length},${center - max * height * 0.45}V${center - min * height * 0.45}`).join(" ")} />;
