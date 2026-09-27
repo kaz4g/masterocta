@@ -331,16 +331,18 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **IN_PROGRESS**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)（#155 review-fix 反映）。
-Exit Gate stereo **PARTIAL**（UI lanes）。M7-05/M7-06 Native 未。M7-07/08 **DEFERRED**（M11）。
-**次 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（#155 merge 後に Native 開始）。
+**M7:** **IN_PROGRESS**。`main` **`55eadcc`**（#163 merge; includes #161）。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
+Integrated Native **session 2**
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
+（A01–A15 / B01–B03 は `55eadcc` で未実施）。session 1 と基準 `b2c7765` は実行対象ではない。
+M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit audit。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
-（最新 `main` で Waveform → Slice → Derived export → Inspector lineage → restart。
-#153/#154 個別 Native 文書の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
+**次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
+（[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の A01–A15 / B01–B03。
+`main` **`55eadcc`**。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
 
 **履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
 Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。

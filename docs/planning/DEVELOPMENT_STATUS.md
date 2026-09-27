@@ -1,8 +1,8 @@
 # Development status (canonical)
 
-- Work ID: `MO-M7-EXIT-AUDIT-1` (M7 rows); earlier canonicalization: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
-- Updated: 2026-09-23 (PR #156 premise reconciliation; no Native execution)
-- Baseline: GitHub `origin/main` **`b2c7765772bd3894472ba936664cabc0db92fcf1`** (merge PR #155; product baseline inherited from #154)
+- Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
+- Updated: 2026-09-28 (session 2 evidence bar; execution baseline #163)
+- Baseline: GitHub `origin/main` **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (merge PR #163)
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -22,15 +22,16 @@ Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENE
 
 Do **not** conflate: code exists · merged to `main` · CI/automated tests · native acceptance · hardware acceptance.
 
-## Current reconciliation snapshot (2026-09-23)
+## Current reconciliation snapshot (2026-09-27)
 
-PR #155 is **MERGED** at `b2c7765772bd3894472ba936664cabc0db92fcf1`
-(2026-09-21 19:22:56 UTC / 2026-09-22 04:22:56 JST).
-PR #156 remains **Draft**. Its integrated Native record is
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md):
-**NOT_RUN**. The former "#155 unmerged" start blocker is removed, not converted
-into Native PASS. Stereo independent display remains an implementation/acceptance
-gap; M7 is **IN_PROGRESS**, not READY_FOR_FINAL_ACCEPTANCE or COMPLETE.
+PR #160 is **MERGED** at `d5a7ced`. PR #161 (**stereo channel lanes**) is **MERGED** at
+`3379b9d`. PR #163 (Slice Export after analysis-session expiry) is **MERGED** at
+`55eadcc`. Integrated Native **session 2**:
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
+**STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN** on `55eadcc`). Historical
+session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
+remains **NOT_RUN** (baseline `b2c7765` is not the execution target). **M7** stays
+**IN_PROGRESS** until that session 2 matrix is **PASS**.
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
@@ -54,7 +55,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | Exit Gate stereo display **PARTIAL**; M7-05/M7-06 Native open; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **IN_PROGRESS** | #160 on `main`; stereo lanes **Draft** #161; integrated Native **NOT_RUN** (session 2 prep only). M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -100,14 +101,14 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | --- | --- | --- | --- | --- | --- |
 | M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
 | M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
-| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145 | Tests | **NOT_RUN** | Per-channel peaks in query/cache; **UI overlays channels** (implementation audit **PARTIAL**). Native stereo **NOT_RUN** (mono fixture; B01–B03). Follow-on: `MO-M7-STEREO-CHANNEL-LANES-1` |
+| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145; lanes **Draft** #161 | Tests + lane UI tests | **NOT_RUN** | Independent L/R lanes in **Draft** #161; Exit row 3 Native **NOT_RUN** until B01–B03 on merge SHA |
 | M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
 | M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PARTIAL** on `0f39f50` | Implementation on main. Native: A/B/D exercised; **C post-quit SQLite not recorded**. Integrated Native must include quit + `slice_drafts` SELECT. 100-clip / `.ot` are Auto Slice / M11 |
 | M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **NOT_RUN** (#153 + #154 checklists) | Lineage, Mac TRIM, `SLICE_EXPORT` UI, Inspector parent/children **on main**. mac_derived Library browse / derived waveform / batch / `.ot` are **non-goals**. Exit blocker = integrated Native (original SHA + restart lineage) |
 | M7-07 stem separation adapter spike | **DEFERRED** | enum `STEM` / `StemRole` only | — | — | Not in v0.1 Exit Gate; spike deferred to **M11 prep** (enum-only ≠ spike). See audit §11 |
 | M7-08 optional stem separation workflow | **DEFERRED** | — | — | — | Optional WP; production stem is **M11**. Not an M7 exit blocker |
 
-**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display PARTIAL**; analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
+**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display** implementation in **Draft** #161 (Native **NOT_RUN**); analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native A01–A15 PASS. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
 
 ---
 
@@ -182,13 +183,18 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on `main` **`55eadcc`**
 
-**Reason:** One remaining M7 Exit Gate gap is operator Native on current `main`: Waveform → Slice → Derived export → Inspector lineage → restart, with original SHA unchanged. Do not rewrite #153/#154 historical **NOT_RUN** checklists to PASS.
+**Reason:** Execute A01–A15 and B01–B03 in
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),
+including the failed/cancelled re-analysis check, the stereo fixture root
+register/scan/select step, restart re-registration, and the export/lineage
+no-write evidence named there. Do not execute session 1 or baseline `b2c7765`.
+Do not rewrite historical **NOT_RUN** matrices to PASS.
 
-**Other Exit blocker:** `MO-M7-STEREO-CHANNEL-LANES-1` — stereo must be independently displayable, not merely per-channel data. Implement/accept separately; existing mono `RANGE.wav` does not cover it. The integrated record separates derived-flow group A from stereo group B; both are needed for full M7 closure.
+**Then:** `MO-M7-FINAL-EXIT-AUDIT-1` (docs-only) after Native PASS — set **M7 COMPLETE** only with Exit Gate 5/5 evidence.
 
-**Dependencies:** M5 COMPLETE; #147–#155 on `main`; Gate C boundaries unchanged.
+**Dependencies:** M5 COMPLETE; #160 on `main`; Gate C boundaries unchanged.
 
 **Secondary (not next):** Auto Slice 100-clip quality; WFM2 dedicated Native; stem adapter spike; Canvas renderer. See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §15–17.
 
@@ -210,7 +216,7 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 | C | Apply candidates; draft + SQLite after quit | **Partial** — Apply + draft revision PASS; persistence verified via **file switch**, not documented post-quit `SELECT` |
 | D | Range B → `ANALYSIS_REGION_MISMATCH` | **Yes** — fail-closed mismatch PASS |
 
-**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`) must record quit + isolated-catalog `slice_drafts` evidence before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
+**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native session 2 (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) must record quit + isolated-catalog `slice_drafts` evidence, after fixture re-registration, before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
 
 ---
 
