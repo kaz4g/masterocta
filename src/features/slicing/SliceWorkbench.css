@@ -92,6 +92,18 @@
   touch-action: none;
 }
 .slice-peaks { fill: none; stroke: #7a8e9e; stroke-width: 1; }
+.slice-peaks--left { stroke: #f2a33c; }
+.slice-peaks--right { stroke: #71bfff; }
+.slice-lane-label {
+  fill: #a5aebb;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.slice-lane-label--left { fill: #f2a33c; }
+.slice-lane-label--right { fill: #71bfff; }
 .slice-candidate { stroke: #d5d9de; stroke-dasharray: 3 4; opacity: 0.65; pointer-events: none; }
 .slice-marker { stroke: #f2a33c; stroke-width: 1.5; cursor: ew-resize; }
 .slice-marker.is-locked { stroke: #71bfff; }

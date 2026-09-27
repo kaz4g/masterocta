@@ -15,10 +15,21 @@ const fullFileRange = { startFrame: "0", endFrameExclusive: "44100" };
 const waveformWindow: AudioWaveformWindow = {
   analyzerVersion: "waveform:v2",
   sampleRate: 44100,
-  channels: 2,
+  channels: 1,
   frameCount: "44100",
   range: { startFrame: "0", endFrameExclusive: "44100" },
   framesPerPeak: "256",
+  channelPeaks: [
+    [
+      { min: -0.5, max: 0.75 },
+      { min: -1, max: 1 },
+    ],
+  ],
+};
+
+const stereoWaveformWindow: AudioWaveformWindow = {
+  ...waveformWindow,
+  channels: 2,
   channelPeaks: [
     [
       { min: -0.5, max: 0.75 },
@@ -266,9 +277,46 @@ describe("WaveformPreview", () => {
   });
 
   it("derives the legacy helper path from the first channel", () => {
-    const path = waveformPath(waveformWindow);
+    const path = waveformPath(stereoWaveformWindow);
     expect(path).toContain("M");
-    expect(path).toBe(waveformChannelPath(waveformWindow.channelPeaks[0], 2));
+    expect(path).toBe(waveformChannelPath(stereoWaveformWindow.channelPeaks[0], 2));
+  });
+
+  it("renders independent stereo lanes with left and right labels", async () => {
+    const client = api({
+      queryWaveform: vi.fn().mockImplementation((_rootId, _assetId, query) =>
+        Promise.resolve(resolveWaveformQuery(query, stereoWaveformWindow)),
+      ),
+    });
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:stereo"
+        displayName="stereo.wav"
+      />,
+    );
+    await screen.findByText(tJa("waveform.channelLeft"));
+    expect(screen.getByText(tJa("waveform.channelRight"))).toBeInTheDocument();
+    expect(screen.getAllByRole("img")).toHaveLength(2);
+    const paths = document.querySelectorAll(".waveform-preview-lane-svg path");
+    expect(paths).toHaveLength(2);
+    expect(paths[0]?.getAttribute("d")).not.toBe(paths[1]?.getAttribute("d"));
+  });
+
+  it("keeps a single lane for mono waveform data", async () => {
+    const client = api();
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:mono"
+        displayName="mono.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    expect(screen.queryByText(tJa("waveform.channelLeft"))).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".waveform-preview-lane-svg")).toHaveLength(1);
   });
 
   it("plays a validated frame range through the range preview API", async () => {

@@ -30,6 +30,8 @@ export type MessageParams = {
   'common.errorWithDetail': { summary: string; detail: string }
   'waveform.error.detail': { detail: string }
   'waveform.viewportFrames': { start: string; end: string }
+  'waveform.plotLaneAria': { label: string }
+  'waveform.channelIndexed': { index: number }
   'slicing.ariaFor': { displayName: string }
   'slicing.analysisRegionFrames': { start: string; end: string }
   'slicing.previewSelectionSeconds': { startSeconds: string; endSeconds: string; sampleRate: number }
