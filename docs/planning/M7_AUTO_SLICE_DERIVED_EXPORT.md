@@ -82,5 +82,5 @@ Browser does **not** rescan OT roots; `mac_derived` remains outside OT library l
 
 ## Next
 
-- Integrated Native (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`); do not rewrite this Work ID’s **NOT_RUN** checklist to PASS.
+- Integrated Native session 2 (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`); do not rewrite this Work ID’s **NOT_RUN** checklist to PASS.
 - mac_derived Library browse remains deferred (post-M7).

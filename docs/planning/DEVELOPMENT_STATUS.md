@@ -1,8 +1,8 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
-- Updated: 2026-09-27 (M7 finalization pass; Native session 2 **STOP_WITH_FINDINGS**)
-- Baseline: GitHub `origin/main` **`d5a7cedcd547b540f7d34a0518d0e8b63a2791c4`** (merge PR #160)
+- Updated: 2026-09-28 (session 2 evidence bar; execution baseline #163)
+- Baseline: GitHub `origin/main` **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (merge PR #163)
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -24,14 +24,14 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-09-27)
 
-PR #160 (**range reselect post-merge safety**) is **MERGED** at `d5a7ced` (2026-09-27).
-PR #161 (**stereo channel lanes**, `MO-M7-STEREO-CHANNEL-LANES-1`) is **Draft** at
-`008478d`. Integrated Native session 2:
+PR #160 is **MERGED** at `d5a7ced`. PR #161 (**stereo channel lanes**) is **MERGED** at
+`3379b9d`. PR #163 (Slice Export after analysis-session expiry) is **MERGED** at
+`55eadcc`. Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS** (prep only; A01–A15 / B01–B03 **NOT_RUN**). Historical
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
-remains **NOT_RUN**. **M7** stays **IN_PROGRESS** — not COMPLETE until PR #161 merges
-and operator Native matrix PASS on the merge SHA.
+**STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN** on `55eadcc`). Historical
+session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
+remains **NOT_RUN** (baseline `b2c7765` is not the execution target). **M7** stays
+**IN_PROGRESS** until that session 2 matrix is **PASS**.
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
@@ -183,10 +183,13 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** Merge **Draft PR #161**, then **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** (operator)
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on `main` **`55eadcc`**
 
-**Reason:** Execute A01–A15 and B01–B03 on the **#161 merge SHA** using
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md).
+**Reason:** Execute A01–A15 and B01–B03 in
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),
+including the failed/cancelled re-analysis check, the stereo fixture root
+register/scan/select step, restart re-registration, and the export/lineage
+no-write evidence named there. Do not execute session 1 or baseline `b2c7765`.
 Do not rewrite historical **NOT_RUN** matrices to PASS.
 
 **Then:** `MO-M7-FINAL-EXIT-AUDIT-1` (docs-only) after Native PASS — set **M7 COMPLETE** only with Exit Gate 5/5 evidence.
@@ -213,7 +216,7 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 | C | Apply candidates; draft + SQLite after quit | **Partial** — Apply + draft revision PASS; persistence verified via **file switch**, not documented post-quit `SELECT` |
 | D | Range B → `ANALYSIS_REGION_MISMATCH` | **Yes** — fail-closed mismatch PASS |
 
-**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`) must record quit + isolated-catalog `slice_drafts` evidence before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
+**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native session 2 (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) must record quit + isolated-catalog `slice_drafts` evidence, after fixture re-registration, before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
 
 ---
 
