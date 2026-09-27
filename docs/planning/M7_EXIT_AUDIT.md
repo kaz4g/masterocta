@@ -11,13 +11,13 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 
 ## 1. Audit identity
 
-**Reconciled for PR #156 (2026-09-23):** canonical `main` is
-`b2c7765772bd3894472ba936664cabc0db92fcf1` (PR #155 merge).
-#155 merged at **2026-09-21 19:22:56 UTC / 2026-09-22 04:22:56 JST**.
-Its earlier PR-body summary is not the review-fixed completion map.
-The old merge prerequisite is satisfied; this is **not** Native execution evidence.
-Integrated Native remains **NOT_RUN** and M7 remains **IN_PROGRESS**.
-The operator record is [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md).
+**Reconciled for M7 finalization (2026-09-27):** canonical `main` is
+`d5a7cedcd547b540f7d34a0518d0e8b63a2791c4` (PR #160 merge). Stereo lanes
+**Draft** PR #161 (`008478d`). Integrated Native session 2:
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
+**STOP_WITH_FINDINGS** (operator matrix **NOT_RUN**). Historical
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
+remains **NOT_RUN**. **M7** remains **IN_PROGRESS** — not COMPLETE.
 
 **Historical audit-start snapshot (2026-09-21; not the current branch state):**
 
@@ -157,18 +157,18 @@ Native NOT_RUN is **not** an M7 Exit Gate item (cache is an implementation of wi
 
 Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses per-channel max for inverse-phase stereo.
 
-**UI gap (Codex review 2026-09-21):** [`WaveformPreview.tsx`](../../src/features/waveform/WaveformPreview.tsx) builds one SVG path per channel but draws all paths on the **same coordinates and styling** (overlapping lanes, not independently readable). v0.1 §7.2 requires `stereo channel separation`; Exit Gate requires stereo **independently displayable**. Per-channel **data alone** does not satisfy display.
+**UI (2026-09-27):** Draft PR #161 adds independent L/R lanes in Library and Slice previews with shared range/zoom. On `main` (`d5a7ced`) lanes remain **overlapping** until #161 merges.
 
 | Axis | Evidence |
 | --- | --- |
-| Implementation | `channelPeaks` query/cache **PASS**; renderer lanes **PARTIAL** |
-| Main | #124, #145 |
-| Automated | **PASS** (query); UI overlap not fixture-tested |
+| Implementation | `channelPeaks` query/cache **PASS**; independent lanes **Draft** #161 |
+| Main | #124, #145; lanes pending #161 merge |
+| Automated | **PASS** (query + lane unit tests on #161 branch) |
 | E2E | **PARTIAL** |
-| Native | **NOT_RUN** | Acceptance fixture is mono; group B (B01–B03) not executed. No stereo operator evidence |
+| Native | **NOT_RUN** | Group B (B01–B03) not executed; see acceptance session 2 |
 | Hardware | **N/A** |
 
-**Exit blocker:** **yes** for Exit Gate row “stereo independently displayable” until lanes or equivalent UI (product fix: `MO-M7-STEREO-CHANNEL-LANES-1`, not this audit).
+**Exit blocker:** **yes** until #161 merges **and** Native B01–B03 PASS on merge SHA.
 
 ---
 
@@ -286,7 +286,7 @@ WP name is **optional**. M11 purpose (v0.1): production stem separation. Exit Ga
 | --- | --- | --- | --- |
 | Width-driven high-res waveform | #129 + WFM2 #145 + query #124 | **PASS** | Native zoom matrix optional |
 | Zoom not stuck at 640 points | #129/#130; `targetPoints` 32–4096 | **PASS** | Canvas follow-on only |
-| Stereo independently displayable | #124/#145 peaks; UI overlap in WaveformPreview | **PARTIAL** | Independent lanes (`MO-M7-STEREO-CHANNEL-LANES-1`) |
+| Stereo independently displayable | #124/#145 peaks; lanes **Draft** #161; `STEREO_RANGE` fixture | **PARTIAL** | Merge #161 + Native B01–B03 PASS |
 | Analysis job does not block Library UI | Job API + `0f39f50` analysis UX | **PASS** | M7-05 draft quit evidence still open |
 | Derived assets do not mutate originals | TRIM/SLICE_EXPORT tests + invariant docs | **PARTIAL** | Native SHA + restart **NOT_RUN** |
 
@@ -329,7 +329,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
    - **Quit + relaunch** same isolated HOME: lineage child unchanged
    - **Slice draft persistence:** post-quit `slice_drafts` SELECT on isolated catalog (sanitized)
 
-2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): implement lanes or equivalent independently readable UI in a separate, minimal product WP, then record Native observation on a reviewed synthetic **two-channel** fixture. The existing fixture generator sets `CHANNELS = 1`; `RANGE.wav` cannot prove this criterion. Keep Exit row 3 **PARTIAL** until implementation and acceptance are evidenced on main. This corrects its former misclassification in §15.B; it does not add an Exit criterion.
+2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): **Draft** PR #161 implements lanes; merge to `main`, then Native B01–B03 on `generate-m7-stereo-native-fixture.mjs` output. Mono `RANGE.wav` cannot prove this criterion. Exit row 3 stays **PARTIAL** until merge + Native PASS.
 
 ### B. M7 COMPLETION QUALITY (not Exit Gate)
 

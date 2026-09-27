@@ -331,9 +331,10 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **IN_PROGRESS**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)（#155 review-fix 反映）。
-Exit Gate stereo **PARTIAL**（UI lanes）。M7-05/M7-06 Native 未。M7-07/08 **DEFERRED**（M11）。
-**次 Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-1`（#155 merge 後に Native 開始）。
+**M7:** **IN_PROGRESS**。`main` **`d5a7ced`**（#160 merge）。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
+Stereo lanes **Draft** [#161](https://github.com/kaz4g/masterocta/pull/161)。Integrated Native session 2
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**。
+M7-07/08 **DEFERRED**（M11）。**次:** #161 merge → operator Native A/B matrix → docs exit audit。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
