@@ -638,7 +638,6 @@ function SliceSession({
     draft
       && draft.revision > 0
       && selectedMarker
-      && !analysisSessionInvalid
       && !editing
       && !exporting,
   );
@@ -1018,10 +1017,10 @@ function SliceSession({
         <label>Insert at frame<input aria-label="Insert at frame" inputMode="numeric" value={insertFrame} onChange={e => setInsertFrame(e.target.value)} disabled={mutationDisabled} /></label><button disabled={mutationDisabled}>Insert boundary</button>
       </form>
       <div className="slice-table"><table><thead><tr><th>Start frame</th><th>End (exclusive)</th><th>Fixed</th><th>Actions</th></tr></thead><tbody>
-        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
+        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
       </tbody></table></div>
       {draft.markers.length > PAGE && <div className="slice-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous boundaries</button><span>Page {page + 1} / {Math.ceil(draft.markers.length / PAGE)}</span><button disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>Next boundaries</button></div>}
-      {selectedMarker && draft.revision > 0 && !analysisSessionInvalid ? (
+      {selectedMarker && draft.revision > 0 ? (
         <section className="slice-export" aria-labelledby="slice-export-heading">
           <h3 id="slice-export-heading">{t("slicing.sliceExportHeading")}</h3>
           <p>{t("slicing.sliceExportReview", { displayName, markerId: selectedMarker.markerId })}</p>
@@ -1108,8 +1107,8 @@ function SliceSession({
   return body;
 }
 
-function MarkerRow({ marker, disabled, selected, onSelect, edit }: {
-  marker: SliceMarker; disabled: boolean; selected: boolean; onSelect: () => void;
+function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit }: {
+  marker: SliceMarker; disabled: boolean; selectDisabled: boolean; selected: boolean; onSelect: () => void;
   edit: (input: SliceEdit) => Promise<void>;
 }) {
   const [value, setValue] = useState(marker.startFrame);
@@ -1123,6 +1122,6 @@ function MarkerRow({ marker, disabled, selected, onSelect, edit }: {
     <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={onSelect} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
     <td>{marker.endExclusive}</td>
     <td><input aria-label={`Fixed ${marker.startFrame}`} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
-    <td><button disabled={disabled} onClick={onSelect}>Select</button><button disabled={disabled} aria-label={`Delete boundary ${marker.startFrame}`} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>Delete</button></td>
+    <td><button disabled={selectDisabled} onClick={onSelect}>Select</button><button disabled={disabled} aria-label={`Delete boundary ${marker.startFrame}`} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>Delete</button></td>
   </tr>;
 }
