@@ -184,6 +184,11 @@ export const enMessages = {
   'waveform.heading': 'Waveform',
   'waveform.generating': 'Generating waveform...',
   'waveform.plotAria': 'Audio waveform',
+  'waveform.plotLaneAria': 'Audio waveform {label}',
+  'waveform.channelMono': 'Mono',
+  'waveform.channelLeft': 'Left',
+  'waveform.channelRight': 'Right',
+  'waveform.channelIndexed': 'Ch {index}',
   'waveform.interactionHint':
     'Drag on the waveform to set a preview range. Use the zoom and pan buttons to move the visible window.',
   'waveform.zoomIn': 'Zoom in',

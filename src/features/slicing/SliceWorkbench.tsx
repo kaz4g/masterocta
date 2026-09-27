@@ -935,9 +935,36 @@ function SliceSession({
               height={160}
             />
           ) : null}
+        {waveform && waveform.peaks.length > 1 ? waveform.peaks.map((_peaks, ch) => {
+          const laneHeight = 160 / waveform.peaks.length;
+          const labelY = laneHeight * ch + laneHeight * 0.35;
+          const label = waveform.peaks.length === 2
+            ? (ch === 0 ? t("waveform.channelLeft") : t("waveform.channelRight"))
+            : t("waveform.channelIndexed", { index: ch + 1 });
+          return (
+            <text
+              key={`label-${ch}`}
+              className={`slice-lane-label${ch === 0 && waveform.peaks.length === 2 ? " slice-lane-label--left" : ""}${ch === 1 && waveform.peaks.length === 2 ? " slice-lane-label--right" : ""}`}
+              x="6"
+              y={labelY}
+            >
+              {label}
+            </text>
+          );
+        }) : null}
         {waveform?.peaks.map((peaks, ch) => {
-          const height = 160 / waveform.peaks.length, center = height * (ch + 0.5);
-          return <path key={ch} className="slice-peaks" d={peaks.map(([min, max], i) => `M${i * WIDTH / peaks.length},${center - max * height * 0.45}V${center - min * height * 0.45}`).join(" ")} />;
+          const height = 160 / waveform.peaks.length;
+          const center = height * (ch + 0.5);
+          const laneClass = waveform.peaks.length === 2
+            ? (ch === 0 ? "slice-peaks slice-peaks--left" : "slice-peaks slice-peaks--right")
+            : "slice-peaks";
+          return (
+            <path
+              key={ch}
+              className={laneClass}
+              d={peaks.map(([min, max], i) => `M${i * WIDTH / peaks.length},${center - max * height * 0.45}V${center - min * height * 0.45}`).join(" ")}
+            />
+          );
         })}
         {proposal?.candidates.filter(c => inRange(c.suggestedStartFrame, view)).map(c => <line key={c.candidateId} className="slice-candidate" x1={position(c.suggestedStartFrame, view) * WIDTH} x2={position(c.suggestedStartFrame, view) * WIDTH} y1="0" y2="160"><title>{`Candidate at ${c.suggestedStartFrame}${c.warnings.length ? " — review boundary" : ""}`}</title></line>)}
         {draft.markers.filter(m => inRange(m.startFrame, view)).map((m) => {

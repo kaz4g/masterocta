@@ -190,6 +190,11 @@ export const jaMessages: Record<MessageKey, string> = {
   'waveform.heading': '波形',
   'waveform.generating': '波形を生成中…',
   'waveform.plotAria': 'オーディオ波形',
+  'waveform.plotLaneAria': 'オーディオ波形 {label}',
+  'waveform.channelMono': 'モノ',
+  'waveform.channelLeft': '左',
+  'waveform.channelRight': '右',
+  'waveform.channelIndexed': 'Ch {index}',
   'waveform.interactionHint':
     '波形上をドラッグしてプレビュー範囲を指定できます。拡大・移動ボタンで表示ウィンドウを動かします。',
   'waveform.zoomIn': '拡大',

@@ -46,11 +46,14 @@ import {
   zoomViewport,
   type ViewportRange,
 } from "./viewportRange";
+import { pointerContentLocalX } from "./svgMeetPointer";
 import type { LibraryGeometryNotification } from "./libraryGeometrySelection";
 import "./WaveformPreview.css";
 
 const VIEWBOX_WIDTH = 640;
-const VIEWBOX_HEIGHT = 140;
+const MONO_LANE_VIEWBOX_HEIGHT = 140;
+const MULTI_LANE_VIEWBOX_HEIGHT = 70;
+const LANE_HEIGHT_REM = 4.375;
 
 export type LibraryCommittedGeometryRange = ViewportRange;
 
@@ -96,10 +99,14 @@ function toArrayBuffer(bytes: AudioPreviewBytes): ArrayBuffer {
   return bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).buffer;
 }
 
-export function waveformChannelPath(peaks: WaveformPeak[], pointCount: number): string {
+export function waveformChannelPath(
+  peaks: WaveformPeak[],
+  pointCount: number,
+  viewHeight = MONO_LANE_VIEWBOX_HEIGHT,
+): string {
   if (peaks.length === 0) return "";
   const xScale = VIEWBOX_WIDTH / pointCount;
-  const center = VIEWBOX_HEIGHT / 2;
+  const center = viewHeight / 2;
   return peaks
     .map((peak, index) => {
       const x = (index + 0.5) * xScale;
@@ -542,12 +549,43 @@ export function WaveformPreview({
     return selectionRectInViewBox(highlightSelection, axisViewport, VIEWBOX_WIDTH);
   }, [axisViewport, highlightSelection, peaksReady]);
 
-  const channelPaths = useMemo(() => {
+  const channelLaneCount = waveform?.channelPeaks.length ?? 0;
+  const laneViewBoxHeight = channelLaneCount <= 1
+    ? MONO_LANE_VIEWBOX_HEIGHT
+    : MULTI_LANE_VIEWBOX_HEIGHT;
+
+  const channelLanes = useMemo(() => {
     if (!peaksReady || waveform === null) return [];
-    return waveform.channelPeaks.map((channel) =>
-      waveformChannelPath(channel, channel.length),
+    return waveform.channelPeaks.map((channel, index) => ({
+      index,
+      path: waveformChannelPath(channel, channel.length, laneViewBoxHeight),
+    }));
+  }, [laneViewBoxHeight, peaksReady, waveform]);
+
+  function channelLaneLabel(index: number, count: number): string {
+    if (count === 1) return t("waveform.channelMono");
+    if (count === 2 && index === 0) return t("waveform.channelLeft");
+    if (count === 2 && index === 1) return t("waveform.channelRight");
+    return t("waveform.channelIndexed", { index: index + 1 });
+  }
+
+  function channelLaneModifier(index: number, count: number): string {
+    if (count === 2 && index === 0) return "waveform-preview-lane--left";
+    if (count === 2 && index === 1) return "waveform-preview-lane--right";
+    return `waveform-preview-lane--index-${index}`;
+  }
+
+  function plotPointerLocalX(event: ReactPointerEvent<SVGSVGElement>): {
+    localX: number;
+    contentWidthPx: number;
+  } | null {
+    return pointerContentLocalX(
+      event.clientX,
+      event.currentTarget,
+      VIEWBOX_WIDTH,
+      laneViewBoxHeight,
     );
-  }, [peaksReady, waveform]);
+  }
 
   const durationLabel = useMemo(() => {
     if (fileMetadata === null) return null;
@@ -608,17 +646,17 @@ export function WaveformPreview({
     if (navigationDisabled || axisViewport === null) {
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) {
+    const mapped = plotPointerLocalX(event);
+    if (mapped === null) {
       return;
     }
     beginRangeEdit();
     const generation = dragGenerationRef.current;
-    const localX = event.clientX - rect.left;
+    const { localX, contentWidthPx } = mapped;
     dragSessionRef.current = {
       generation,
       viewport: { ...axisViewport },
-      widthPx: rect.width,
+      widthPx: contentWidthPx,
       startX: localX,
       currentX: localX,
     };
@@ -633,8 +671,12 @@ export function WaveformPreview({
     if (session === null || session.generation !== dragGenerationRef.current) {
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
-    session.currentX = event.clientX - rect.left;
+    const mapped = plotPointerLocalX(event);
+    if (mapped === null) {
+      return;
+    }
+    session.currentX = mapped.localX;
+    session.widthPx = mapped.contentWidthPx;
     setDragDraftRange(framesFromDragPixels(
       session.viewport,
       session.widthPx,
@@ -918,36 +960,55 @@ export function WaveformPreview({
       {!peaksReady && waveformError === null && (
         <p className="waveform-preview-status" role="status">{t("waveform.generating")}</p>
       )}
-      <div ref={plotContainerRef} className="waveform-preview-plot">
-        {peaksReady && (
-          <svg
-            aria-label={t("waveform.plotAria")}
-            className="waveform-preview-plot-svg"
-            role="img"
-            viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-            preserveAspectRatio="xMidYMid meet"
-            width="100%"
-            height={VIEWBOX_HEIGHT}
-            onPointerCancel={cancelPlotPointer}
-            onPointerDown={onPlotPointerDown}
-            onPointerMove={onPlotPointerMove}
-            onPointerUp={endPlotPointer}
+      <div
+        ref={plotContainerRef}
+        className={`waveform-preview-plot${channelLaneCount > 1 ? " waveform-preview-plot--lanes" : ""}`}
+        style={channelLaneCount > 1
+          ? { height: `${channelLaneCount * LANE_HEIGHT_REM}rem`, maxHeight: "none", flexBasis: `${channelLaneCount * LANE_HEIGHT_REM}rem` }
+          : undefined}
+      >
+        {peaksReady && channelLanes.map(({ index, path }) => (
+          <div
+            className={`waveform-preview-lane ${channelLaneModifier(index, channelLaneCount)}`}
+            key={`lane-${index}`}
           >
-            <line x1="0" x2={VIEWBOX_WIDTH} y1={VIEWBOX_HEIGHT / 2} y2={VIEWBOX_HEIGHT / 2} />
-            {selectionHighlight !== null && (
-              <rect
-                className="waveform-preview-selection"
-                height={VIEWBOX_HEIGHT}
-                width={selectionHighlight.width}
-                x={selectionHighlight.x}
-                y="0"
-              />
+            {channelLaneCount > 1 && (
+              <span className="waveform-preview-lane-label">{channelLaneLabel(index, channelLaneCount)}</span>
             )}
-            {channelPaths.map((path, index) => (
-              <path d={path} key={`channel-${index}`} />
-            ))}
-          </svg>
-        )}
+            <svg
+              aria-label={channelLaneCount > 1
+                ? t("waveform.plotLaneAria", { label: channelLaneLabel(index, channelLaneCount) })
+                : t("waveform.plotAria")}
+              className="waveform-preview-plot-svg waveform-preview-lane-svg"
+              role="img"
+              viewBox={`0 0 ${VIEWBOX_WIDTH} ${laneViewBoxHeight}`}
+              preserveAspectRatio="xMidYMid meet"
+              width="100%"
+              height={laneViewBoxHeight}
+              onPointerCancel={cancelPlotPointer}
+              onPointerDown={onPlotPointerDown}
+              onPointerMove={onPlotPointerMove}
+              onPointerUp={endPlotPointer}
+            >
+              <line
+                x1="0"
+                x2={VIEWBOX_WIDTH}
+                y1={laneViewBoxHeight / 2}
+                y2={laneViewBoxHeight / 2}
+              />
+              {selectionHighlight !== null && (
+                <rect
+                  className="waveform-preview-selection"
+                  height={laneViewBoxHeight}
+                  width={selectionHighlight.width}
+                  x={selectionHighlight.x}
+                  y="0"
+                />
+              )}
+              <path d={path} />
+            </svg>
+          </div>
+        ))}
       </div>
       {displayedWaveformError !== null && (
         <p className="waveform-preview-error" role="alert">{displayedWaveformError}</p>
