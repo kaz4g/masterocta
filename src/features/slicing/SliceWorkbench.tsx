@@ -147,6 +147,8 @@ function SliceSession({
     setProposing(false);
     stop();
     onRequestStopLibraryPlayback?.();
+    const previousJobId = jobId.current;
+    const previous = { job, draft, proposal, view, waveform, selected, page, exportReview, exportResult };
     setStarting(true);
     setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
     setExportReview(null); setExportResult(null);
@@ -159,7 +161,19 @@ function SliceSession({
       jobId.current = next.jobId;
       setJob(next);
     } catch (e) {
-      if (alive.current && epoch === generation.current) setError(normalizeSliceError(e));
+      if (alive.current && epoch === generation.current) {
+        jobId.current = previousJobId;
+        setJob(previous.job);
+        setDraft(previous.draft);
+        setProposal(previous.proposal);
+        setView(previous.view);
+        setWaveform(previous.waveform);
+        setSelected(previous.selected);
+        setPage(previous.page);
+        setExportReview(previous.exportReview);
+        setExportResult(previous.exportResult);
+        setError(normalizeSliceError(e));
+      }
     } finally {
       if (alive.current && epoch === generation.current) setStarting(false);
     }
@@ -261,7 +275,6 @@ function SliceSession({
       return;
     }
     const region = pendingPreviewRange;
-    setPendingPreviewRange(null);
     setRangeReselectMode(false);
     setRangeSelectDrag(null);
     rangeSelectDragRef.current = null;
@@ -762,7 +775,17 @@ function SliceSession({
           </button>
           <button
             type="button"
-            disabled={!pendingPreviewRange}
+            disabled={
+              !pendingPreviewRange
+              || (
+                !(
+                  inRange(pendingPreviewRange.startFrame, draft.region)
+                  && frame(pendingPreviewRange.endExclusive) <= frame(draft.region.endExclusive)
+                  && frame(pendingPreviewRange.startFrame) >= frame(draft.region.startFrame)
+                )
+                && onRequestPreviewLibraryRange === undefined
+              )
+            }
             onClick={() => void playPendingRange()}
           >
             {t("slicing.playPendingRange")}

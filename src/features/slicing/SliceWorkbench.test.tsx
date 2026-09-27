@@ -787,4 +787,78 @@ describe("attack slicing workbench", () => {
       expect.objectContaining({ kind: "replaceRegion" }),
     );
   });
+
+  it("keeps the applied draft when pending re-analysis fails to start", async () => {
+    const api = client();
+    vi.mocked(api.start)
+      .mockResolvedValueOnce(ready)
+      .mockRejectedValueOnce({ code: "SOURCE_CHANGED", message: "source changed" });
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
+    await waitFor(() => expect(screen.getByLabelText("Start frame candidate-1")).toHaveValue("956"));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
+    await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
+    expect(api.edit).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ kind: "replaceRegion" }),
+    );
+    expect(screen.getByLabelText("Start frame candidate-1")).toHaveValue("956");
+    expect(screen.getByRole("region", { name: tJa("slicing.pendingRangeHeading") })).toHaveTextContent("5000");
+  });
+
+  it("does not mutate the draft when the analysis session is expired", async () => {
+    const api = client();
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    vi.mocked(api.propose).mockRejectedValueOnce({
+      code: "ANALYSIS_EXPIRED",
+      message: "the analysis session has expired",
+    });
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "60" } });
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }),
+    ).toBeDisabled());
+    expect(api.edit).not.toHaveBeenCalled();
+    expect(api.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("delegates out-of-region pending playback to the library preview callback", async () => {
+    const api = client();
+    const narrow = { startFrame: "0", endExclusive: "4000" };
+    vi.mocked(api.start).mockResolvedValue({ ...ready, region: narrow });
+    vi.mocked(api.draft).mockResolvedValue({ ...empty, region: narrow });
+    vi.mocked(api.waveform).mockResolvedValue({ range: narrow, peaks: [[[-0.5, 0.5]]] });
+    const onRequestPreviewLibraryRange = vi.fn();
+    const onRequestStopLibraryPlayback = vi.fn();
+    render(withLocaleProvider(
+      <SliceWorkbench
+        rootId="root-1"
+        fileInstanceId="file-1"
+        displayName="loop.wav"
+        api={api}
+        librarySelectionRange={{ startFrame: "5000", endFrameExclusive: "10000" }}
+        onRequestPreviewLibraryRange={onRequestPreviewLibraryRange}
+        onRequestStopLibraryPlayback={onRequestStopLibraryPlayback}
+      />,
+    ));
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.playPendingRange") }));
+    expect(onRequestPreviewLibraryRange).toHaveBeenCalledWith({
+      startFrame: "5000",
+      endFrameExclusive: "10000",
+    });
+    expect(api.preview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
+    await waitFor(() => expect(onRequestStopLibraryPlayback).toHaveBeenCalled());
+  });
 });

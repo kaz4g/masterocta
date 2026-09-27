@@ -378,8 +378,19 @@ impl SliceWorkbench {
                         state.ready = None;
                     }
                     Ok(Ok(ready)) => {
-                        state.phase = "ready";
-                        state.ready = Some(ready);
+                        if job.cancelled.load(Ordering::Relaxed) {
+                            state.phase = "cancelled";
+                            state.ready = None;
+                        } else if let Err(error) =
+                            commit_replaced_region_after_ready(&catalog, &ready)
+                        {
+                            state.phase = "failed";
+                            state.error = Some(error);
+                            state.ready = None;
+                        } else {
+                            state.phase = "ready";
+                            state.ready = Some(ready);
+                        }
                     }
                     Ok(Err(error)) => {
                         state.phase = "failed";
@@ -760,11 +771,8 @@ fn build_job(
     let region = explicit_region
         .or_else(|| saved.as_ref().map(|d| d.region))
         .unwrap_or(full);
-    let replacing_saved_region = explicit_region.is_some_and(|requested| {
-        saved
-            .as_ref()
-            .is_none_or(|draft| draft.region != requested)
-    });
+    let replacing_saved_region = explicit_region
+        .is_some_and(|requested| saved.as_ref().is_none_or(|draft| draft.region != requested));
     if !replacing_saved_region && saved.as_ref().is_some_and(|d| d.region != region) {
         return Err(region_mismatch());
     }
@@ -786,31 +794,38 @@ fn build_job(
     let analysis = OnsetAnalysis::build(pcm, region, binding.source_hash.as_str(), &job.cancelled)
         .map_err(pcm_error)?;
     registry.resolve(&job.root)?;
-    if replacing_saved_region {
-        persist_replaced_region(catalog, &binding, region, binding.sample_rate)?;
+    if job.cancelled.load(Ordering::Relaxed) {
+        return Err(not_found());
     }
     Ok(Ready {
         analysis: Arc::new(analysis),
         binding,
     })
 }
-fn persist_replaced_region(
+fn commit_replaced_region_after_ready(
     catalog: &SharedCatalog,
-    binding: &SliceDraftBinding,
-    region: FrameRange,
-    sample_rate: u32,
+    ready: &Ready,
 ) -> Result<(), ApiError> {
+    let region = ready.analysis.region();
     let mut catalog = catalog.lock().map_err(|_| internal())?;
-    let draft = catalog
-        .load_slice_draft(binding)
+    let Some(draft) = catalog
+        .load_slice_draft(&ready.binding)
         .map_err(storage_error)?
-        .unwrap_or_else(|| SliceDraft::empty(region));
+    else {
+        return Ok(());
+    };
+    if draft.region == region {
+        return Ok(());
+    }
+    region
+        .within(ready.binding.frame_count)
+        .map_err(|_| invalid("region exceeds source frame count"))?;
     let expected_revision = draft.revision;
     let updated = draft
-        .edited(SliceEdit::ReplaceRegion(region), sample_rate)
+        .edited(SliceEdit::ReplaceRegion(region), ready.binding.sample_rate)
         .map_err(invalid)?;
     catalog
-        .save_slice_draft(binding, &updated, expected_revision)
+        .save_slice_draft(&ready.binding, &updated, expected_revision)
         .map_err(storage_error)?;
     Ok(())
 }
@@ -1111,6 +1126,61 @@ mod tests {
                 .and_then(|value| value.as_str()),
             Some("INVALID_SLICE_REQUEST"),
         );
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, accepted.revision);
+        assert!(!stored.markers.is_empty());
+    }
+
+    fn binding_for(job: &Job) -> SliceDraftBinding {
+        job.state
+            .lock()
+            .unwrap()
+            .ready
+            .as_ref()
+            .unwrap()
+            .binding
+            .clone()
+    }
+
+    #[test]
+    fn replace_region_edit_rejects_empty_and_noncanonical_ranges() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        for (start_frame, end_exclusive) in [("1000", "1000"), ("44100", "44101"), ("01", "2")] {
+            let err = workbench
+                .edit(
+                    &catalog,
+                    &job.root,
+                    "main",
+                    &job.id,
+                    accepted.revision,
+                    SliceEditDto::ReplaceRegion {
+                        start_frame: start_frame.into(),
+                        end_exclusive: end_exclusive.into(),
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(
+                serde_json::to_value(&err)
+                    .unwrap()
+                    .get("code")
+                    .and_then(|value| value.as_str()),
+                Some("INVALID_SLICE_REQUEST"),
+            );
+        }
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, accepted.revision);
+        assert!(!stored.markers.is_empty());
     }
 
     #[test]
