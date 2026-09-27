@@ -63,6 +63,7 @@ function SliceSession({
 }: Props) {
   const t = useTranslate();
   const [job, setJob] = useState<SliceJob | null>(null);
+  const [inflight, setInflight] = useState<SliceJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<SliceErrorState | null>(null);
   const [parameters, setParameters] = useState(defaultOnsetParameters);
@@ -97,6 +98,7 @@ function SliceSession({
   const alive = useRef(true);
   const generation = useRef(0);
   const jobId = useRef<string | null>(null);
+  const inflightId = useRef<string | null>(null);
   const editBusy = useRef(false);
   const playGeneration = useRef(0);
   const context = useRef<AudioContext | null>(null);
@@ -123,6 +125,7 @@ function SliceSession({
       generation.current++;
       stop();
       void context.current?.close();
+      if (inflightId.current) void api.cancel(rootId, inflightId.current).catch(() => undefined);
       if (jobId.current) void api.cancel(rootId, jobId.current).catch(() => undefined);
     };
   }, [api, rootId]);
@@ -137,45 +140,73 @@ function SliceSession({
     setError(normalized);
   }
 
-  async function startAnalysis(region?: SliceRange) {
-    if (starting) return;
+  function clearVisibleSession() {
+    setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
+    setExportReview(null); setExportResult(null);
+  }
+
+  function adoptJob(next: SliceJob) {
+    inflightId.current = null;
+    setInflight(null);
+    clearVisibleSession();
+    jobId.current = next.jobId;
+    setJob(next);
+  }
+
+  async function startAnalysis(region?: SliceRange, replaceSavedRevision?: number) {
+    if (starting || inflight) return;
     setError(null);
     setAnalysisSessionInvalid(false);
-    const epoch = ++generation.current;
     editBusy.current = false;
     setEditing(false);
     setProposing(false);
     stop();
     onRequestStopLibraryPlayback?.();
+    const retain = job?.phase === "ready" && draft !== null;
     const previousJobId = jobId.current;
     const previous = { job, draft, proposal, view, waveform, selected, page, exportReview, exportResult };
+    const observedEpoch = generation.current;
+    if (!retain) generation.current = observedEpoch + 1;
+    const startEpoch = generation.current;
     setStarting(true);
-    setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
-    setExportReview(null); setExportResult(null);
+    if (!retain) clearVisibleSession();
     try {
-      const next = await api.start(rootId, fileInstanceId, region);
-      if (!alive.current || epoch !== generation.current) {
+      const next = replaceSavedRevision === undefined
+        ? await api.start(rootId, fileInstanceId, region)
+        : await api.start(rootId, fileInstanceId, region, replaceSavedRevision);
+      if (!alive.current || startEpoch !== generation.current) {
         void api.cancel(rootId, next.jobId).catch(() => undefined);
         return;
       }
-      jobId.current = next.jobId;
-      setJob(next);
+      if (retain && next.phase !== "ready") {
+        inflightId.current = next.jobId;
+        setInflight(next);
+      } else {
+        generation.current = startEpoch + 1;
+        adoptJob(next);
+      }
     } catch (e) {
-      if (alive.current && epoch === generation.current) {
-        jobId.current = previousJobId;
-        setJob(previous.job);
-        setDraft(previous.draft);
-        setProposal(previous.proposal);
-        setView(previous.view);
-        setWaveform(previous.waveform);
-        setSelected(previous.selected);
-        setPage(previous.page);
-        setExportReview(previous.exportReview);
-        setExportResult(previous.exportResult);
+      if (alive.current && startEpoch === generation.current) {
+        if (!retain) {
+          jobId.current = previousJobId;
+          setJob(previous.job);
+          setDraft(previous.draft);
+          setProposal(previous.proposal);
+          setView(previous.view);
+          setWaveform(previous.waveform);
+          setSelected(previous.selected);
+          setPage(previous.page);
+          setExportReview(previous.exportReview);
+          setExportResult(previous.exportResult);
+        }
         setError(normalizeSliceError(e));
       }
     } finally {
-      if (alive.current && epoch === generation.current) setStarting(false);
+      if (
+        alive.current
+        && generation.current >= startEpoch
+        && generation.current <= startEpoch + 1
+      ) setStarting(false);
     }
   }
 
@@ -278,7 +309,7 @@ function SliceSession({
     setRangeReselectMode(false);
     setRangeSelectDrag(null);
     rangeSelectDragRef.current = null;
-    await startAnalysis(region);
+    await startAnalysis(region, draft.revision);
   }
 
   async function playPendingRange() {
@@ -348,6 +379,17 @@ function SliceSession({
   async function cancel() {
     generation.current++;
     stop();
+    const pendingId = inflightId.current;
+    if (pendingId) {
+      inflightId.current = null;
+      setInflight(null);
+      setStarting(false);
+      editBusy.current = false;
+      setEditing(false);
+      try { await api.cancel(rootId, pendingId); }
+      catch (e) { if (alive.current) setError(normalizeSliceError(e)); }
+      return;
+    }
     const id = jobId.current;
     jobId.current = null;
     editBusy.current = false;
@@ -372,9 +414,9 @@ function SliceSession({
 
   useEffect(() => {
     onAnalysisBusyChange?.(
-      starting || job?.phase === "reading" || job?.phase === "analyzing",
+      starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing",
     );
-  }, [starting, job, onAnalysisBusyChange]);
+  }, [starting, inflight, job, onAnalysisBusyChange]);
 
   useEffect(() => {
     if (!job || !["reading", "analyzing"].includes(job.phase)) return;
@@ -392,6 +434,39 @@ function SliceSession({
     }, 300);
     return () => { active = false; window.clearTimeout(timer); };
   }, [api, job, rootId]);
+
+  useEffect(() => {
+    if (!inflight || !["reading", "analyzing"].includes(inflight.phase)) return;
+    const epoch = generation.current;
+    const tracked = inflight;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.status(rootId, tracked.jobId).then(
+        next => {
+          if (!active || epoch !== generation.current) return;
+          if (next.phase === "ready") {
+            generation.current += 1;
+            adoptJob(next);
+            return;
+          }
+          if (next.phase === "failed" || next.phase === "cancelled") {
+            inflightId.current = null;
+            setInflight(null);
+            if (next.error) setError(normalizeSliceError(next.error));
+            return;
+          }
+          setInflight(next);
+        },
+        e => {
+          if (!active || epoch !== generation.current) return;
+          inflightId.current = null;
+          setInflight(null);
+          noteCommandError(e);
+        },
+      );
+    }, 300);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [api, inflight, rootId]);
 
   useEffect(() => {
     if (!readyId || analysisSessionInvalid) return;
@@ -546,7 +621,7 @@ function SliceSession({
       void edit({ kind: "move", markerId: moved.id, frame: moved.frame });
     }
   }
-  const busy = starting || job?.phase === "reading" || job?.phase === "analyzing";
+  const busy = starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing";
   const mutationDisabled = editing || analysisSessionInvalid || rangeReselectMode;
   const pendingOverlayRange = rangeSelectDrag && view
     ? normalizePendingRange(
@@ -713,7 +788,7 @@ function SliceSession({
       </div>
       {busy && (
         <p role="status">
-          {job?.phase === "analyzing" ? t("slicing.detectingAttacks") : t("slicing.readingSource")}
+          {(inflight ?? job)?.phase === "analyzing" ? t("slicing.detectingAttacks") : t("slicing.readingSource")}
         </p>
       )}
       {analysisRegion !== null && (

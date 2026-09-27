@@ -4288,6 +4288,7 @@ pub async fn v2_audio_onsets_start(
     root_id: String,
     file_instance_id: String,
     region: Option<crate::slice_workbench::SliceRangeDto>,
+    replace_saved_revision: Option<u64>,
     window: tauri::WebviewWindow,
     registry: State<'_, Arc<RootRegistry>>,
     catalog: State<'_, SharedCatalog>,
@@ -4299,7 +4300,15 @@ pub async fn v2_audio_onsets_start(
     let registry = Arc::clone(registry.inner());
     let catalog = Arc::clone(catalog.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        workbench.start(registry, catalog, root_id, window, file_instance_id, region)
+        workbench.start(
+            registry,
+            catalog,
+            root_id,
+            window,
+            file_instance_id,
+            region,
+            replace_saved_revision,
+        )
     })
     .await
     .map_err(ApiError::task_failed)?

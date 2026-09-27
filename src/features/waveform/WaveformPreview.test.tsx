@@ -297,6 +297,40 @@ describe("WaveformPreview", () => {
     expect(client.readPreview).toHaveBeenCalledWith("root-opaque", "preview:v1:range");
   });
 
+  it("plays a library range request instead of the inputs from the current render", async () => {
+    const client = api();
+    const view = render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.change(screen.getByLabelText(tJa("waveform.startFrame")), { target: { value: "5000" } });
+    fireEvent.change(screen.getByLabelText(tJa("waveform.endFrame")), {
+      target: { value: "8000" },
+    });
+    view.rerender(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+        libraryRangePlaybackRequest={{
+          token: 1,
+          range: { startFrame: "11025", endFrameExclusive: "22050" },
+        }}
+      />,
+    );
+    await waitFor(() => expect(client.createRangePreviewToken).toHaveBeenCalledWith(
+      "root-opaque",
+      "asset:v1:opaque",
+      { startFrame: "11025", endFrameExclusive: "22050" },
+    ));
+  });
+
   it("shows invalid range feedback without calling the range preview API", async () => {
     const client = api();
     render(

@@ -707,12 +707,18 @@ export function WaveformPreview({
     }
   }
 
-  async function playSelectedRange() {
+  async function playSelectedRange(explicit?: LibraryCommittedGeometryRange) {
     if (fileMetadata === null) return;
+    const startFrame = explicit?.startFrame ?? rangeStartFrame;
+    const endFrameExclusive = explicit?.endFrameExclusive ?? rangeEndFrameExclusive;
+    if (explicit) {
+      setRangeStartFrame(explicit.startFrame);
+      setRangeEndFrameExclusive(explicit.endFrameExclusive);
+    }
     try {
       validateFrameRange(
-        rangeStartFrame,
-        rangeEndFrameExclusive,
+        startFrame,
+        endFrameExclusive,
         fileMetadata.frameCount,
         fileMetadata.sampleRate,
         fileMetadata.channels,
@@ -727,10 +733,7 @@ export function WaveformPreview({
     pauseHeadPreview();
     setRangeLoading(true);
     setRangeError(null);
-    const range = {
-      startFrame: rangeStartFrame,
-      endFrameExclusive: rangeEndFrameExclusive,
-    };
+    const range = { startFrame, endFrameExclusive };
     const target = { rootId, assetId };
     try {
       const ticket = await api.createRangePreviewToken(rootId, assetId, range);
@@ -811,11 +814,7 @@ export function WaveformPreview({
       return;
     }
     const { range } = libraryRangePlaybackRequest;
-    setRangeStartFrame(range.startFrame);
-    setRangeEndFrameExclusive(range.endFrameExclusive);
-    queueMicrotask(() => {
-      void playSelectedRangeRef.current();
-    });
+    void playSelectedRangeRef.current(range);
   }, [
     libraryRangePlaybackRequest?.token,
     libraryRangePlaybackRequest?.range.endFrameExclusive,

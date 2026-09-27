@@ -565,6 +565,7 @@ describe("attack slicing workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
     await waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.analyzeAgain") }));
+    await waitFor(() => expect(api.draft).toHaveBeenCalledWith("root-1", "job-2"));
     await waitFor(() => expect(
       screen.getByRole("button", { name: tJa("slicing.applyCandidates") }),
     ).toBeEnabled());
@@ -744,6 +745,7 @@ describe("attack slicing workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
     await waitFor(() => expect(api.edit).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.analyzeAgain") }));
+    await waitFor(() => expect(api.draft).toHaveBeenCalledWith("root-1", "job-2"));
     await waitFor(() => expect(
       screen.getByRole("button", { name: tJa("slicing.applyCandidates") }),
     ).toBeEnabled());
@@ -779,7 +781,7 @@ describe("attack slicing workbench", () => {
     await detect();
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
-    await waitFor(() => expect(api.start).toHaveBeenCalledWith("root-1", "file-1", pending));
+    await waitFor(() => expect(api.start).toHaveBeenCalledWith("root-1", "file-1", pending, 0));
     expect(api.edit).not.toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -810,6 +812,44 @@ describe("attack slicing workbench", () => {
     );
     expect(screen.getByLabelText("Start frame candidate-1")).toHaveValue("956");
     expect(screen.getByRole("region", { name: tJa("slicing.pendingRangeHeading") })).toHaveTextContent("5000");
+  });
+
+  it("keeps the applied draft when pending re-analysis fails after it starts", async () => {
+    const api = client();
+    const reading: SliceJob = {
+      ...ready,
+      jobId: "job-2",
+      phase: "reading",
+      region: null,
+    };
+    vi.mocked(api.start)
+      .mockResolvedValueOnce(ready)
+      .mockResolvedValueOnce(reading);
+    vi.mocked(api.status).mockResolvedValue({
+      ...reading,
+      phase: "failed",
+      error: { code: "SOURCE_CHANGED", message: "source changed" },
+    });
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
+    await waitFor(() => expect(screen.getByLabelText("Start frame candidate-1")).toHaveValue("956"));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
+    await waitFor(() => expect(api.status).toHaveBeenCalledWith("root-1", "job-2"));
+    expect(api.start).toHaveBeenCalledWith(
+      "root-1",
+      "file-1",
+      { startFrame: "5000", endExclusive: "10000" },
+      1,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(tJa("slicing.error.SOURCE_CHANGED"));
+    expect(screen.getByLabelText("Start frame candidate-1")).toHaveValue("956");
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: tJa("slicing.applyCandidates") }),
+    ).toBeEnabled());
   });
 
   it("does not mutate the draft when the analysis session is expired", async () => {

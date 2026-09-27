@@ -79,8 +79,18 @@ export interface SliceExportResult {
 }
 export function createSliceApi(client: IpcClient = ipcClient) {
   return {
-    start: (rootId: string, fileInstanceId: string, region?: SliceRange) =>
-      client.request<SliceJob>("v2_audio_onsets_start", { rootId, fileInstanceId, region: region ?? null }),
+    start: (
+      rootId: string,
+      fileInstanceId: string,
+      region?: SliceRange,
+      replaceSavedRevision?: number,
+    ) =>
+      client.request<SliceJob>("v2_audio_onsets_start", {
+        rootId,
+        fileInstanceId,
+        region: region ?? null,
+        replaceSavedRevision: replaceSavedRevision ?? null,
+      }),
     status: (rootId: string, jobId: string) =>
       client.request<SliceJob>("v2_audio_onsets_status", { rootId, jobId }),
     cancel: (rootId: string, jobId: string) =>
