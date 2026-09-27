@@ -54,6 +54,11 @@ const VIEWBOX_HEIGHT = 140;
 
 export type LibraryCommittedGeometryRange = ViewportRange;
 
+export interface LibraryRangePlaybackRequest {
+  token: number;
+  range: LibraryCommittedGeometryRange;
+}
+
 interface WaveformPreviewProps {
   rootId: string;
   assetId: string;
@@ -71,6 +76,8 @@ interface WaveformPreviewProps {
   ) => void;
   /** Increment to stop range and head preview playback from a sibling control. */
   stopPlaybackToken?: number;
+  /** Play the committed library range from a sibling control (for example Slice pending preview). */
+  libraryRangePlaybackRequest?: LibraryRangePlaybackRequest | null;
   /** When false, plot width is frozen so hidden tabs do not re-query waveform IPC. */
   layoutVisible?: boolean;
   /** True while head preview loading/playback or range playback is active. */
@@ -131,6 +138,7 @@ export function WaveformPreview({
   queryDebounceMs = WAVEFORM_QUERY_DEBOUNCE_MS,
   onCommittedGeometryRangeChange,
   stopPlaybackToken = 0,
+  libraryRangePlaybackRequest = null,
   layoutVisible = true,
   onPlaybackActivityChange,
 }: WaveformPreviewProps) {
@@ -699,12 +707,18 @@ export function WaveformPreview({
     }
   }
 
-  async function playSelectedRange() {
+  async function playSelectedRange(explicit?: LibraryCommittedGeometryRange) {
     if (fileMetadata === null) return;
+    const startFrame = explicit?.startFrame ?? rangeStartFrame;
+    const endFrameExclusive = explicit?.endFrameExclusive ?? rangeEndFrameExclusive;
+    if (explicit) {
+      setRangeStartFrame(explicit.startFrame);
+      setRangeEndFrameExclusive(explicit.endFrameExclusive);
+    }
     try {
       validateFrameRange(
-        rangeStartFrame,
-        rangeEndFrameExclusive,
+        startFrame,
+        endFrameExclusive,
         fileMetadata.frameCount,
         fileMetadata.sampleRate,
         fileMetadata.channels,
@@ -719,10 +733,7 @@ export function WaveformPreview({
     pauseHeadPreview();
     setRangeLoading(true);
     setRangeError(null);
-    const range = {
-      startFrame: rangeStartFrame,
-      endFrameExclusive: rangeEndFrameExclusive,
-    };
+    const range = { startFrame, endFrameExclusive };
     const target = { rootId, assetId };
     try {
       const ticket = await api.createRangePreviewToken(rootId, assetId, range);
@@ -794,6 +805,21 @@ export function WaveformPreview({
       if (rangeRequest.current === request) setRangeLoading(false);
     }
   }
+
+  const playSelectedRangeRef = useRef(playSelectedRange);
+  playSelectedRangeRef.current = playSelectedRange;
+
+  useEffect(() => {
+    if (libraryRangePlaybackRequest === null || libraryRangePlaybackRequest.token === 0) {
+      return;
+    }
+    const { range } = libraryRangePlaybackRequest;
+    void playSelectedRangeRef.current(range);
+  }, [
+    libraryRangePlaybackRequest?.token,
+    libraryRangePlaybackRequest?.range.endFrameExclusive,
+    libraryRangePlaybackRequest?.range.startFrame,
+  ]);
 
   const rangeControlsDisabled = fileMetadata === null || rangeLoading;
 

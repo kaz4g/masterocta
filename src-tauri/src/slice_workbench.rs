@@ -21,6 +21,8 @@ const JOB_TTL: Duration = Duration::from_secs(15 * 60);
 
 pub struct SliceWorkbench {
     current: Mutex<Option<Arc<Job>>>,
+    /// In-flight analysis that has not replaced `current` yet.
+    pending: Mutex<Option<Arc<Job>>>,
     busy: AtomicBool,
     nonce: [u8; 32],
     counter: AtomicU64,
@@ -39,6 +41,8 @@ struct Job {
     state: Mutex<JobState>,
     previews: Mutex<HashMap<String, Preview>>,
     history: Mutex<History>,
+    /// When set, a ready analysis may replace the saved draft at this revision.
+    replace_saved_revision: Option<u64>,
 }
 #[derive(Default)]
 struct History {
@@ -257,6 +261,7 @@ impl SliceWorkbench {
         getrandom::fill(&mut nonce).map_err(|_| std::io::Error::other("randomness unavailable"))?;
         Ok(Self {
             current: Mutex::new(None),
+            pending: Mutex::new(None),
             busy: AtomicBool::new(false),
             nonce,
             counter: AtomicU64::new(1),
@@ -287,11 +292,22 @@ impl SliceWorkbench {
         format!("{kind}:v1:{:x}", hash.finalize())
     }
     fn job(&self, root: &RootId, window: &str, id: &str) -> Result<Arc<Job>, ApiError> {
-        let current = self.current.lock().map_err(|_| internal())?;
-        let job = current
+        let pending = self.pending.lock().map_err(|_| internal())?;
+        let pending_hit = pending
             .as_ref()
             .filter(|j| j.id == id && &j.root == root && j.window == window)
-            .ok_or_else(not_found)?;
+            .map(Arc::clone);
+        drop(pending);
+        let job = if let Some(job) = pending_hit {
+            job
+        } else {
+            let current = self.current.lock().map_err(|_| internal())?;
+            current
+                .as_ref()
+                .filter(|j| j.id == id && &j.root == root && j.window == window)
+                .map(Arc::clone)
+                .ok_or_else(not_found)?
+        };
         if job.created.elapsed() > self.job_ttl() {
             job.cancelled.store(true, Ordering::Relaxed);
             let mut state = job.state.lock().map_err(|_| internal())?;
@@ -300,7 +316,7 @@ impl SliceWorkbench {
             job.previews.lock().map_err(|_| internal())?.clear();
             return Err(expired());
         }
-        Ok(Arc::clone(job))
+        Ok(job)
     }
     pub fn start(
         self: &Arc<Self>,
@@ -310,6 +326,7 @@ impl SliceWorkbench {
         window: String,
         file_id: String,
         region: Option<SliceRangeDto>,
+        replace_saved_revision: Option<u64>,
     ) -> Result<SliceJobDto, ApiError> {
         registry.resolve(&root)?;
         let region = region.map(|r| r.parse()).transpose()?;
@@ -339,55 +356,57 @@ impl SliceWorkbench {
             }),
             previews: Mutex::new(HashMap::new()),
             history: Mutex::new(History::default()),
+            replace_saved_revision,
         });
-        {
-            let mut current = match self.current.lock() {
-                Ok(value) => value,
-                Err(_) => {
-                    self.busy.store(false, Ordering::Release);
-                    return Err(internal());
-                }
-            };
-            if current.as_ref().is_some_and(|old| {
-                old.window != job.window
-                    && !old.cancelled.load(Ordering::Relaxed)
-                    && old.created.elapsed() <= self.job_ttl()
-            }) {
-                self.busy.store(false, Ordering::Release);
-                return Err(ApiError::new(
-                    "ANALYSIS_BUSY",
-                    "another window owns the active analysis",
-                    true,
-                ));
-            }
-            if let Some(old) = current.take() {
-                old.cancelled.store(true, Ordering::Relaxed);
-            }
-            *current = Some(Arc::clone(&job));
+        if let Err(error) = self.install_pending(Arc::clone(&job)) {
+            self.busy.store(false, Ordering::Release);
+            return Err(error);
         }
         let response = status(&job)?;
         let workbench = Arc::clone(self);
         tauri::async_runtime::spawn_blocking(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                build_job(&registry, &catalog, &job, &file_id, region)
+                build_job(
+                    &registry,
+                    &catalog,
+                    &job,
+                    &file_id,
+                    region,
+                    replace_saved_revision,
+                )
             }));
+            let outcome = match result {
+                _ if job.cancelled.load(Ordering::Acquire) => CommitOutcome::Cancelled,
+                Ok(Ok(ready)) => commit_replaced_region_after_ready(&catalog, &job, ready),
+                Ok(Err(error)) => {
+                    if job.cancelled.load(Ordering::Acquire) {
+                        CommitOutcome::Cancelled
+                    } else {
+                        CommitOutcome::Failed(error)
+                    }
+                }
+                Err(_) => CommitOutcome::Failed(internal()),
+            };
+            match &outcome {
+                CommitOutcome::Ready(_) => workbench.promote_pending(&job),
+                CommitOutcome::Cancelled | CommitOutcome::Failed(_) => {
+                    workbench.clear_pending(&job.id);
+                }
+            }
             if let Ok(mut state) = job.state.lock() {
-                match result {
-                    _ if job.cancelled.load(Ordering::Relaxed) => {
+                match outcome {
+                    CommitOutcome::Cancelled => {
                         state.phase = "cancelled";
                         state.ready = None;
                     }
-                    Ok(Ok(ready)) => {
+                    CommitOutcome::Ready(ready) => {
                         state.phase = "ready";
                         state.ready = Some(ready);
                     }
-                    Ok(Err(error)) => {
+                    CommitOutcome::Failed(error) => {
                         state.phase = "failed";
                         state.error = Some(error);
-                    }
-                    Err(_) => {
-                        state.phase = "failed";
-                        state.error = Some(internal());
+                        state.ready = None;
                     }
                 }
             }
@@ -398,6 +417,58 @@ impl SliceWorkbench {
     pub fn status(&self, root: &RootId, window: &str, id: &str) -> Result<SliceJobDto, ApiError> {
         let job = self.job(root, window, id)?;
         status(&job)
+    }
+    fn install_pending(&self, job: Arc<Job>) -> Result<(), ApiError> {
+        let mut pending = self.pending.lock().map_err(|_| internal())?;
+        let current = self.current.lock().map_err(|_| internal())?;
+        let blocks = |old: &Job| {
+            old.window != job.window
+                && !old.cancelled.load(Ordering::Relaxed)
+                && old.created.elapsed() <= self.job_ttl()
+        };
+        if current.as_ref().is_some_and(|old| blocks(old))
+            || pending.as_ref().is_some_and(|old| blocks(old))
+        {
+            return Err(ApiError::new(
+                "ANALYSIS_BUSY",
+                "another window owns the active analysis",
+                true,
+            ));
+        }
+        if let Some(old) = pending.take() {
+            old.cancelled.store(true, Ordering::Relaxed);
+        }
+        *pending = Some(job);
+        Ok(())
+    }
+    fn promote_pending(&self, job: &Arc<Job>) {
+        let mut pending = match self.pending.lock() {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        if pending.as_ref().is_none_or(|current| current.id != job.id) {
+            return;
+        }
+        *pending = None;
+        drop(pending);
+        let mut current = match self.current.lock() {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        if let Some(old) = current.replace(Arc::clone(job)) {
+            if old.id != job.id {
+                old.cancelled.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+    fn clear_pending(&self, id: &str) {
+        let mut pending = match self.pending.lock() {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        if pending.as_ref().is_some_and(|job| job.id == id) {
+            *pending = None;
+        }
     }
     pub fn cancel(&self, root: &RootId, window: &str, id: &str) -> Result<(), ApiError> {
         let job = self.job(root, window, id)?;
@@ -564,6 +635,9 @@ impl SliceWorkbench {
                 let start = parse_frame(&start_frame)?;
                 let end = parse_frame(&end_exclusive)?;
                 let region = FrameRange::new(start, end).map_err(|_| invalid("invalid region"))?;
+                region
+                    .within(ready.binding.frame_count)
+                    .map_err(|_| invalid("region exceeds source frame count"))?;
                 Some(SliceEdit::ReplaceRegion(region))
             }
         };
@@ -719,6 +793,7 @@ fn build_job(
     job: &Job,
     file_id: &str,
     region: Option<FrameRange>,
+    replace_saved_revision: Option<u64>,
 ) -> Result<Ready, ApiError> {
     let resolved = registry.resolve(&job.root)?;
     let identity = catalog_identity(&resolved.session)?;
@@ -753,12 +828,13 @@ fn build_job(
         .map_err(storage_error)?;
     let full = FrameRange::new(PcmFrame::new(0), PcmFrame::new(info.frame_count))
         .map_err(|_| invalid("empty source"))?;
-    let region = region
-        .or_else(|| saved.as_ref().map(|d| d.region))
-        .unwrap_or(full);
-    if saved.as_ref().is_some_and(|d| d.region != region) {
-        return Err(region_mismatch());
-    }
+    let region = resolve_saved_region(
+        saved.as_ref(),
+        region,
+        replace_saved_revision,
+        full,
+        info.frame_count,
+    )?;
     let pcm = snapshot
         .analysis_region(region, &job.cancelled)
         .map_err(pcm_error)?;
@@ -772,10 +848,94 @@ fn build_job(
     let analysis = OnsetAnalysis::build(pcm, region, binding.source_hash.as_str(), &job.cancelled)
         .map_err(pcm_error)?;
     registry.resolve(&job.root)?;
+    if job.cancelled.load(Ordering::Relaxed) {
+        return Err(not_found());
+    }
     Ok(Ready {
         analysis: Arc::new(analysis),
         binding,
     })
+}
+enum CommitOutcome {
+    Ready(Ready),
+    Cancelled,
+    Failed(ApiError),
+}
+fn resolve_saved_region(
+    saved: Option<&SliceDraft>,
+    explicit: Option<FrameRange>,
+    replace_saved_revision: Option<u64>,
+    full: FrameRange,
+    frame_count: u64,
+) -> Result<FrameRange, ApiError> {
+    let region = explicit
+        .or_else(|| saved.map(|draft| draft.region))
+        .unwrap_or(full);
+    let Some(draft) = saved else {
+        region
+            .within(frame_count)
+            .map_err(|_| invalid("region exceeds source frame count"))?;
+        return Ok(region);
+    };
+    if draft.region == region {
+        return Ok(region);
+    }
+    match replace_saved_revision {
+        Some(expected) if expected == draft.revision => {}
+        Some(_) => return Err(conflict()),
+        None => return Err(region_mismatch()),
+    }
+    region
+        .within(frame_count)
+        .map_err(|_| invalid("region exceeds source frame count"))?;
+    Ok(region)
+}
+fn commit_replaced_region_after_ready(
+    catalog: &SharedCatalog,
+    job: &Job,
+    ready: Ready,
+) -> CommitOutcome {
+    let Some(expected_revision) = job.replace_saved_revision else {
+        return CommitOutcome::Ready(ready);
+    };
+    if job.cancelled.load(Ordering::Acquire) {
+        return CommitOutcome::Cancelled;
+    }
+    let region = ready.analysis.region();
+    let mut catalog = match catalog.lock() {
+        Ok(value) => value,
+        Err(_) => return CommitOutcome::Failed(internal()),
+    };
+    if job.cancelled.load(Ordering::Acquire) {
+        return CommitOutcome::Cancelled;
+    }
+    let draft = match catalog.load_slice_draft(&ready.binding) {
+        Ok(value) => value,
+        Err(error) => return CommitOutcome::Failed(storage_error(error)),
+    };
+    let Some(draft) = draft else {
+        return CommitOutcome::Ready(ready);
+    };
+    if draft.region == region {
+        return CommitOutcome::Ready(ready);
+    }
+    if draft.revision != expected_revision {
+        return CommitOutcome::Failed(conflict());
+    }
+    if region.within(ready.binding.frame_count).is_err() {
+        return CommitOutcome::Failed(invalid("region exceeds source frame count"));
+    }
+    let updated = match draft.edited(SliceEdit::ReplaceRegion(region), ready.binding.sample_rate) {
+        Ok(value) => value,
+        Err(error) => return CommitOutcome::Failed(invalid(error)),
+    };
+    if job.cancelled.load(Ordering::Acquire) {
+        return CommitOutcome::Cancelled;
+    }
+    if let Err(error) = catalog.save_slice_draft(&ready.binding, &updated, expected_revision) {
+        return CommitOutcome::Failed(storage_error(error));
+    }
+    CommitOutcome::Ready(ready)
 }
 fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
     #[cfg(unix)]
@@ -942,6 +1102,7 @@ mod tests {
             }),
             previews: Mutex::new(HashMap::new()),
             history: Mutex::new(History::default()),
+            replace_saved_revision: None,
         });
         *workbench.current.lock().unwrap() = Some(Arc::clone(&job));
         let directory = tempfile::tempdir().unwrap();
@@ -1015,6 +1176,31 @@ mod tests {
             )
             .unwrap()
     }
+    fn replacement_job(
+        workbench: &SliceWorkbench,
+        source: &Job,
+        ready: Ready,
+        replace_saved_revision: Option<u64>,
+        cancelled: bool,
+    ) -> Arc<Job> {
+        Arc::new(Job {
+            id: workbench.token("analysis"),
+            root: source.root.clone(),
+            window: source.window.clone(),
+            created: Instant::now(),
+            cancelled: AtomicBool::new(cancelled),
+            proposal_generation: AtomicU64::new(0),
+            state: Mutex::new(JobState {
+                phase: "analyzing",
+                error: None,
+                ready: Some(ready),
+                proposal: None,
+            }),
+            previews: Mutex::new(HashMap::new()),
+            history: Mutex::new(History::default()),
+            replace_saved_revision,
+        })
+    }
 
     #[test]
     fn region_mismatch_uses_structured_error_code() {
@@ -1024,6 +1210,140 @@ mod tests {
             payload.get("code").and_then(|value| value.as_str()),
             Some("ANALYSIS_REGION_MISMATCH"),
         );
+    }
+
+    #[test]
+    fn explicit_region_requires_the_saved_revision_before_replacement() {
+        let saved_region = FrameRange::new(PcmFrame::new(0), PcmFrame::new(44_100)).unwrap();
+        let requested = FrameRange::new(PcmFrame::new(1_000), PcmFrame::new(20_000)).unwrap();
+        let draft = SliceDraft::empty(saved_region);
+        let mismatch =
+            resolve_saved_region(Some(&draft), Some(requested), None, saved_region, 44_100)
+                .unwrap_err();
+        assert_eq!(error_code(&mismatch), "ANALYSIS_REGION_MISMATCH");
+        let conflicted = resolve_saved_region(
+            Some(&draft),
+            Some(requested),
+            Some(draft.revision + 1),
+            saved_region,
+            44_100,
+        )
+        .unwrap_err();
+        assert_eq!(error_code(&conflicted), "DRAFT_CONFLICT");
+        let resolved = resolve_saved_region(
+            Some(&draft),
+            Some(requested),
+            Some(draft.revision),
+            saved_region,
+            44_100,
+        )
+        .unwrap();
+        assert_eq!(resolved, requested);
+        let same =
+            resolve_saved_region(Some(&draft), Some(saved_region), None, saved_region, 44_100)
+                .unwrap();
+        assert_eq!(same, saved_region);
+    }
+
+    #[test]
+    fn cancelled_replacement_does_not_save_the_draft() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        let narrowed = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                accepted.revision,
+                SliceEditDto::ReplaceRegion {
+                    start_frame: "1000".into(),
+                    end_exclusive: "20000".into(),
+                },
+            )
+            .unwrap();
+        let ready = job.state.lock().unwrap().ready.clone().unwrap();
+        let replacement = replacement_job(
+            &workbench,
+            &job,
+            ready.clone(),
+            Some(narrowed.revision),
+            true,
+        );
+        assert!(matches!(
+            commit_replaced_region_after_ready(&catalog, &replacement, ready),
+            CommitOutcome::Cancelled
+        ));
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, narrowed.revision);
+        assert_eq!(stored.region.start().get(), 1_000);
+        assert_eq!(stored.region.end_exclusive().get(), 20_000);
+    }
+
+    #[test]
+    fn matching_revision_commits_the_ready_region() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        let narrowed = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                accepted.revision,
+                SliceEditDto::ReplaceRegion {
+                    start_frame: "1000".into(),
+                    end_exclusive: "20000".into(),
+                },
+            )
+            .unwrap();
+        let ready = job.state.lock().unwrap().ready.clone().unwrap();
+        let conflicted = replacement_job(
+            &workbench,
+            &job,
+            ready.clone(),
+            Some(narrowed.revision + 1),
+            false,
+        );
+        match commit_replaced_region_after_ready(&catalog, &conflicted, ready.clone()) {
+            CommitOutcome::Failed(error) => assert_eq!(error_code(&error), "DRAFT_CONFLICT"),
+            CommitOutcome::Ready(_) | CommitOutcome::Cancelled => {
+                panic!("revision mismatch must not save");
+            }
+        }
+        let unchanged = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(unchanged.revision, narrowed.revision);
+        let replacement = replacement_job(
+            &workbench,
+            &job,
+            ready.clone(),
+            Some(narrowed.revision),
+            false,
+        );
+        assert!(matches!(
+            commit_replaced_region_after_ready(&catalog, &replacement, ready),
+            CommitOutcome::Ready(_)
+        ));
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, narrowed.revision + 1);
+        assert_eq!(stored.region.start().get(), 0);
+        assert_eq!(stored.region.end_exclusive().get(), 44_100);
+        assert!(stored.markers.is_empty());
     }
 
     #[test]
@@ -1048,6 +1368,87 @@ mod tests {
         assert_eq!(replaced.region.start_frame, "1000");
         assert_eq!(replaced.region.end_exclusive, "20000");
         assert_eq!(catalog_draft_revision(&catalog, &job), replaced.revision);
+    }
+
+    #[test]
+    fn replace_region_edit_rejects_region_beyond_source_frame_count() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        let err = workbench
+            .edit(
+                &catalog,
+                &job.root,
+                "main",
+                &job.id,
+                accepted.revision,
+                SliceEditDto::ReplaceRegion {
+                    start_frame: "0".into(),
+                    end_exclusive: "50000".into(),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            serde_json::to_value(&err)
+                .unwrap()
+                .get("code")
+                .and_then(|value| value.as_str()),
+            Some("INVALID_SLICE_REQUEST"),
+        );
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, accepted.revision);
+        assert!(!stored.markers.is_empty());
+    }
+
+    fn binding_for(job: &Job) -> SliceDraftBinding {
+        job.state
+            .lock()
+            .unwrap()
+            .ready
+            .as_ref()
+            .unwrap()
+            .binding
+            .clone()
+    }
+
+    #[test]
+    fn replace_region_edit_rejects_empty_and_noncanonical_ranges() {
+        let (workbench, job, catalog, _dir) = fixture();
+        let accepted = accept_first_proposal(&workbench, &catalog, &job);
+        for (start_frame, end_exclusive) in [("1000", "1000"), ("44100", "44101"), ("01", "2")] {
+            let err = workbench
+                .edit(
+                    &catalog,
+                    &job.root,
+                    "main",
+                    &job.id,
+                    accepted.revision,
+                    SliceEditDto::ReplaceRegion {
+                        start_frame: start_frame.into(),
+                        end_exclusive: end_exclusive.into(),
+                    },
+                )
+                .unwrap_err();
+            assert_eq!(
+                serde_json::to_value(&err)
+                    .unwrap()
+                    .get("code")
+                    .and_then(|value| value.as_str()),
+                Some("INVALID_SLICE_REQUEST"),
+            );
+        }
+        let stored = catalog
+            .lock()
+            .unwrap()
+            .load_slice_draft(&binding_for(&job))
+            .unwrap()
+            .expect("draft");
+        assert_eq!(stored.revision, accepted.revision);
+        assert!(!stored.markers.is_empty());
     }
 
     #[test]
@@ -1399,6 +1800,7 @@ mod tests {
             }),
             previews: Mutex::new(HashMap::new()),
             history: Mutex::new(History::default()),
+            replace_saved_revision: None,
         });
         *workbench.current.lock().unwrap() = Some(replacement);
         assert_eq!(

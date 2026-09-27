@@ -8,7 +8,9 @@ import {
 import { useTranslate } from "../../i18n";
 import { durationLabelForFrame, formatPreviewFrameTimeSeconds } from "../waveform/frameMath";
 import type { LibraryCommittedGeometryRange } from "../waveform/WaveformPreview";
-import { frame, frameAt, inRange, position, previewChannels } from "./frames";
+import { frame, frameAt, inRange, pointerRatioInMeetSvg, position, previewChannels } from "./frames";
+
+const SLICE_WAVEFORM_VIEWBOX = { width: 640, height: 160 };
 import { SliceErrorAlert } from "./SliceErrorAlert";
 import { isAnalysisSessionInvalid, normalizeSliceError, type SliceErrorState } from "./sliceErrors";
 import "./SliceWorkbench.css";
@@ -61,6 +63,7 @@ function SliceSession({
 }: Props) {
   const t = useTranslate();
   const [job, setJob] = useState<SliceJob | null>(null);
+  const [inflight, setInflight] = useState<SliceJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<SliceErrorState | null>(null);
   const [parameters, setParameters] = useState(defaultOnsetParameters);
@@ -95,6 +98,7 @@ function SliceSession({
   const alive = useRef(true);
   const generation = useRef(0);
   const jobId = useRef<string | null>(null);
+  const inflightId = useRef<string | null>(null);
   const editBusy = useRef(false);
   const playGeneration = useRef(0);
   const context = useRef<AudioContext | null>(null);
@@ -121,6 +125,7 @@ function SliceSession({
       generation.current++;
       stop();
       void context.current?.close();
+      if (inflightId.current) void api.cancel(rootId, inflightId.current).catch(() => undefined);
       if (jobId.current) void api.cancel(rootId, jobId.current).catch(() => undefined);
     };
   }, [api, rootId]);
@@ -135,31 +140,73 @@ function SliceSession({
     setError(normalized);
   }
 
-  async function startAnalysis(region?: SliceRange) {
-    if (starting) return;
+  function clearVisibleSession() {
+    setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
+    setExportReview(null); setExportResult(null);
+  }
+
+  function adoptJob(next: SliceJob) {
+    inflightId.current = null;
+    setInflight(null);
+    clearVisibleSession();
+    jobId.current = next.jobId;
+    setJob(next);
+  }
+
+  async function startAnalysis(region?: SliceRange, replaceSavedRevision?: number) {
+    if (starting || inflight) return;
     setError(null);
     setAnalysisSessionInvalid(false);
-    const epoch = ++generation.current;
     editBusy.current = false;
     setEditing(false);
     setProposing(false);
     stop();
     onRequestStopLibraryPlayback?.();
+    const retain = job?.phase === "ready" && draft !== null;
+    const previousJobId = jobId.current;
+    const previous = { job, draft, proposal, view, waveform, selected, page, exportReview, exportResult };
+    const observedEpoch = generation.current;
+    if (!retain) generation.current = observedEpoch + 1;
+    const startEpoch = generation.current;
     setStarting(true);
-    setJob(null); setDraft(null); setProposal(null); setView(null); setWaveform(null); setSelected(null); setPage(0);
-    setExportReview(null); setExportResult(null);
+    if (!retain) clearVisibleSession();
     try {
-      const next = await api.start(rootId, fileInstanceId, region);
-      if (!alive.current || epoch !== generation.current) {
+      const next = replaceSavedRevision === undefined
+        ? await api.start(rootId, fileInstanceId, region)
+        : await api.start(rootId, fileInstanceId, region, replaceSavedRevision);
+      if (!alive.current || startEpoch !== generation.current) {
         void api.cancel(rootId, next.jobId).catch(() => undefined);
         return;
       }
-      jobId.current = next.jobId;
-      setJob(next);
+      if (retain && next.phase !== "ready") {
+        inflightId.current = next.jobId;
+        setInflight(next);
+      } else {
+        generation.current = startEpoch + 1;
+        adoptJob(next);
+      }
     } catch (e) {
-      if (alive.current && epoch === generation.current) setError(normalizeSliceError(e));
+      if (alive.current && startEpoch === generation.current) {
+        if (!retain) {
+          jobId.current = previousJobId;
+          setJob(previous.job);
+          setDraft(previous.draft);
+          setProposal(previous.proposal);
+          setView(previous.view);
+          setWaveform(previous.waveform);
+          setSelected(previous.selected);
+          setPage(previous.page);
+          setExportReview(previous.exportReview);
+          setExportResult(previous.exportResult);
+        }
+        setError(normalizeSliceError(e));
+      }
     } finally {
-      if (alive.current && epoch === generation.current) setStarting(false);
+      if (
+        alive.current
+        && generation.current >= startEpoch
+        && generation.current <= startEpoch + 1
+      ) setStarting(false);
     }
   }
 
@@ -255,34 +302,14 @@ function SliceSession({
   }
 
   async function reanalyzeWithPendingRange() {
-    if (!pendingPreviewRange || !draft || !readyId || busy || editing) return;
-    const region = pendingPreviewRange;
-    const epoch = generation.current;
-    setError(null);
-    stop();
-    onRequestStopLibraryPlayback?.();
-    editBusy.current = true;
-    setEditing(true);
-    try {
-      await api.edit(rootId, readyId, draft.revision, {
-        kind: "replaceRegion",
-        startFrame: region.startFrame,
-        endExclusive: region.endExclusive,
-      });
-      if (!alive.current || epoch !== generation.current) return;
-      setPendingPreviewRange(null);
-      setRangeReselectMode(false);
-      setRangeSelectDrag(null);
-      rangeSelectDragRef.current = null;
-      await startAnalysis(region);
-    } catch (e) {
-      if (alive.current && epoch === generation.current) noteCommandError(e);
-    } finally {
-      if (epoch === generation.current) {
-        editBusy.current = false;
-        if (alive.current) setEditing(false);
-      }
+    if (!pendingPreviewRange || !draft || !readyId || busy || editing || analysisSessionInvalid) {
+      return;
     }
+    const region = pendingPreviewRange;
+    setRangeReselectMode(false);
+    setRangeSelectDrag(null);
+    rangeSelectDragRef.current = null;
+    await startAnalysis(region, draft.revision);
   }
 
   async function playPendingRange() {
@@ -305,11 +332,21 @@ function SliceSession({
     });
   }
 
+  function frameAtPointer(clientX: number, svg: SVGSVGElement, range: SliceRange): string | null {
+    const ratio = pointerRatioInMeetSvg(
+      clientX,
+      svg,
+      SLICE_WAVEFORM_VIEWBOX.width,
+      SLICE_WAVEFORM_VIEWBOX.height,
+    );
+    if (ratio === null) return null;
+    return frameAt(ratio, range);
+  }
+
   function beginRangeSelect(clientX: number, svg: SVGSVGElement) {
     if (!view) return;
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width) return;
-    const at = frameAt((clientX - rect.left) / rect.width, view);
+    const at = frameAtPointer(clientX, svg, view);
+    if (at === null) return;
     const next = { anchor: at, active: at };
     rangeSelectDragRef.current = next;
     setRangeSelectDrag(next);
@@ -317,9 +354,8 @@ function SliceSession({
 
   function updateRangeSelect(clientX: number, svg: SVGSVGElement) {
     if (!rangeSelectDragRef.current || !view) return;
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width) return;
-    const at = frameAt((clientX - rect.left) / rect.width, view);
+    const at = frameAtPointer(clientX, svg, view);
+    if (at === null) return;
     const next = { ...rangeSelectDragRef.current, active: at };
     rangeSelectDragRef.current = next;
     setRangeSelectDrag(next);
@@ -343,6 +379,17 @@ function SliceSession({
   async function cancel() {
     generation.current++;
     stop();
+    const pendingId = inflightId.current;
+    if (pendingId) {
+      inflightId.current = null;
+      setInflight(null);
+      setStarting(false);
+      editBusy.current = false;
+      setEditing(false);
+      try { await api.cancel(rootId, pendingId); }
+      catch (e) { if (alive.current) setError(normalizeSliceError(e)); }
+      return;
+    }
     const id = jobId.current;
     jobId.current = null;
     editBusy.current = false;
@@ -367,9 +414,9 @@ function SliceSession({
 
   useEffect(() => {
     onAnalysisBusyChange?.(
-      starting || job?.phase === "reading" || job?.phase === "analyzing",
+      starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing",
     );
-  }, [starting, job, onAnalysisBusyChange]);
+  }, [starting, inflight, job, onAnalysisBusyChange]);
 
   useEffect(() => {
     if (!job || !["reading", "analyzing"].includes(job.phase)) return;
@@ -387,6 +434,39 @@ function SliceSession({
     }, 300);
     return () => { active = false; window.clearTimeout(timer); };
   }, [api, job, rootId]);
+
+  useEffect(() => {
+    if (!inflight || !["reading", "analyzing"].includes(inflight.phase)) return;
+    const epoch = generation.current;
+    const tracked = inflight;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.status(rootId, tracked.jobId).then(
+        next => {
+          if (!active || epoch !== generation.current) return;
+          if (next.phase === "ready") {
+            generation.current += 1;
+            adoptJob(next);
+            return;
+          }
+          if (next.phase === "failed" || next.phase === "cancelled") {
+            inflightId.current = null;
+            setInflight(null);
+            if (next.error) setError(normalizeSliceError(next.error));
+            return;
+          }
+          setInflight(next);
+        },
+        e => {
+          if (!active || epoch !== generation.current) return;
+          inflightId.current = null;
+          setInflight(null);
+          noteCommandError(e);
+        },
+      );
+    }, 300);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [api, inflight, rootId]);
 
   useEffect(() => {
     if (!readyId || analysisSessionInvalid) return;
@@ -541,7 +621,7 @@ function SliceSession({
       void edit({ kind: "move", markerId: moved.id, frame: moved.frame });
     }
   }
-  const busy = starting || job?.phase === "reading" || job?.phase === "analyzing";
+  const busy = starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing";
   const mutationDisabled = editing || analysisSessionInvalid || rangeReselectMode;
   const pendingOverlayRange = rangeSelectDrag && view
     ? normalizePendingRange(
@@ -708,7 +788,7 @@ function SliceSession({
       </div>
       {busy && (
         <p role="status">
-          {job?.phase === "analyzing" ? t("slicing.detectingAttacks") : t("slicing.readingSource")}
+          {(inflight ?? job)?.phase === "analyzing" ? t("slicing.detectingAttacks") : t("slicing.readingSource")}
         </p>
       )}
       {analysisRegion !== null && (
@@ -770,14 +850,26 @@ function SliceSession({
           </button>
           <button
             type="button"
-            disabled={!pendingPreviewRange}
+            disabled={
+              !pendingPreviewRange
+              || (
+                !(
+                  inRange(pendingPreviewRange.startFrame, draft.region)
+                  && frame(pendingPreviewRange.endExclusive) <= frame(draft.region.endExclusive)
+                  && frame(pendingPreviewRange.startFrame) >= frame(draft.region.startFrame)
+                )
+                && onRequestPreviewLibraryRange === undefined
+              )
+            }
             onClick={() => void playPendingRange()}
           >
             {t("slicing.playPendingRange")}
           </button>
           <button
             type="button"
-            disabled={busy || editing || !pendingPreviewRange || !pendingDiffersFromAnalysis}
+            disabled={
+              busy || editing || analysisSessionInvalid || !pendingPreviewRange || !pendingDiffersFromAnalysis
+            }
             onClick={() => void reanalyzeWithPendingRange()}
           >
             {t("slicing.reanalyzePendingRange")}
@@ -789,8 +881,8 @@ function SliceSession({
       <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label="Slice waveform"
         onDoubleClick={e => {
           if (mutationDisabled || rangeReselectMode) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          if (rect.width) void edit({ kind: "insert", frame: frameAt((e.clientX - rect.left) / rect.width, view) });
+          const at = frameAtPointer(e.clientX, e.currentTarget, view);
+          if (at !== null) void edit({ kind: "insert", frame: at });
         }}
         onPointerDown={e => {
           if (!rangeReselectMode || editing || analysisSessionInvalid) return;
@@ -804,9 +896,9 @@ function SliceSession({
             return;
           }
           if (!dragRef.current) return;
-          const rect = e.currentTarget.getBoundingClientRect();
-          if (!rect.width) return;
-          const next = { ...dragRef.current, frame: frameAt((e.clientX - rect.left) / rect.width, view) };
+          const at = frameAtPointer(e.clientX, e.currentTarget, view);
+          if (at === null) return;
+          const next = { ...dragRef.current, frame: at };
           dragRef.current = next; setDrag(next);
         }}
         onPointerUp={() => {

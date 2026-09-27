@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frame, frameAt, inRange, position, previewChannels } from "./frames";
+import { frame, frameAt, inRange, pointerRatioInMeetSvg, position, previewChannels } from "./frames";
 
 describe("source PCM coordinates", () => {
   it("keeps adjacent absolute frames exact above the JS safe integer limit", () => {
@@ -22,5 +22,57 @@ describe("source PCM coordinates", () => {
     data.setFloat32(0, NaN, true);
     expect(() => previewChannels(ticket, bytes)).toThrow();
     expect(() => previewChannels({ ...ticket, frameCount: "0" }, bytes)).toThrow();
+  });
+});
+
+const VIEW_W = 640;
+const VIEW_H = 160;
+
+function svgBox(width: number, height: number, left = 0, top = 0): SVGSVGElement {
+  return {
+    getBoundingClientRect: () => ({
+      width,
+      height,
+      left,
+      top,
+      x: left,
+      y: top,
+      right: left + width,
+      bottom: top + height,
+      toJSON: () => ({}),
+    }),
+  } as SVGSVGElement;
+}
+
+function ratio(clientX: number, width: number, height: number): number | null {
+  return pointerRatioInMeetSvg(clientX, svgBox(width, height), VIEW_W, VIEW_H);
+}
+
+describe("pointerRatioInMeetSvg", () => {
+  it("maps the full width when the container matches the 4:1 viewBox", () => {
+    expect(ratio(0, 640, 160)).toBe(0);
+    expect(ratio(320, 640, 160)).toBeCloseTo(0.5);
+    expect(ratio(640, 640, 160)).toBe(1);
+  });
+
+  it("ignores horizontal letterboxing when the container is wider than 4:1", () => {
+    expect(ratio(0, 800, 160)).toBe(0);
+    expect(ratio(80, 800, 160)).toBe(0);
+    expect(ratio(80 + 320, 800, 160)).toBeCloseTo(0.5);
+    expect(ratio(80 + 640, 800, 160)).toBe(1);
+    expect(ratio(800, 800, 160)).toBe(1);
+  });
+
+  it("uses the full width when the container is taller than 4:1", () => {
+    expect(ratio(0, 640, 320)).toBe(0);
+    expect(ratio(640, 640, 320)).toBe(1);
+  });
+
+  it("maps the visible waveform edges onto the view frame range", () => {
+    const view = { startFrame: "1000", endExclusive: "5000" };
+    const left = frameAt(ratio(80, 800, 160) ?? -1, view);
+    const right = frameAt(ratio(80 + 640, 800, 160) ?? -1, view);
+    expect(left).toBe("1000");
+    expect(Number(right)).toBeGreaterThan(4900);
   });
 });
