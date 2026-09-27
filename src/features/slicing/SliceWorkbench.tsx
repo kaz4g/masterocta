@@ -614,7 +614,11 @@ function SliceSession({
     viewport(size, frame(view.startFrame) + size / 2n + direction * (size / 4n || 1n));
   }
   function endDrag() {
-    if (rangeReselectMode) return;
+    if (rangeReselectMode || exporting) {
+      dragRef.current = null;
+      setDrag(null);
+      return;
+    }
     const moved = dragRef.current;
     dragRef.current = null; setDrag(null);
     if (moved && draft?.markers.find(m => m.markerId === moved.id)?.startFrame !== moved.frame) {
@@ -623,6 +627,7 @@ function SliceSession({
   }
   const busy = starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing";
   const mutationDisabled = editing || analysisSessionInvalid || rangeReselectMode;
+  const markerGestureDisabled = mutationDisabled || exporting;
   const pendingOverlayRange = rangeSelectDrag && view
     ? normalizePendingRange(
       frame(rangeSelectDrag.anchor) <= frame(rangeSelectDrag.active)
@@ -880,7 +885,7 @@ function SliceSession({
       <p className="slice-coordinate">Frames [{view.startFrame}, {view.endExclusive}) · {job?.sampleRate} Hz</p>
       <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label="Slice waveform"
         onDoubleClick={e => {
-          if (mutationDisabled || rangeReselectMode) return;
+          if (markerGestureDisabled || rangeReselectMode) return;
           const at = frameAtPointer(e.clientX, e.currentTarget, view);
           if (at !== null) void edit({ kind: "insert", frame: at });
         }}
@@ -891,6 +896,7 @@ function SliceSession({
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={e => {
+          if (exporting) return;
           if (rangeReselectMode && rangeSelectDragRef.current) {
             updateRangeSelect(e.clientX, e.currentTarget);
             return;
@@ -971,11 +977,11 @@ function SliceSession({
           const value = drag?.id === m.markerId ? drag.frame : m.startFrame;
           const x = position(value, view) * WIDTH;
           return <g key={m.markerId} className={`slice-marker ${m.locked ? "is-locked" : ""} ${selected === m.markerId ? "is-selected" : ""}`}
-            role="slider" tabIndex={mutationDisabled ? -1 : 0} aria-label={`Boundary ${m.startFrame}`} aria-valuetext={`Frame ${value}`} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
+            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-label={`Boundary ${m.startFrame}`} aria-valuetext={`Frame ${value}`} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
             onDoubleClick={e => e.stopPropagation()}
-            onPointerDown={e => { if (mutationDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
+            onPointerDown={e => { if (markerGestureDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
             onKeyDown={e => {
-              if (mutationDisabled || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+              if (markerGestureDisabled || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
               e.preventDefault(); setSelected(m.markerId);
               const current = dragRef.current?.id === m.markerId ? dragRef.current.frame : m.startFrame;
               const next = frame(current) + (e.key === "ArrowRight" ? 1n : -1n) * (e.shiftKey ? 10n : 1n);

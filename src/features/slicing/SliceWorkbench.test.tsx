@@ -703,6 +703,61 @@ describe("attack slicing workbench", () => {
     }))).not.toBeInTheDocument();
   });
 
+  it("keeps a live-session export on the confirmed marker when the waveform is pressed", async () => {
+    const api = client();
+    vi.mocked(api.edit).mockResolvedValueOnce({
+      ...empty,
+      revision: 1,
+      canUndo: true,
+      markers: [
+        {
+          markerId: "candidate-1",
+          startFrame: "956",
+          endExclusive: "2000",
+          manual: false,
+          locked: false,
+        },
+        {
+          markerId: "candidate-2",
+          startFrame: "2000",
+          endExclusive: "44100",
+          manual: false,
+          locked: false,
+        },
+      ],
+    });
+    let finish!: (value: {
+      derivedAssetId: string;
+      sourceUnchanged: boolean;
+      startFrame: string;
+      endExclusive: string;
+    }) => void;
+    vi.mocked(api.exportDerived).mockReturnValue(new Promise((resolve) => {
+      finish = resolve;
+    }));
+    await prepareDraftWithSelection(api);
+    const confirmedRange = tJa("slicing.sliceExportRangeFrames", { start: "956", end: "2000" });
+    const otherRange = tJa("slicing.sliceExportRangeFrames", { start: "2000", end: "44100" });
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    const otherBoundary = screen.getByRole("slider", { name: "Boundary 2000" });
+    expect(otherBoundary).toHaveAttribute("tabindex", "-1");
+    fireEvent.pointerDown(otherBoundary);
+    fireEvent.keyDown(otherBoundary, { key: "ArrowRight" });
+    expect(screen.getByText(confirmedRange)).toBeInTheDocument();
+    expect(screen.queryByText(otherRange)).not.toBeInTheDocument();
+    finish({
+      derivedAssetId: "asset-export-live",
+      sourceUnchanged: false,
+      startFrame: "956",
+      endExclusive: "2000",
+    });
+    expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-live");
+    expect(screen.getByText(confirmedRange)).toBeInTheDocument();
+    expect(screen.queryByText(otherRange)).not.toBeInTheDocument();
+    expect(api.edit).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed on a stale persisted draft after the analysis session expires", async () => {
     const api = client();
     await prepareDraftWithSelection(api);
