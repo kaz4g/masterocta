@@ -94,7 +94,7 @@ function SliceSession({
     endExclusive: string;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<SliceExportResult | null>(null);
+  const [exportResult, setExportResult] = useState<(SliceExportResult & { markerId: string }) | null>(null);
   const alive = useRef(true);
   const generation = useRef(0);
   const jobId = useRef<string | null>(null);
@@ -680,17 +680,18 @@ function SliceSession({
       return;
     }
     const epoch = generation.current;
+    const exportedMarkerId = exportReview.markerId;
     setExporting(true);
     setError(null);
     try {
       const result = await api.exportDerived(
         rootId,
         fileInstanceId,
-        exportReview.markerId,
+        exportedMarkerId,
         exportReview.expectedRevision,
       );
       if (alive.current && epoch === generation.current) {
-        setExportResult(result);
+        setExportResult({ ...result, markerId: exportedMarkerId });
         setExportReview(null);
         onDerivedExportApplied?.();
       }
@@ -1017,7 +1018,7 @@ function SliceSession({
         <label>Insert at frame<input aria-label="Insert at frame" inputMode="numeric" value={insertFrame} onChange={e => setInsertFrame(e.target.value)} disabled={mutationDisabled} /></label><button disabled={mutationDisabled}>Insert boundary</button>
       </form>
       <div className="slice-table"><table><thead><tr><th>Start frame</th><th>End (exclusive)</th><th>Fixed</th><th>Actions</th></tr></thead><tbody>
-        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
+        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing || exporting} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
       </tbody></table></div>
       {draft.markers.length > PAGE && <div className="slice-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous boundaries</button><span>Page {page + 1} / {Math.ceil(draft.markers.length / PAGE)}</span><button disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>Next boundaries</button></div>}
       {selectedMarker && draft.revision > 0 ? (
@@ -1055,7 +1056,7 @@ function SliceSession({
               </button>
             </div>
           )}
-          {exportResult ? (
+          {exportResult && exportResult.markerId === selectedMarker.markerId ? (
             <p role="status" data-testid="slice-export-success">
               {t("slicing.exportDerivedSuccess")}{" "}
               {t("slicing.exportDerivedSuccessId", { derivedAssetId: exportResult.derivedAssetId })}
@@ -1119,7 +1120,7 @@ function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit 
     }
   }
   return <tr className={selected ? "is-selected" : ""}>
-    <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={onSelect} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
+    <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
     <td>{marker.endExclusive}</td>
     <td><input aria-label={`Fixed ${marker.startFrame}`} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
     <td><button disabled={selectDisabled} onClick={onSelect}>Select</button><button disabled={disabled} aria-label={`Delete boundary ${marker.startFrame}`} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>Delete</button></td>
