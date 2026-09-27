@@ -609,6 +609,51 @@ describe("attack slicing workbench", () => {
     expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-1");
   });
 
+  it("keeps persisted-draft export available after the analysis session expires", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api);
+    vi.mocked(api.edit).mockRejectedValueOnce({
+      code: "ANALYSIS_EXPIRED",
+      message: "the analysis session has expired",
+    });
+    fireEvent.click(screen.getByLabelText("Fixed 956"));
+    expect(await screen.findByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete boundary 956" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: tJa("slicing.applyCandidates") })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(api.exportDerived).toHaveBeenCalledWith(
+      "root-1",
+      "file-1",
+      "candidate-1",
+      1,
+    ));
+    expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-1");
+    expect(api.edit).toHaveBeenCalledTimes(2);
+    expect(api.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed on a stale persisted draft after the analysis session expires", async () => {
+    const api = client();
+    await prepareDraftWithSelection(api);
+    vi.mocked(api.edit).mockRejectedValueOnce({
+      code: "ANALYSIS_NOT_FOUND",
+      message: "analysis or preview is unavailable",
+    });
+    vi.mocked(api.exportDerived).mockRejectedValueOnce({
+      code: "STALE_DRAFT",
+      message: "slice draft revision mismatch",
+    });
+    fireEvent.click(screen.getByLabelText("Fixed 956"));
+    expect(await screen.findByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(tJa("slicing.error.STALE_DRAFT"));
+    expect(screen.queryByTestId("slice-export-success")).not.toBeInTheDocument();
+    expect(screen.getByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
+  });
+
   it("disables export while a request is pending", async () => {
     const api = client();
     let finish!: () => void;
