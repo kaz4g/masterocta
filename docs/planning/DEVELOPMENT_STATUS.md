@@ -1,9 +1,9 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
-- Updated: 2026-09-28 (next Native run is product `main`; historical stop stays NOT_RUN)
-- Product baseline / next Native session 2 execution baseline: GitHub `origin/main` **`eb40ffb0f582917e414b8c8e86d134f91d347aae`** (includes #166 Home, #165, #164 `7d15b15`, …)
-- Partial automated attempt: **`af4097a`** (A01/B01 only — not M7 exit). Historical session 2 stop: **`55eadcc`** — **NOT_RUN**, not backfilled
+- Updated: 2026-09-28 (final Native session 2 attempt @ `eb40ffb`; GUI NOT_RUN)
+- Product baseline: GitHub `origin/main` **`eb40ffb0f582917e414b8c8e86d134f91d347aae`** (includes #166 Home, #165, #164 `7d15b15`, …)
+- Final session 2 execution @ **`eb40ffb`**: prep/launch + **A01** / **B01** **PASS**; GUI **NOT_RUN**. Historical: **`af4097a`**, **`55eadcc`** — not backfilled to PASS
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -27,8 +27,8 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 Product `main` is **`eb40ffb`** (#166 Home + prior merges). Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS**: **`af4097a`** partial (**A01** / **B01** **PASS**; GUI **NOT_RUN**).
-Remaining rows must **PASS** on **`eb40ffb`** (or newer reviewed `main`). **M7** **IN_PROGRESS**.
+**STOP_WITH_FINDINGS** on execution baseline **`eb40ffb`** (2026-09-28 final session: **A01** / **B01** **PASS**; **A02–A15** / **B02–B03** operator **NOT_RUN**).
+**M7** **IN_PROGRESS** until every A/B row is **PASS** on `eb40ffb` (or newer reviewed `main` recorded in that doc).
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
@@ -52,7 +52,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | Integrated Native session 2 partial @ `af4097a`; next GUI run on product `main` `eb40ffb` (#166 Home). M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **IN_PROGRESS** | Integrated Native session 2 **STOP_WITH_FINDINGS** @ `eb40ffb` (A01/B01 only); operator GUI **NOT_RUN**. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -180,8 +180,8 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on product `main` **`eb40ffb`**
-(remaining GUI; includes #166 Home. Partial `af4097a` attempt is not completion evidence.)
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** — operator GUI on product `main` **`eb40ffb`**
+(**A02–A15** / **B02–B03**; #166 Home path). Final automated session recorded **A01** / **B01** only; **`af4097a`** is historical.
 
 **Reason:** Execute A01–A15 and B01–B03 in
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),

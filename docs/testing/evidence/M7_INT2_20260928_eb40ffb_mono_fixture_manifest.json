@@ -1,0 +1,11 @@
+{
+  "fixtureRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-J2YHEs",
+  "ownedRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-J2YHEs",
+  "generator": "generate-ui-workspace-native-fixture.mjs",
+  "productExecutionSha": "eb40ffb0f582917e414b8c8e86d134f91d347aae",
+  "isolatedHome": "/tmp/masterocta-ui-native-eb40ffb0f582-20260928T043652Z",
+  "rangeWav": {
+    "pathRelative": "SET/AUDIO/RANGE.wav",
+    "sha256": "43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1"
+  }
+}
