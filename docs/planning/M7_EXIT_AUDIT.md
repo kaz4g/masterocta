@@ -11,13 +11,13 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 
 ## 1. Audit identity
 
-**Reconciled for M7 finalization (2026-09-28):** product `origin/main` and the **next**
-Native session 2 execution baseline are
+**Reconciled for M7 finalization (2026-09-28):** product `origin/main` is
 `eb40ffb0f582917e414b8c8e86d134f91d347aae` (includes #166 Home / RootRegistry entry,
-#165, #164 `7d15b15`, …). Partial prep @ **`af4097a`** (**A01** / **B01** only) is not
-M7 exit evidence. Session 2 **STOP_WITH_FINDINGS** until full Group A/B **PASS** on
-`eb40ffb` (or newer reviewed `main` recorded in the session 2 doc).
-Integrated Native **session 2**:
+#165, #164 `7d15b15`, …). Final automated session 2 attempt on that SHA recorded
+prep/launch + **A01** / **B01** **PASS**; operator GUI **NOT_RUN**. Partial **`af4097a`**
+and historical **`55eadcc`** are not M7 exit evidence. Session 2 **STOP_WITH_FINDINGS**
+until full Group A/B **PASS** on `eb40ffb` (or newer reviewed `main` recorded in the
+session 2 doc). Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
 **STOP_WITH_FINDINGS**. Historical session 1
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)

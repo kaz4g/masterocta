@@ -334,16 +334,16 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **M7:** **IN_PROGRESS**。product `main` **`eb40ffb`**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
-（2026-09-28: **`af4097a`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
-session 1 と基準 `b2c7765` は実行対象ではない。
-M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit audit。
+（2026-09-28 最終セッション: 実行 baseline **`eb40ffb`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
+**`af4097a`** / **`55eadcc`** は歴史（PASS に書き換えない）。session 1 と基準 `b2c7765` は実行対象ではない。
+M7-07/08 **DEFERRED**（M11）。**次:** operator が **A02–A15** / **B02–B03** を Native GUI で実行 → docs 更新。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
 **次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
-（[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の A01–A15 / B01–B03。
-次の実行は product `main` **`eb40ffb`**（#166 Home 含む。`af4097a` 部分試行は完了扱いにしない）。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
+（[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の残行 **A02–A15** / **B02–B03**。
+実行 baseline **`eb40ffb`**（#166 Home）。最終 automated セッションは **A01** / **B01** のみ記録。session 1・#153/#154 の **NOT_RUN** は歴史として残す）。
 
 **履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
 Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
