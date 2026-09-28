@@ -2,7 +2,7 @@
 
 **Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3`
 **Recorded:** 2026-09-28
-**Overall result:** **STOP_WITH_FINDINGS** — operator GUI **NOT_RUN** (automated prep/launch + **A01** / **B01** only)
+**Overall result:** **STOP_WITH_FINDINGS** — operator matrix **NOT_RUN** (§3 automated harness only; no operator-session PASS rows)
 **M7 milestone:** **IN_PROGRESS** (not COMPLETE)
 
 Canonical execution record for product **`04725cb3a1942716e11f1b90a6387733f9302da4`** (PR #170 merge).
@@ -83,55 +83,71 @@ REAL_HOME="${REAL_HOME:-$HOME}" \
   .worktrees/m7-native-final-04725cb3
 ```
 
-A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: isolated `catalog.sqlite3` FD only; no real-home catalog FD on that PID.
+§3 automated launch recorded **A01** on PID **46845** (child `HOME` = isolated HOME above; isolated `catalog.sqlite3` FD only). That observation is **harness / prep evidence only** — see §4 exit rule.
 
 ## 4. Operator matrix
 
+**M7 exit rule:** Integrated acceptance requires **one operator session** on a **fresh isolated `HOME`**, with **every** row **A01–A15** and **B01–B03** observed **PASS** in that same session ([`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A). The automated prep in §3 recorded **A01** / **B01** for harness debugging only; those rows **do not** carry forward to a later GUI continuation. The next operator run must **re-execute the full matrix** (including a new pre-register **A01** `lsof` catalog-binding check). Do **not** merge §3 automated **PASS** rows with a partial GUI run or mark session 3 complete using catalog binding from a different process.
+
 | ID | Required observation | Result | Evidence |
 | --- | --- | --- | --- |
-| A01 | Isolated catalog binding | **PASS** | PID **46845**; `lsof`: isolated `.../MasterOCTa/catalog.sqlite3` only; real-home catalog: no handle |
-| A02 | Register mono fixture, select `RANGE.wav` | **NOT_RUN** | requires operator GUI |
+| A01 | Isolated catalog binding **before register** | **NOT_RUN** (harness only) | §3 PID **46845** is prep evidence, not operator-session PASS |
+| A02 | Register mono fixture, select `RANGE.wav` (#166 Home entry) | **NOT_RUN** | requires operator GUI |
 | A03 | Waveform resize/zoom/pan/range Play/Stop (+ ja Slice/Preview functional) | **NOT_RUN** | — |
-| A04 | Draft A/B + failure/cancel safety | **NOT_RUN** | success path alone is not PASS |
-| A05 | Selected slice export + #164 in-flight lock | **NOT_RUN** | — |
-| A06 | Independent published WAV verification | **NOT_RUN** | — |
-| A07 | Published inventory hygiene | **NOT_RUN** | — |
+| A04 | Range A → Analyze → Apply → Draft A. Record region, revision, markers. Pending Range B, play pending, explicit re-analyze → Draft B. Separately fail or cancel a re-analysis and assert Draft A region, revision, and markers are unchanged | **NOT_RUN** | Success path alone is not PASS |
+| A05 | Selected slice export: review → confirm → success. Record selected source-frame interval and opaque child asset id. Marker lock during export (#164) | **NOT_RUN** | Success UI alone is not PASS |
+| A06 | Published WAV under isolated `derived-audio/published/v1/`. Independently verify **sample rate**, **channels**, **frame count**, and **SHA256** against the **selected source interval** from A05 | **NOT_RUN** | Any readable PCM file is not PASS |
+| A07 | No `.part`/symlink/extra published/fixture derived | **NOT_RUN** | — |
 | A08 | Original RANGE SHA unchanged | **NOT_RUN** | PRE SHA captured |
-| A09 | Persisted lineage in Inspector Info | **NOT_RUN** | — |
-| A10 | UI identity boundary | **NOT_RUN** | — |
-| A11 | Idempotent retry | **NOT_RUN** | — |
-| A12 | Stale draft fail-closed (no-write) | **NOT_RUN** | — |
-| A13 | Post-quit `slice_drafts` persistence | **NOT_RUN** | — |
-| A14 | Relaunch + restore after re-register | **NOT_RUN** | — |
-| A15 | Final mono fixture manifest vs PRE | **NOT_RUN** | PRE full-root manifest on file |
-| B01 | Stereo fixture distinct L/R + SHA | **PASS** | session 3 generator manifest; SHA `219088198bd411f7def4db2861dc7260cce5c76fccf2de888ef2c2144e25065c` |
-| B02 | Stereo Native lanes (register stereo root) | **NOT_RUN** | exact stereo `fixtureRoot` above |
-| B03 | Stereo POST manifest vs PRE | **NOT_RUN** | — |
+| A09 | Re-select `RANGE.wav`; SLICE_EXPORT child in Inspector Info (kind, range, processor, createdAt, opaque child id) | **NOT_RUN** | Toast alone is not PASS |
+| A10 | No raw hash/path/SQLite id in UI | **NOT_RUN** | — |
+| A11 | Retry the identical slice. Same child id and output SHA256. Published inventory and per-source lineage count unchanged | **NOT_RUN** | A second file or lineage row is FAIL |
+| A12 | **Advance** the saved draft revision, then attempt export confirm with the **stale** revision. Expect reject / no-write. **Published file count and lineage count unchanged** vs pre-attempt | **NOT_RUN** | A modal that only blocks edits, without a real revision advance and inventory proof, is not PASS |
+| A13 | Post-quit `slice_drafts` persistence (read-only SQL) | **NOT_RUN** | — |
+| A14 | Quit. Relaunch the **same** isolated HOME. **Second catalog-binding check (`lsof` — isolated catalog only; not operator real-home catalog) before re-register.** Then read-only fixture re-register, rescan, reselect `RANGE.wav`. Compare restored draft and the same child | **NOT_RUN** | Relaunch alone is not PASS; re-register **before** catalog re-check is FAIL |
+| A15 | Final fixture-root manifest vs PRE (full generator inventory — all WAVs + `project.work`; not `RANGE.wav` alone) | **NOT_RUN** | PRE: §2 / `M7_INT3_*_mono_fixture_manifest.json` |
+| B01 | Stereo fixture distinct L/R + SHA | **NOT_RUN** (harness only) | §2 generator manifest is prep evidence; re-run in operator session if fixtures regenerated |
+| B02 | Register stereo `fixtureRoot`; L/R lanes independent across zoom/pan/range | **NOT_RUN** | exact stereo `fixtureRoot` §2 |
+| B03 | Stereo fixture SHA/manifest unchanged after observation | **NOT_RUN** | — |
 
-**Group A:** **NOT_RUN** (A01 **PASS**; A02–A15 **NOT_RUN**). **Group B:** **NOT_RUN** (B01 **PASS**; B02–B03 **NOT_RUN**).
+**Group A:** **NOT_RUN** (all rows; §3 harness does not count). **Group B:** **NOT_RUN** (all rows; §3 harness does not count).
+
+### 4a. Automated prep @ `04725cb3` (2026-09-28 — harness only)
+
+| ID | Harness observation | Notes |
+| --- | --- | --- |
+| A01 | catalog binding observed | PID **46845**; not operator-session PASS |
+| B01 | generator manifest | distinct L/R; SHA `219088198bd411f7def4db2861dc7260cce5c76fccf2de888ef2c2144e25065c` |
 
 ## 5. Operator handoff (next steps)
 
-Use the **same** isolated HOME and execution worktree. If the Native window is not open, re-run the launch command in §3.
+**Do not** resume at A02 on the isolated HOME or catalog from §3. Start a **new** single operator session:
 
-1. **A02:** 「ワークスペースを開く」→ register **mono** `fixtureRoot` (read-only) → SET → オーディオプール → `RANGE.wav`. Confirm Inspector, Preview, Home / RootRegistry (#166).
-2. **A03–A05:** Slice workspace on `RANGE.wav` per matrix; record export marker interval and opaque child asset id for A06.
-3. **Agent checkpoint:** notify when A05 export succeeds → agent collects A06–A08 filesystem evidence.
-4. **A09–A12:** lineage UI, retry, stale export; agent verifies inventory/lineage counts for A11–A12.
-5. **A13–A14:** quit fully; agent reads `slice_drafts` read-only; relaunch same isolated HOME; re-register mono root, rescan, reselect `RANGE.wav`.
-6. **A15:** agent POST mono full-root manifest vs PRE.
-7. **B02–B03:** register **stereo** `fixtureRoot` (separate root); select `SET/AUDIO/STEREO_RANGE.wav`; zoom/pan/range; agent POST stereo manifest.
+1. **Fresh isolated `HOME`** (new `/tmp/masterocta-ui-native-04725cb3-<timestamp>`; do not reuse §2 path).
+2. Regenerate mono/stereo fixtures; commit updated **full** manifests under `docs/testing/evidence/` if paths change.
+3. Launch via §3 command shape on worktree @ **`04725cb3`**.
+4. In **one** session, observe **PASS** on **A01–A15** and **B01–B03** in matrix order ( **A01** `lsof` before any register).
+
+Sequence (same session):
+
+1. **A01:** pre-register catalog binding.
+2. **A02–A05:** mono register → `RANGE.wav` → slice/export; record interval + child id for **A06**.
+3. **Agent checkpoint:** after A05 success → agent verifies **A06** rate/channels/frames/SHA256 vs interval, **A07–A08**.
+4. **A09–A12:** lineage UI, idempotent retry (**A11** counts), stale revision advance + no-write proof (**A12**).
+5. **A13–A14:** quit → agent `slice_drafts` SQL; relaunch → **A01-class binding before re-register** → re-register/rescan/reselect → compare draft/child.
+6. **A15:** POST mono full-root manifest vs PRE.
+7. **B01–B03:** stereo manifest check, register stereo root, lanes, POST manifest.
 
 ## 6. Findings (STOP)
 
 ### F-INT3-1 — Operator GUI matrix not completed
 
-**Matrix row:** A02–A15, B02–B03
+**Matrix row:** A01–A15, B01–B03 (operator session)
 **Execution SHA:** `04725cb3a1942716e11f1b90a6387733f9302da4`
-**Steps:** Automated session completed preflight, fixtures, PRE evidence, Native compile/launch, **A01**, **B01**.
-**Expected:** Human operator completes remaining rows in one Native session on this SHA.
-**Observed:** GUI rows **NOT_RUN**; no export, lineage, stale, quit/relaunch, or stereo lane observation recorded.
-**Evidence:** this document §4; PRE manifests under `docs/testing/evidence/M7_INT3_*`.
+**Steps:** Automated session completed preflight, fixtures, PRE evidence, Native compile/launch; harness **A01** / **B01** in §4a only.
+**Expected:** One new operator session on **fresh isolated `HOME`** with **all** rows **A01–A15** / **B01–B03** **PASS** together (re-run **A01** before register; do not merge §4a harness with a partial GUI run).
+**Observed:** Operator matrix **NOT_RUN**; no integrated export, lineage, stale, quit/relaunch, or stereo lane observation.
+**Evidence:** this document §4–§5; PRE manifests under `docs/testing/evidence/M7_INT3_*`.
 **Impact:** Native overall **STOP_WITH_FINDINGS**; M7 remains **IN_PROGRESS**. Do not patch product mid-session.
 
 ## 7. Product code
