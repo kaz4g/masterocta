@@ -20,7 +20,6 @@ import {
   openSourcesDrawer,
   showInspectorFromContextBar,
   showListFromContextBar,
-  showListFromStatusBar,
   syncViewportLayout,
 } from "./narrowWorkspace";
 
@@ -600,7 +599,7 @@ test.describe("inspector layout stability", () => {
     await expectVisiblePaneUsesBodyWidth(page, "inspector");
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoWorkspaceHorizontalOverflow(page);
-    await showListFromStatusBar(page, "ja");
+    await showListFromContextBar(page, "ja");
     await expectVisiblePaneUsesBodyWidth(page, "list");
 
     await attachLayoutScreenshot(page, "after-800-narrow-full-width.png");

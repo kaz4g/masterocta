@@ -278,11 +278,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'operations.pinnedTarget': '操作対象',
   'operations.preparedHint': 'Prepared のリネームがあります。操作から続行してください。',
   'workspace.showInspector': 'インスペクターを表示',
-  'workspace.showInspectorStatusAria':
-    '一覧表示中 — ステータスバーからインスペクターを開く',
   'workspace.showList': 'サンプル一覧を表示',
-  'workspace.showListStatusAria':
-    'インスペクター表示中 — ステータスバーからサンプル一覧を開く',
   'workspace.sourcesDrawerCloseAria': 'カタログナビを閉じる',
   'workspace.toggleNav': 'カタログナビの表示切替',
   'workspace.splitResizeAria': 'ペイン幅の調整',

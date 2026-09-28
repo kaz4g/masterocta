@@ -272,11 +272,7 @@ export const enMessages = {
   'operations.pinnedTarget': 'Operation target',
   'operations.preparedHint': 'A prepared rename exists. Use Operations to continue.',
   'workspace.showInspector': 'Show inspector',
-  'workspace.showInspectorStatusAria':
-    'Show inspector from status bar while the sample list is full screen',
   'workspace.showList': 'Show sample list',
-  'workspace.showListStatusAria':
-    'Showing inspector — open sample list from the status bar',
   'workspace.sourcesDrawerCloseAria': 'Close catalog navigation',
   'workspace.toggleNav': 'Toggle catalog navigation',
   'workspace.splitResizeAria': 'Resize panes',

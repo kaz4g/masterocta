@@ -192,7 +192,7 @@ test.describe("Rename operator workflow", () => {
     await expect(page.getByText("PROJECT_A")).toBeVisible({ timeout: 10000 });
     await page.getByRole("button", { name: uiText("ja", "sources.editMode") }).click();
     await expectEditEnabledInContextBar(page, "ja");
-    await page.getByTestId("app-shell-context").getByRole("button", {
+    await page.locator(".mo-app-shell__sources").getByRole("button", {
       name: uiText("ja", "operations.openCloneAria"),
     }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Create managed disposable clone" }).click({ timeout: 15000 });

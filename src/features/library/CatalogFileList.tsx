@@ -1,7 +1,6 @@
 import type { LibraryAudioFile } from "../../api";
 import { Button } from "../../design-system";
 import { useTranslate } from "../../i18n";
-import { SampleOperationsMenu } from "../changes/SampleOperationsMenu";
 import {
   fileExtensionFromName,
   formatCatalogBytes,
@@ -27,11 +26,6 @@ export interface CatalogFileListProps {
   hideSearch?: boolean;
   catalogRefreshing?: boolean;
   catalogError?: string | null;
-  onSampleRename?: () => void;
-  onSampleCopy?: () => void;
-  sampleRenameDisabled?: boolean;
-  sampleCopyDisabled?: boolean;
-  sampleOpsBusy?: boolean;
 }
 
 export function CatalogFileList({
@@ -47,11 +41,6 @@ export function CatalogFileList({
   hideSearch = false,
   catalogRefreshing = false,
   catalogError = null,
-  onSampleRename,
-  onSampleCopy,
-  sampleRenameDisabled = false,
-  sampleCopyDisabled = false,
-  sampleOpsBusy = false,
 }: CatalogFileListProps) {
   const t = useTranslate();
 
@@ -115,15 +104,6 @@ export function CatalogFileList({
         <p className="catalog-library-list-offpage" role="status">
           {t("library.selectionOffPage")}
         </p>
-      )}
-      {selectedFileInstanceId !== null && onSampleRename !== undefined && onSampleCopy !== undefined && (
-        <SampleOperationsMenu
-          renameDisabled={sampleRenameDisabled}
-          copyDisabled={sampleCopyDisabled}
-          renameBusy={sampleOpsBusy}
-          onRename={onSampleRename}
-          onCopy={onSampleCopy}
-        />
       )}
       <div
         className="catalog-file-table"

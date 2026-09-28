@@ -42,22 +42,12 @@ export interface CatalogWorkspaceMainProps {
   totalFiles: number;
   catalogRefreshing?: boolean;
   catalogError?: string | null;
-  onSampleRename?: () => void;
-  onSampleCopy?: () => void;
-  sampleRenameDisabled?: boolean;
-  sampleCopyDisabled?: boolean;
-  sampleOpsBusy?: boolean;
 }
 
 export function CatalogWorkspaceMain({
   totalFiles,
   catalogRefreshing = false,
   catalogError = null,
-  onSampleRename,
-  onSampleCopy,
-  sampleRenameDisabled = false,
-  sampleCopyDisabled = false,
-  sampleOpsBusy = false,
 }: CatalogWorkspaceMainProps) {
   const browse = useCatalogBrowseContext();
   const t = useTranslate();
@@ -75,11 +65,6 @@ export function CatalogWorkspaceMain({
       hideSearch
       catalogRefreshing={catalogRefreshing}
       catalogError={catalogError}
-      onSampleRename={onSampleRename}
-      onSampleCopy={onSampleCopy}
-      sampleRenameDisabled={sampleRenameDisabled}
-      sampleCopyDisabled={sampleCopyDisabled}
-      sampleOpsBusy={sampleOpsBusy}
     />
   );
 

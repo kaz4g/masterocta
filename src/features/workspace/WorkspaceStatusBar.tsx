@@ -15,10 +15,6 @@ export interface WorkspaceStatusBarProps {
   recovery: ChangeRecoveryStatus | null;
   renameRecovery: RenameRecoveryStatus | null;
   onOpenOperations?: () => void;
-  onShowInspector?: () => void;
-  inspectorHidden?: boolean;
-  onShowList?: () => void;
-  listHidden?: boolean;
 }
 
 function statusLabel(kind: OperationsStatusKind, t: ReturnType<typeof useTranslate>): string | null {
@@ -44,10 +40,6 @@ export function WorkspaceStatusBar({
   recovery,
   renameRecovery,
   onOpenOperations,
-  onShowInspector,
-  inspectorHidden = false,
-  onShowList,
-  listHidden = false,
 }: WorkspaceStatusBarProps) {
   const t = useTranslate();
   const operationsStatus = deriveOperationsStatus({
@@ -94,24 +86,6 @@ export function WorkspaceStatusBar({
             onClick={onOpenOperations}
           >
             {t("workspace.openOperations")}
-          </Button>
-        )}
-        {inspectorHidden && onShowInspector !== undefined && (
-          <Button
-            variant="secondary"
-            aria-label={t("workspace.showInspectorStatusAria")}
-            onClick={onShowInspector}
-          >
-            {t("workspace.showInspector")}
-          </Button>
-        )}
-        {listHidden && onShowList !== undefined && (
-          <Button
-            variant="secondary"
-            aria-label={t("workspace.showListStatusAria")}
-            onClick={onShowList}
-          >
-            {t("workspace.showList")}
           </Button>
         )}
       </div>
