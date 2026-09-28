@@ -59,6 +59,60 @@ h1 {
   border-bottom: 1px solid var(--mo-border);
 }
 
+/* Home workspace vs legacy project management */
+.home-workspace-section,
+.home-legacy-section {
+  border-bottom: 1px solid var(--mo-border);
+}
+
+.home-section-header {
+  padding: 1.25rem 2rem 0.75rem;
+  background-color: var(--mo-surface-1);
+}
+
+.home-section-heading {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--mo-text);
+}
+
+.home-section-lede {
+  margin: 0.5rem 0 0;
+  max-width: 52rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--mo-text-muted, var(--mo-text));
+  opacity: 0.88;
+}
+
+.home-workspace-section .home-section-header {
+  border-bottom: 1px solid var(--mo-border);
+}
+
+.home-legacy-section__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 2rem 1rem;
+  background-color: var(--mo-surface-1);
+  border-bottom: 1px solid var(--mo-border);
+}
+
+.home-legacy-section__toolbar .header-search-container {
+  flex: 1 1 12rem;
+  max-width: 28rem;
+}
+
+.home-legacy-section .scan-section.home-legacy-section__scan {
+  justify-content: flex-start;
+  border-bottom: none;
+  padding-bottom: 0.5rem;
+}
+
 /* Scan Section */
 .scan-section {
   display: flex;
@@ -1952,6 +2006,12 @@ h1 {
 
   .scan-section {
     padding: 0.75rem;
+  }
+
+  .home-section-header,
+  .home-legacy-section__toolbar {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
   }
 
   .workspace-top-bar__search {

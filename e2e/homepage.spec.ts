@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test'
+import { uiText } from './i18n'
+
+const locale = 'ja' as const
 
 test.describe('HomePage', () => {
   test.beforeEach(async ({ page }) => {
@@ -66,7 +69,9 @@ test.describe('HomePage', () => {
   })
 
   test('has refresh button', async ({ page }) => {
-    const refreshButton = page.locator('button[title="Refresh projects list"]')
+    const refreshButton = page.locator(
+      `button[title="${uiText(locale, 'home.refreshProjectsTitle')}"]`,
+    )
     await expect(refreshButton).toBeVisible()
   })
 
@@ -117,7 +122,7 @@ test.describe('HomePage', () => {
     await page.reload()
     await page.getByRole('button', { name: /Scan/i }).first().click()
 
-    const search = page.getByLabel('Search projects')
+    const search = page.getByLabel(uiText(locale, 'home.projectSearchAria'))
     await expect(search).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('PadSet')).toBeVisible()
 
@@ -136,7 +141,7 @@ test.describe('HomePage', () => {
   test('Ctrl+F focuses the project search box', async ({ page }) => {
     // Wait for the input to exist: pressing straight after goto() races the mount that
     // installs the keydown listener, and the press is silently lost.
-    const search = page.getByLabel('Search projects')
+    const search = page.getByLabel(uiText(locale, 'home.projectSearchAria'))
     await expect(search).toBeVisible()
 
     await page.keyboard.press('Control+f')

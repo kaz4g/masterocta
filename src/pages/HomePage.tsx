@@ -42,6 +42,24 @@ import type {
 import "../App.css";
 
 const HOMEPAGE_SCROLL_KEY = 'otm.homepage.scrollY';
+const HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY = 'otm.homepage.legacyScrollOffset';
+
+function readLegacyScrollOffset(): number {
+  const legacy = document.querySelector('.home-legacy-section');
+  if (!(legacy instanceof HTMLElement)) return window.scrollY;
+  return window.scrollY - legacy.offsetTop;
+}
+
+function applyHomeScrollRestore() {
+  const legacyOffset = Number(sessionStorage.getItem(HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY));
+  const legacy = document.querySelector('.home-legacy-section');
+  if (legacy instanceof HTMLElement && Number.isFinite(legacyOffset) && legacyOffset > 0) {
+    window.scrollTo(0, legacy.offsetTop + legacyOffset);
+    return;
+  }
+  const saved = Number(sessionStorage.getItem(HOMEPAGE_SCROLL_KEY)) || 0;
+  if (saved > 0) window.scrollTo(0, saved);
+}
 
 // Natural sort comparator: "Project_2" < "Project_10" (not lexicographic)
 function naturalCompare(a: string, b: string): number {
@@ -149,6 +167,13 @@ export function HomePage() {
   // still-mounted listener and clobber the just-saved scroll position with 0.
   const navigatingAwayRef = useRef(false);
   const goTo = useCallback((path: string) => {
+    const legacyOffset = readLegacyScrollOffset();
+    const priorLegacyOffset = Number(sessionStorage.getItem(HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY)) || 0;
+    sessionStorage.setItem(HOMEPAGE_SCROLL_KEY, String(window.scrollY));
+    sessionStorage.setItem(
+      HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY,
+      String(Math.max(legacyOffset, priorLegacyOffset)),
+    );
     navigatingAwayRef.current = true;
     startTransition(() => { navigate(path); });
   }, [navigate, startTransition]);
@@ -270,24 +295,24 @@ export function HomePage() {
     const handleScroll = () => {
       if (navigatingAwayRef.current) return;
       sessionStorage.setItem(HOMEPAGE_SCROLL_KEY, String(window.scrollY));
+      sessionStorage.setItem(HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY, String(readLegacyScrollOffset()));
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
   useLayoutEffect(() => {
+    const legacyOffset = Number(sessionStorage.getItem(HOMEPAGE_LEGACY_SCROLL_OFFSET_KEY));
     const saved = Number(sessionStorage.getItem(HOMEPAGE_SCROLL_KEY)) || 0;
-    if (saved <= 0) return;
-    window.scrollTo(0, saved);
-    // Per-project/per-set async content (health badges, etc.) can still grow the
-    // page a frame or two after this first paint - reapply a couple more times
-    // so the restore isn't undone by that, without fighting a manual scroll for
-    // any longer than that (no open-ended loop/timer).
+    if ((!Number.isFinite(legacyOffset) || legacyOffset <= 0) && saved <= 0) return;
+    applyHomeScrollRestore();
+    // Workspace chrome and per-project async content can change page height after
+    // the first paint - reapply briefly so restore is not clamped to a short page.
     const raf1 = requestAnimationFrame(() => {
-      window.scrollTo(0, saved);
-      requestAnimationFrame(() => window.scrollTo(0, saved));
+      applyHomeScrollRestore();
+      requestAnimationFrame(applyHomeScrollRestore);
     });
     return () => cancelAnimationFrame(raf1);
-  }, []);
+  }, [hasScanned, locations.length, standaloneProjects.length]);
 
   // Helper to sort projects within a location's sets
   function sortProjectsInLocations(locations: OctatrackLocation[]): OctatrackLocation[] {
@@ -467,12 +492,54 @@ export function HomePage() {
           <span className="header-path-info">{PRODUCT_TAGLINE}</span>
         </div>
         <div className="project-header__tools">
+          <LanguageSwitcher />
+          <ThemeSwitcher />
+          <Version />
+        </div>
+      </div>
+
+      <section className="home-workspace-section" aria-labelledby="home-workspace-heading">
+        <header className="home-section-header">
+          <h2 id="home-workspace-heading" className="home-section-heading">
+            {t("home.workspaceSectionTitle")}
+          </h2>
+          <p className="home-section-lede">{t("home.workspaceSectionLede")}</p>
+        </header>
+        <RootRegistryPanel />
+      </section>
+
+      <section className="home-legacy-section" aria-labelledby="home-legacy-heading">
+        <header className="home-section-header">
+          <h2 id="home-legacy-heading" className="home-section-heading">
+            {t("home.projectManagementSectionTitle")}
+          </h2>
+          <p className="home-section-lede">{t("home.projectManagementSectionLede")}</p>
+        </header>
+
+        <div className="scan-section home-legacy-section__scan">
+          <Button
+            variant="secondary"
+            onClick={scanDevices}
+            disabled={isScanning}
+          >
+            {isScanning ? t("home.scanning") : t("home.scanForProjects")}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={browseDirectory}
+            disabled={isScanning}
+          >
+            {t("home.browse")}
+          </Button>
+        </div>
+
+        <div className="home-legacy-section__toolbar">
           <div className="header-search-container">
             <input
               ref={searchInputRef}
               type="text"
-              placeholder="Search projects..."
-              aria-label="Search projects"
+              placeholder={t("home.projectSearchPlaceholder")}
+              aria-label={t("home.projectSearchAria")}
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               className="header-search-input"
@@ -481,45 +548,22 @@ export function HomePage() {
               <button
                 className="header-search-clear"
                 onClick={() => setSearchText('')}
-                title="Clear search"
+                title={t("home.clearSearchTitle")}
               >×</button>
             )}
           </div>
-          <Toolbar aria-label="Home actions">
+          <Toolbar aria-label={t("home.projectManagementToolsAria")}>
             <Button
               variant="toolbar"
               onClick={handleRefresh}
               className={isSpinning ? 'refreshing' : undefined}
               disabled={isScanning}
-              title="Refresh projects list"
+              title={t("home.refreshProjectsTitle")}
             >
               <i className="fas fa-sync-alt"></i>
             </Button>
           </Toolbar>
-          <LanguageSwitcher />
-          <ThemeSwitcher />
-          <Version />
         </div>
-      </div>
-
-      <div className="scan-section">
-        <Button
-          variant="primary"
-          onClick={scanDevices}
-          disabled={isScanning}
-        >
-          {isScanning ? "Scanning..." : "Scan for Projects"}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={browseDirectory}
-          disabled={isScanning}
-        >
-          Browse...
-        </Button>
-      </div>
-
-      <RootRegistryPanel />
 
       {!searchActive && hasScanned && locations.length === 0 && standaloneProjects.length === 0 && (
         <div className="no-devices">
@@ -962,6 +1006,8 @@ export function HomePage() {
           </DndContext>
         </div>
       )}
+
+      </section>
 
       {contextMenu && (
         <ProjectContextMenu
