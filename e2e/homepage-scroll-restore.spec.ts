@@ -1,4 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
+import { uiText } from './i18n'
+
+const locale = 'ja' as const
 
 /**
  * Homepage scroll position is remembered in sessionStorage when navigating
@@ -152,7 +155,7 @@ test.describe('Homepage scroll restoration', () => {
       sessionStorage.removeItem('otm.homepage.legacyScrollOffset')
     })
     await page.goto('/')
-    await page.getByRole('button', { name: 'Scan for Projects' }).click()
+    await page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') }).click()
     await expect(page.locator('.project-card').first()).toBeVisible({ timeout: 10000 })
     await page.locator('.home-legacy-section').scrollIntoViewIfNeeded()
   })

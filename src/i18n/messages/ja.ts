@@ -15,9 +15,9 @@ export const jaMessages: Record<MessageKey, string> = {
   'home.projectSearchAria': 'プロジェクトを検索',
   'home.clearSearchTitle': '検索をクリア',
   'home.refreshProjectsTitle': 'プロジェクト一覧を更新',
-  'home.scanForProjects': 'Scan for Projects',
-  'home.scanning': 'Scanning...',
-  'home.browse': 'Browse...',
+  'home.scanForProjects': 'プロジェクトをスキャン',
+  'home.scanning': 'スキャン中…',
+  'home.browse': '参照…',
 
   'language.label': '言語',
   'language.selectAria': '表示言語',

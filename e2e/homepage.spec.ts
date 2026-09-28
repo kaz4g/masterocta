@@ -37,7 +37,7 @@ test.describe('HomePage', () => {
       }
     })
     await page.reload()
-    await page.getByRole('button', { name: /Scan/i }).first().click()
+    await page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') }).first().click()
 
     const headers = page.locator('.standalone-group .standalone-group-header, .standalone-group > div').filter({ hasText: /- \d+ projects?/ })
     await expect(headers.first()).toBeVisible({ timeout: 10000 })
@@ -57,13 +57,13 @@ test.describe('HomePage', () => {
   })
 
   test('has scan button', async ({ page }) => {
-    const scanButton = page.getByRole('button', { name: 'Scan for Projects' })
+    const scanButton = page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') })
     await expect(scanButton).toBeVisible()
     await expect(scanButton).toBeEnabled()
   })
 
   test('has browse button', async ({ page }) => {
-    const browseButton = page.getByRole('button', { name: 'Browse...' })
+    const browseButton = page.getByRole('button', { name: uiText(locale, 'home.browse') })
     await expect(browseButton).toBeVisible()
     await expect(browseButton).toBeEnabled()
   })
@@ -82,7 +82,7 @@ test.describe('HomePage', () => {
   })
 
   test('scan button shows scanning state when clicked', async ({ page }) => {
-    const scanButton = page.getByRole('button', { name: 'Scan for Projects' })
+    const scanButton = page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') })
 
     // Click and check for loading state (will quickly fail since Tauri isn't available)
     await scanButton.click()
@@ -120,7 +120,7 @@ test.describe('HomePage', () => {
       }
     })
     await page.reload()
-    await page.getByRole('button', { name: /Scan/i }).first().click()
+    await page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') }).first().click()
 
     const search = page.getByLabel(uiText(locale, 'home.projectSearchAria'))
     await expect(search).toBeVisible({ timeout: 10000 })
