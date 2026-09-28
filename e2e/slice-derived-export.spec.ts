@@ -159,7 +159,9 @@ test.describe("slice derived export", () => {
     await page.getByRole("button", { name: uiText("ja", "slicing.detectAttacks") }).click();
     await expect(page.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") })).toBeEnabled();
     await page.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
-    await page.getByRole("textbox", { name: "Start frame candidate-range" }).focus();
+    await page.getByRole("textbox", {
+      name: uiText("ja", "slicing.startFrameAria", { markerId: "candidate-range" }),
+    }).focus();
     await page.getByRole("button", { name: uiText("ja", "slicing.exportDerived") }).click();
     await page.getByRole("button", { name: uiText("ja", "slicing.exportDerivedConfirm") }).click();
     await expect(page.getByTestId("slice-export-success")).toContainText("asset-derived-range");

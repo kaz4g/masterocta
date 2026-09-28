@@ -66,15 +66,17 @@ test("read-only library supports attack review, boundary editing and undo", asyn
   await expect(editor.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") })).toBeEnabled();
   expect(await page.evaluate(() => (window as any).__E2E_SLICE_CALLS__.filter((c: any) => c.cmd === "v2_slice_draft_update"))).toEqual([]);
   await editor.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
-  const boundary = editor.getByLabel("Start frame candidate-11025");
+  const boundary = editor.getByLabel(
+    uiText("ja", "slicing.startFrameAria", { markerId: "candidate-11025" }),
+  );
   await boundary.fill("11000");
   await boundary.press("Enter");
-  await expect(editor.getByLabel("Fixed 11000")).toBeChecked();
-  await editor.getByRole("button", { name: "Undo" }).click();
+  await expect(editor.getByLabel(uiText("ja", "slicing.fixedAria", { frame: "11000" }))).toBeChecked();
+  await editor.getByRole("button", { name: uiText("ja", "slicing.undo") }).click();
   await expect(boundary).toHaveValue("11025");
-  await expect(editor.getByLabel("Fixed 11025")).not.toBeChecked();
-  await editor.getByRole("button", { name: "Zoom in" }).click();
-  await expect(editor.getByText(/Frames \[/)).not.toContainText("[0, 44100)");
+  await expect(editor.getByLabel(uiText("ja", "slicing.fixedAria", { frame: "11025" }))).not.toBeChecked();
+  await editor.getByRole("button", { name: uiText("ja", "waveform.zoomIn") }).click();
+  await expect(editor.locator(".slice-coordinate")).not.toHaveText(/\[0, 44100\)/);
   const calls: string[] = await page.evaluate(() => (window as any).__E2E_SLICE_CALLS__.map((c: any) => c.cmd));
   expect(calls).not.toContain("v2_root_enable_write");
   expect(calls).not.toContain("v2_change_apply");
