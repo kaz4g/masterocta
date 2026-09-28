@@ -1,5 +1,7 @@
 # M7 Integrated Native Acceptance (session 2)
 
+**Next canonical Native execution:** session 3 — [`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) @ product **`04725cb3`** (PR #170). Do not mix session 2 partial PASS into session 3.
+
 **Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2` · **FINAL session:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2-FINAL`
 **Recorded:** 2026-09-27 (historical prep) · **2026-09-28** (`af4097a` partial) · **2026-09-28** (`eb40ffb` final single-session attempt)
 **Overall result:** **STOP_WITH_FINDINGS** — operator GUI **NOT_RUN** on execution baseline `eb40ffb` (automated prep/launch + **A01** / **B01** only)

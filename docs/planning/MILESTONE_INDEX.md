@@ -115,7 +115,8 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 - [`../testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`](../testing/M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md) (**NOT_RUN**)
 - [`../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](../testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md) (**NOT_RUN**)
 - [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md) (session 1 **NOT_RUN**)
-- [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) (session 2 **STOP_WITH_FINDINGS**)
+- [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) (session 2 **STOP_WITH_FINDINGS**, historical)
+- [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) (session 3 **STOP_WITH_FINDINGS** @ `04725cb3`)
 
 ---
 

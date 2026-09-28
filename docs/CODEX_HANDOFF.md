@@ -39,8 +39,8 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
-GitHub `main` 基準（product）: `eb40ffb0f582917e414b8c8e86d134f91d347aae`（#166 Home、#165、#164、#161 等を含む）。
-次の Native session 2 実行 baseline は product `main` **`eb40ffb`**。`af4097a` は A01/B01 の部分試行のみ（M7 完了証拠ではない）。
+GitHub `main` 基準（product）: `04725cb3a1942716e11f1b90a6387733f9302da4`（PR #170; #166 Home、#165、#164、#161 等を含む）。
+Native session 3 実行 baseline は product `main` **`04725cb3`**。session 2 `eb40ffb` / `af4097a` の PASS は session 3 に混ぜない。
 M7 完了判定の正本: [`docs/planning/M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
@@ -331,19 +331,18 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **IN_PROGRESS**。product `main` **`eb40ffb`**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
-Integrated Native **session 2**
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
-（2026-09-28 最終セッション: 実行 baseline **`eb40ffb`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
+**M7:** **IN_PROGRESS**。product `main` **`04725cb3`**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
+Integrated Native **session 3**
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) **STOP_WITH_FINDINGS**
+（2026-09-28: 実行 baseline **`04725cb3`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
 **`af4097a`** / **`55eadcc`** は歴史（PASS に書き換えない）。session 1 と基準 `b2c7765` は実行対象ではない。
 M7-07/08 **DEFERRED**（M11）。**次:** operator が **A02–A15** / **B02–B03** を Native GUI で実行 → docs 更新。
 
 **Canonical milestone source:** `docs/planning/MILESTONE_INDEX.md`
 **Canonical current status:** `docs/planning/DEVELOPMENT_STATUS.md`
 
-**次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
-（[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の残行 **A02–A15** / **B02–B03**。
-実行 baseline **`eb40ffb`**（#166 Home）。最終 automated セッションは **A01** / **B01** のみ記録。session 1・#153/#154 の **NOT_RUN** は歴史として残す）。
+**次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3`（operator GUI 残行）
+（[`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) §5 handoff。**A02–A15** / **B02–B03**。実行 baseline **`04725cb3`**。automated 記録は **A01** / **B01** のみ。session 1–2・#153/#154 の **NOT_RUN** は歴史として残す）。
 
 **履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
 Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
