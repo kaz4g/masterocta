@@ -12,7 +12,7 @@ function parseFramesLine(text: string): { startFrame: string; endExclusive: stri
 }
 
 async function dragPendingRangeOnSliceWaveform(slice: Locator) {
-  const waveform = slice.getByLabel("Slice waveform");
+  const waveform = slice.getByLabel(uiText("ja", "slicing.waveformAria"));
   await expect(waveform).toBeVisible();
   const box = await waveform.boundingBox();
   expect(box).not.toBeNull();
@@ -207,7 +207,9 @@ test("slice workspace supports pending range reselection and re-analysis", async
   await slice.getByRole("button", { name: uiText("ja", "slicing.analyzeSelectedRange") }).click();
   await expect(slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") })).toBeEnabled();
   await slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
-  await expect(slice.getByLabel("Start frame candidate-a")).toHaveValue(RANGE_A.startFrame);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-a" })),
+  ).toHaveValue(RANGE_A.startFrame);
   await expect(slice.getByLabel(uiText("ja", "slicing.analysisRegionHeading"))).toContainText(RANGE_A.startFrame);
 
   await slice.getByRole("button", { name: uiText("ja", "slicing.enterRangeReselect") }).click();
@@ -229,13 +231,19 @@ test("slice workspace supports pending range reselection and re-analysis", async
   );
   expect(startsBefore).toHaveLength(1);
   expect(replaceBefore).toHaveLength(0);
-  await expect(slice.getByLabel("Start frame candidate-a")).toHaveValue(RANGE_A.startFrame);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-a" })),
+  ).toHaveValue(RANGE_A.startFrame);
 
   await slice.getByRole("button", { name: uiText("ja", "slicing.reanalyzePendingRange") }).click();
   await expect(slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") })).toBeEnabled();
   await slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
-  await expect(slice.getByLabel("Start frame candidate-b")).toHaveValue(pendingRange!.startFrame);
-  await expect(slice.getByLabel("Start frame candidate-a")).toHaveCount(0);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-b" })),
+  ).toHaveValue(pendingRange!.startFrame);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-a" })),
+  ).toHaveCount(0);
 
   const replaceUpdates = await page.evaluate(() =>
     (window as any).__E2E_SLICE_CALLS__.filter(
@@ -381,11 +389,15 @@ test("failed re-analysis keeps the original draft marker", async ({ page }) => {
   const slice = page.getByRole("region", { name: uiText("ja", "slicing.ariaFor", { displayName: "RANGE.wav" }) });
   await slice.getByRole("button", { name: uiText("ja", "slicing.analyzeSelectedRange") }).click();
   await slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
-  await expect(slice.getByLabel("Start frame candidate-a")).toHaveValue(RANGE_A.startFrame);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-a" })),
+  ).toHaveValue(RANGE_A.startFrame);
   await slice.getByRole("button", { name: uiText("ja", "slicing.enterRangeReselect") }).click();
   await dragPendingRangeOnSliceWaveform(slice);
   await slice.getByRole("button", { name: uiText("ja", "slicing.reanalyzePendingRange") }).click();
-  await expect(slice.getByLabel("Start frame candidate-a")).toHaveValue(RANGE_A.startFrame);
+  await expect(
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-a" })),
+  ).toHaveValue(RANGE_A.startFrame);
   const replaceUpdates = await page.evaluate(() =>
     (window as any).__E2E_SLICE_CALLS__.filter(
       (c: any) => c.cmd === "v2_slice_draft_update" && c.args.edit?.kind === "replaceRegion",

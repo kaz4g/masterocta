@@ -105,6 +105,7 @@
 .slice-lane-label--left { fill: #f2a33c; }
 .slice-lane-label--right { fill: #71bfff; }
 .slice-candidate { stroke: #d5d9de; stroke-dasharray: 3 4; opacity: 0.65; pointer-events: none; }
+.slice-candidate-warnings { margin: 0.25em 0 0.5em 1.25em; padding: 0; list-style: disc; }
 .slice-marker { stroke: #f2a33c; stroke-width: 1.5; cursor: ew-resize; }
 .slice-marker.is-locked { stroke: #71bfff; }
 .slice-marker.is-selected { stroke-width: 3; }

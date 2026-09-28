@@ -37,6 +37,16 @@ export type MessageParams = {
   'slicing.previewSelectionSeconds': { startSeconds: string; endSeconds: string; sampleRate: number }
   'slicing.candidatesSummary': { count: number; suppressed: number }
   'slicing.reviewBoundaries': { count: number }
+  'slicing.candidateAt': { frame: string }
+  'slicing.candidateAtReview': { frame: string }
+  'slicing.pageOf': { current: number; total: number }
+  'slicing.startFrameAria': { markerId: string }
+  'slicing.fixedAria': { frame: string }
+  'slicing.deleteBoundaryAria': { frame: string }
+  'slicing.boundaryAria': { frame: string }
+  'slicing.frameAriaValue': { value: string }
+  'slicing.candidateWarningsAtFrame': { frame: string }
+  'slicing.warningsTruncated': { count: number }
   'slicing.draftSummary': { count: number; revision: number }
   'slicing.sliceExportReview': { displayName: string; markerId: string }
   'slicing.sliceExportRangeFrames': { start: string; end: string }
