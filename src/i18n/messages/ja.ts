@@ -4,6 +4,21 @@ import type { MessageKey } from './en'
 export const jaMessages: Record<MessageKey, string> = {
   'app.workspaceAria': 'Masta-Octa ワークスペース',
 
+  'home.workspaceSectionTitle': 'ワークスペースを開く',
+  'home.workspaceSectionLede':
+    'Octatrack の場所を登録し、カタログライブラリの閲覧、サンプルのインスペクター、スライス、安全なリネーム・コピー・クローン操作を行います。',
+  'home.projectManagementSectionTitle': 'プロジェクト管理',
+  'home.projectManagementSectionLede':
+    'マウントしたメディアやフォルダをスキャンしてセットとプロジェクトを整理し、Project Detail でスロット編集、Audio Pool を管理します。上のカタログ登録とは別の経路です。',
+  'home.projectManagementToolsAria': 'プロジェクト管理ツール',
+  'home.projectSearchPlaceholder': 'プロジェクトを検索…',
+  'home.projectSearchAria': 'プロジェクトを検索',
+  'home.clearSearchTitle': '検索をクリア',
+  'home.refreshProjectsTitle': 'プロジェクト一覧を更新',
+  'home.scanForProjects': 'プロジェクトをスキャン',
+  'home.scanning': 'スキャン中…',
+  'home.browse': '参照…',
+
   'language.label': '言語',
   'language.selectAria': '表示言語',
 

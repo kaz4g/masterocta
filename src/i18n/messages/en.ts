@@ -2,6 +2,21 @@
 export const enMessages = {
   'app.workspaceAria': 'Masta-Octa workspace',
 
+  'home.workspaceSectionTitle': 'Open workspace',
+  'home.workspaceSectionLede':
+    'Register an Octatrack location to browse the catalog library, inspect samples, slice audio, and run safe rename, copy, and clone operations.',
+  'home.projectManagementSectionTitle': 'Project management',
+  'home.projectManagementSectionLede':
+    'Scan mounted media or a folder to organize sets and projects, open Project Detail, edit sample slots, and manage the Audio Pool. Separate from catalog workspace registration above.',
+  'home.projectManagementToolsAria': 'Project management tools',
+  'home.projectSearchPlaceholder': 'Search projects...',
+  'home.projectSearchAria': 'Search projects',
+  'home.clearSearchTitle': 'Clear search',
+  'home.refreshProjectsTitle': 'Refresh projects list',
+  'home.scanForProjects': 'Scan for Projects',
+  'home.scanning': 'Scanning...',
+  'home.browse': 'Browse...',
+
   'language.label': 'Language',
   'language.selectAria': 'Display language',
 

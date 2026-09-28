@@ -1,4 +1,7 @@
 import { test, expect, Page } from '@playwright/test'
+import { uiText } from './i18n'
+
+const locale = 'ja' as const
 
 /**
  * Homepage scroll position is remembered in sessionStorage when navigating
@@ -135,19 +138,33 @@ async function setupMocks(page: Page) {
   })
 }
 
+/** Scroll offset within the legacy project tree (stable when workspace chrome height changes). */
+async function legacySectionScrollOffset(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const legacy = document.querySelector('.home-legacy-section')
+    if (!(legacy instanceof HTMLElement)) return window.scrollY
+    return window.scrollY - legacy.offsetTop
+  })
+}
+
 test.describe('Homepage scroll restoration', () => {
   test.beforeEach(async ({ page }) => {
     await setupMocks(page)
+    await page.addInitScript(() => {
+      sessionStorage.removeItem('otm.homepage.scrollY')
+      sessionStorage.removeItem('otm.homepage.legacyScrollOffset')
+    })
     await page.goto('/')
-    await page.getByRole('button', { name: 'Scan for Projects' }).click()
+    await page.getByRole('button', { name: uiText(locale, 'home.scanForProjects') }).click()
     await expect(page.locator('.project-card').first()).toBeVisible({ timeout: 10000 })
+    await page.locator('.home-legacy-section').scrollIntoViewIfNeeded()
   })
 
   test('scroll position survives a project round trip', async ({ page }) => {
     await page.mouse.move(640, 360)
     await page.mouse.wheel(0, 2000)
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100)
-    const scrollBefore = await page.evaluate(() => window.scrollY)
+    await expect.poll(() => legacySectionScrollOffset(page)).toBeGreaterThan(100)
+    const scrollBefore = await legacySectionScrollOffset(page)
     expect(scrollBefore).toBeGreaterThan(100)
 
     await page.locator('.project-card:not(.new-project-card)').last().click()
@@ -155,21 +172,25 @@ test.describe('Homepage scroll restoration', () => {
 
     await page.locator('.back-button', { hasText: 'Back' }).click()
     await expect(page.locator('.project-card').first()).toBeVisible()
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(scrollBefore, -1)
+    await expect
+      .poll(() => legacySectionScrollOffset(page), { timeout: 10000 })
+      .toBeCloseTo(scrollBefore, -1)
   })
 
   test('scroll position survives an Audio Pool round trip', async ({ page }) => {
     await page.mouse.move(640, 360)
     await page.mouse.wheel(0, 2000)
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100)
-    const scrollBefore = await page.evaluate(() => window.scrollY)
+    await expect.poll(() => legacySectionScrollOffset(page)).toBeGreaterThan(100)
+    const scrollBefore = await legacySectionScrollOffset(page)
     expect(scrollBefore).toBeGreaterThan(100)
 
-    await page.locator('.audio-pool-card').first().click()
+    await page.locator('.audio-pool-card').last().click()
     await expect(page.locator('main.audio-pool-page')).toBeVisible({ timeout: 10000 })
 
     await page.locator('.back-button', { hasText: 'Back' }).click()
     await expect(page.locator('.project-card').first()).toBeVisible()
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(scrollBefore, -1)
+    await expect
+      .poll(() => legacySectionScrollOffset(page), { timeout: 10000 })
+      .toBeCloseTo(scrollBefore, -1)
   })
 })
