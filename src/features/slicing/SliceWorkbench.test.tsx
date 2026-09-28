@@ -634,6 +634,130 @@ describe("attack slicing workbench", () => {
     expect(api.start).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the confirmed marker selected while its export is in flight", async () => {
+    const api = client();
+    const twoMarkers = {
+      ...empty,
+      revision: 1,
+      canUndo: true,
+      markers: [
+        {
+          markerId: "candidate-1",
+          startFrame: "956",
+          endExclusive: "2000",
+          manual: false,
+          locked: false,
+        },
+        {
+          markerId: "candidate-2",
+          startFrame: "2000",
+          endExclusive: "44100",
+          manual: false,
+          locked: false,
+        },
+      ],
+    };
+    vi.mocked(api.edit)
+      .mockResolvedValueOnce(twoMarkers)
+      .mockRejectedValueOnce({
+        code: "ANALYSIS_EXPIRED",
+        message: "the analysis session has expired",
+      });
+    let finish!: (value: {
+      derivedAssetId: string;
+      sourceUnchanged: boolean;
+      startFrame: string;
+      endExclusive: string;
+    }) => void;
+    vi.mocked(api.exportDerived).mockReturnValue(new Promise((resolve) => {
+      finish = resolve;
+    }));
+    await prepareDraftWithSelection(api);
+    fireEvent.click(screen.getByLabelText("Fixed 956"));
+    expect(await screen.findByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    const selects = screen.getAllByRole("button", { name: "Select" });
+    expect(selects).toHaveLength(2);
+    expect(selects[0]).toBeDisabled();
+    expect(selects[1]).toBeDisabled();
+    fireEvent.click(selects[1]);
+    expect(screen.getByText(tJa("slicing.sliceExportRangeFrames", {
+      start: "956",
+      end: "2000",
+    }))).toBeInTheDocument();
+    finish({
+      derivedAssetId: "asset-export-a",
+      sourceUnchanged: false,
+      startFrame: "956",
+      endExclusive: "2000",
+    });
+    expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-a");
+    expect(screen.getByText(tJa("slicing.sliceExportRangeFrames", {
+      start: "956",
+      end: "2000",
+    }))).toBeInTheDocument();
+    expect(screen.queryByText(tJa("slicing.sliceExportRangeFrames", {
+      start: "2000",
+      end: "44100",
+    }))).not.toBeInTheDocument();
+  });
+
+  it("keeps a live-session export on the confirmed marker when the waveform is pressed", async () => {
+    const api = client();
+    vi.mocked(api.edit).mockResolvedValueOnce({
+      ...empty,
+      revision: 1,
+      canUndo: true,
+      markers: [
+        {
+          markerId: "candidate-1",
+          startFrame: "956",
+          endExclusive: "2000",
+          manual: false,
+          locked: false,
+        },
+        {
+          markerId: "candidate-2",
+          startFrame: "2000",
+          endExclusive: "44100",
+          manual: false,
+          locked: false,
+        },
+      ],
+    });
+    let finish!: (value: {
+      derivedAssetId: string;
+      sourceUnchanged: boolean;
+      startFrame: string;
+      endExclusive: string;
+    }) => void;
+    vi.mocked(api.exportDerived).mockReturnValue(new Promise((resolve) => {
+      finish = resolve;
+    }));
+    await prepareDraftWithSelection(api);
+    const confirmedRange = tJa("slicing.sliceExportRangeFrames", { start: "956", end: "2000" });
+    const otherRange = tJa("slicing.sliceExportRangeFrames", { start: "2000", end: "44100" });
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
+    const otherBoundary = screen.getByRole("slider", { name: "Boundary 2000" });
+    expect(otherBoundary).toHaveAttribute("tabindex", "-1");
+    fireEvent.pointerDown(otherBoundary);
+    fireEvent.keyDown(otherBoundary, { key: "ArrowRight" });
+    expect(screen.getByText(confirmedRange)).toBeInTheDocument();
+    expect(screen.queryByText(otherRange)).not.toBeInTheDocument();
+    finish({
+      derivedAssetId: "asset-export-live",
+      sourceUnchanged: false,
+      startFrame: "956",
+      endExclusive: "2000",
+    });
+    expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-live");
+    expect(screen.getByText(confirmedRange)).toBeInTheDocument();
+    expect(screen.queryByText(otherRange)).not.toBeInTheDocument();
+    expect(api.edit).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed on a stale persisted draft after the analysis session expires", async () => {
     const api = client();
     await prepareDraftWithSelection(api);

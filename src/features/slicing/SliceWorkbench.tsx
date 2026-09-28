@@ -94,7 +94,7 @@ function SliceSession({
     endExclusive: string;
   } | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<SliceExportResult | null>(null);
+  const [exportResult, setExportResult] = useState<(SliceExportResult & { markerId: string }) | null>(null);
   const alive = useRef(true);
   const generation = useRef(0);
   const jobId = useRef<string | null>(null);
@@ -614,7 +614,11 @@ function SliceSession({
     viewport(size, frame(view.startFrame) + size / 2n + direction * (size / 4n || 1n));
   }
   function endDrag() {
-    if (rangeReselectMode) return;
+    if (rangeReselectMode || exporting) {
+      dragRef.current = null;
+      setDrag(null);
+      return;
+    }
     const moved = dragRef.current;
     dragRef.current = null; setDrag(null);
     if (moved && draft?.markers.find(m => m.markerId === moved.id)?.startFrame !== moved.frame) {
@@ -623,6 +627,7 @@ function SliceSession({
   }
   const busy = starting || inflight !== null || job?.phase === "reading" || job?.phase === "analyzing";
   const mutationDisabled = editing || analysisSessionInvalid || rangeReselectMode;
+  const markerGestureDisabled = mutationDisabled || exporting;
   const pendingOverlayRange = rangeSelectDrag && view
     ? normalizePendingRange(
       frame(rangeSelectDrag.anchor) <= frame(rangeSelectDrag.active)
@@ -680,17 +685,18 @@ function SliceSession({
       return;
     }
     const epoch = generation.current;
+    const exportedMarkerId = exportReview.markerId;
     setExporting(true);
     setError(null);
     try {
       const result = await api.exportDerived(
         rootId,
         fileInstanceId,
-        exportReview.markerId,
+        exportedMarkerId,
         exportReview.expectedRevision,
       );
       if (alive.current && epoch === generation.current) {
-        setExportResult(result);
+        setExportResult({ ...result, markerId: exportedMarkerId });
         setExportReview(null);
         onDerivedExportApplied?.();
       }
@@ -879,7 +885,7 @@ function SliceSession({
       <p className="slice-coordinate">Frames [{view.startFrame}, {view.endExclusive}) · {job?.sampleRate} Hz</p>
       <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label="Slice waveform"
         onDoubleClick={e => {
-          if (mutationDisabled || rangeReselectMode) return;
+          if (markerGestureDisabled || rangeReselectMode) return;
           const at = frameAtPointer(e.clientX, e.currentTarget, view);
           if (at !== null) void edit({ kind: "insert", frame: at });
         }}
@@ -890,6 +896,7 @@ function SliceSession({
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={e => {
+          if (exporting) return;
           if (rangeReselectMode && rangeSelectDragRef.current) {
             updateRangeSelect(e.clientX, e.currentTarget);
             return;
@@ -970,11 +977,11 @@ function SliceSession({
           const value = drag?.id === m.markerId ? drag.frame : m.startFrame;
           const x = position(value, view) * WIDTH;
           return <g key={m.markerId} className={`slice-marker ${m.locked ? "is-locked" : ""} ${selected === m.markerId ? "is-selected" : ""}`}
-            role="slider" tabIndex={mutationDisabled ? -1 : 0} aria-label={`Boundary ${m.startFrame}`} aria-valuetext={`Frame ${value}`} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
+            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-label={`Boundary ${m.startFrame}`} aria-valuetext={`Frame ${value}`} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
             onDoubleClick={e => e.stopPropagation()}
-            onPointerDown={e => { if (mutationDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
+            onPointerDown={e => { if (markerGestureDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
             onKeyDown={e => {
-              if (mutationDisabled || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+              if (markerGestureDisabled || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
               e.preventDefault(); setSelected(m.markerId);
               const current = dragRef.current?.id === m.markerId ? dragRef.current.frame : m.startFrame;
               const next = frame(current) + (e.key === "ArrowRight" ? 1n : -1n) * (e.shiftKey ? 10n : 1n);
@@ -1017,7 +1024,7 @@ function SliceSession({
         <label>Insert at frame<input aria-label="Insert at frame" inputMode="numeric" value={insertFrame} onChange={e => setInsertFrame(e.target.value)} disabled={mutationDisabled} /></label><button disabled={mutationDisabled}>Insert boundary</button>
       </form>
       <div className="slice-table"><table><thead><tr><th>Start frame</th><th>End (exclusive)</th><th>Fixed</th><th>Actions</th></tr></thead><tbody>
-        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
+        {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing || exporting} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
       </tbody></table></div>
       {draft.markers.length > PAGE && <div className="slice-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous boundaries</button><span>Page {page + 1} / {Math.ceil(draft.markers.length / PAGE)}</span><button disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>Next boundaries</button></div>}
       {selectedMarker && draft.revision > 0 ? (
@@ -1055,7 +1062,7 @@ function SliceSession({
               </button>
             </div>
           )}
-          {exportResult ? (
+          {exportResult && exportResult.markerId === selectedMarker.markerId ? (
             <p role="status" data-testid="slice-export-success">
               {t("slicing.exportDerivedSuccess")}{" "}
               {t("slicing.exportDerivedSuccessId", { derivedAssetId: exportResult.derivedAssetId })}
@@ -1119,7 +1126,7 @@ function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit 
     }
   }
   return <tr className={selected ? "is-selected" : ""}>
-    <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={onSelect} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
+    <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
     <td>{marker.endExclusive}</td>
     <td><input aria-label={`Fixed ${marker.startFrame}`} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
     <td><button disabled={selectDisabled} onClick={onSelect}>Select</button><button disabled={disabled} aria-label={`Delete boundary ${marker.startFrame}`} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>Delete</button></td>
