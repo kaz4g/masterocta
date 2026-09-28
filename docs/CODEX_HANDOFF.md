@@ -335,7 +335,7 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **M7:** **IN_PROGRESS**。product `main` **`af4097a`**（#165）。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
-（A01–A15 / B01–B03 は **NOT_RUN**。停止記録は `55eadcc`。次の実行は product `main` **`af4097a`**。`55eadcc` だけの PASS は M7 完了にしない）。
+（2026-09-28: **`af4097a`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
 session 1 と基準 `b2c7765` は実行対象ではない。
 M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit audit。
 

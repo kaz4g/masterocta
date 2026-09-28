@@ -25,16 +25,12 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-09-28)
 
-PR #161 (**stereo channel lanes**) is **MERGED** at `3379b9d`. PR #163 (Slice Export
-after analysis-session expiry) is **MERGED** at `55eadcc`. PR #165 (UI action
-consolidation) is **MERGED** at `af4097a` on product `main`. Integrated Native **session 2**:
+PR #161–#165 are on product `main` **`af4097a`**. Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN**; that stop was written at
-`55eadcc`). Next run is product `main` **`af4097a`**, which includes #164 export
-marker selection. Historical session 1
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
-remains **NOT_RUN** (baseline `b2c7765` is not the execution target). **M7** stays
-**IN_PROGRESS** until the session 2 matrix is **PASS** on `af4097a` or a newer reviewed `main` SHA.
+remains **STOP_WITH_FINDINGS**: **2026-09-28** prep + launch on **`af4097a`** (**A01** /
+**B01** **PASS**; **A02–A15** / **B02–B03** **NOT_RUN** — operator GUI). Historical
+`55eadcc` **NOT_RUN** rows were not rewritten. Session 1 stays **NOT_RUN**. **M7**
+**IN_PROGRESS** until the full matrix is **PASS** on `af4097a`.
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 

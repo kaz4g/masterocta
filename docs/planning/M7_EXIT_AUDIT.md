@@ -15,12 +15,10 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 Native session 2 execution baseline are
 `af4097a42b247aab420a5217752afaf54869577f` (PR #165 merge). That SHA includes #161
 (`3379b9d`), #163 (`55eadcc`), and #164 (`7d15b15`, marker selection locked during
-derived export — A05/A11). The session 2 record is still **STOP_WITH_FINDINGS**
-with the operator matrix **NOT_RUN**; that stop was written against `55eadcc` and
-must not be backfilled to PASS. A later PASS is valid for M7 exit only when the
-matrix is run on `af4097a` (or a newer reviewed `main` SHA written into the session 2
-doc at execution time). PASS on `55eadcc` alone does not accept current export
-behavior. Integrated Native **session 2**:
+derived export — A05/A11). The session 2 record is **STOP_WITH_FINDINGS** (2026-09-28: **`af4097a`** prep/launch;
+**A01** / **B01** **PASS**; operator GUI rows **NOT_RUN**). Historical `55eadcc`
+**NOT_RUN** was not backfilled. M7 exit requires full Group A/B **PASS** on `af4097a`.
+Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
 **STOP_WITH_FINDINGS**. Historical session 1
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
