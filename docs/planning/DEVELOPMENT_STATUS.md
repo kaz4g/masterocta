@@ -1,8 +1,9 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
-- Updated: 2026-09-28 (session 2 evidence bar; execution baseline #163)
-- Baseline: GitHub `origin/main` **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (merge PR #163)
+- Updated: 2026-09-28 (M7 status reconciliation; Native execution baseline unchanged)
+- Product baseline: GitHub `origin/main` **`af4097a42b247aab420a5217752afaf54869577f`** (merge PR #165)
+- Native session 2 execution baseline: **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (PR #163) — matrix **NOT_RUN**; later `main` merges do not retroactively PASS Native
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -22,11 +23,11 @@ Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENE
 
 Do **not** conflate: code exists · merged to `main` · CI/automated tests · native acceptance · hardware acceptance.
 
-## Current reconciliation snapshot (2026-09-27)
+## Current reconciliation snapshot (2026-09-28)
 
-PR #160 is **MERGED** at `d5a7ced`. PR #161 (**stereo channel lanes**) is **MERGED** at
-`3379b9d`. PR #163 (Slice Export after analysis-session expiry) is **MERGED** at
-`55eadcc`. Integrated Native **session 2**:
+PR #161 (**stereo channel lanes**) is **MERGED** at `3379b9d`. PR #163 (Slice Export
+after analysis-session expiry) is **MERGED** at `55eadcc`. PR #165 (UI action
+consolidation) is **MERGED** at `af4097a` on product `main`. Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
 **STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN** on `55eadcc`). Historical
 session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
@@ -55,7 +56,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | #160 on `main`; stereo lanes **Draft** #161; integrated Native **NOT_RUN** (session 2 prep only). M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **IN_PROGRESS** | Stereo lanes **MERGED** (#161); integrated Native session 2 **NOT_RUN** on execution baseline `55eadcc`. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -101,14 +102,14 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | --- | --- | --- | --- | --- | --- |
 | M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
 | M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
-| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145; lanes **Draft** #161 | Tests + lane UI tests | **NOT_RUN** | Independent L/R lanes in **Draft** #161; Exit row 3 Native **NOT_RUN** until B01–B03 on merge SHA |
+| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145, #161 (`3379b9d`) | Tests + lane UI tests | **NOT_RUN** | Independent L/R lanes on `main`; Exit row 3 Native **NOT_RUN** until B01–B03 on session 2 execution baseline |
 | M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
 | M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PARTIAL** on `0f39f50` | Implementation on main. Native: A/B/D exercised; **C post-quit SQLite not recorded**. Integrated Native must include quit + `slice_drafts` SELECT. 100-clip / `.ot` are Auto Slice / M11 |
 | M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **NOT_RUN** (#153 + #154 checklists) | Lineage, Mac TRIM, `SLICE_EXPORT` UI, Inspector parent/children **on main**. mac_derived Library browse / derived waveform / batch / `.ot` are **non-goals**. Exit blocker = integrated Native (original SHA + restart lineage) |
 | M7-07 stem separation adapter spike | **DEFERRED** | enum `STEM` / `StemRole` only | — | — | Not in v0.1 Exit Gate; spike deferred to **M11 prep** (enum-only ≠ spike). See audit §11 |
 | M7-08 optional stem separation workflow | **DEFERRED** | — | — | — | Optional WP; production stem is **M11**. Not an M7 exit blocker |
 
-**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display** implementation in **Draft** #161 (Native **NOT_RUN**); analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native A01–A15 PASS. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
+**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display** implementation on `main` (#161); Native **NOT_RUN** on session 2 baseline; analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native A01–A15 PASS. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
 
 ---
 
@@ -183,7 +184,8 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on `main` **`55eadcc`**
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on execution baseline **`55eadcc`**
+(product `main` may be ahead, e.g. **`af4097a`** after #165 — that does not substitute for the matrix)
 
 **Reason:** Execute A01–A15 and B01–B03 in
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),

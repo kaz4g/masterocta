@@ -11,7 +11,7 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 
 | Item | Value |
 | --- | --- |
-| Execution baseline | **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** — current `main` (PR [#163](https://github.com/kaz4g/masterocta/pull/163) merge; includes #161) |
+| Execution baseline | **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (PR [#163](https://github.com/kaz4g/masterocta/pull/163) merge; includes #161). Product `main` may be ahead (e.g. **`af4097a`** after #165); that does not substitute for this matrix. |
 | Historical prep SHA | `008478dbcd4e82d21d71e2d0575da7bd92f8c226` (not an execution target) |
 | Superseded session 1 baseline | `b2c7765772bd3894472ba936664cabc0db92fcf1` (do not execute) |
 | Prior main (Phase 1 post-merge) | `d5a7cedcd547b540f7d34a0518d0e8b63a2791c4` (PR #160) |

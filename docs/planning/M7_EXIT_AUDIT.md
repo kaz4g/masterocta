@@ -11,9 +11,11 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 
 ## 1. Audit identity
 
-**Reconciled for M7 finalization (2026-09-28):** canonical `main` is
-`55eadcc7d671eb2259f8ea15634f787a234c1dbd` (PR #163 merge; includes #161 at
-`3379b9d`). Integrated Native **session 2**:
+**Reconciled for M7 finalization (2026-09-28):** product `main` is
+`af4097a42b247aab420a5217752afaf54869577f` (PR #165 merge; includes #161 at
+`3379b9d`, #163 at `55eadcc`). **Native session 2 execution baseline** remains
+`55eadcc7d671eb2259f8ea15634f787a234c1dbd` — operator matrix **NOT_RUN** there;
+later product merges do not retroactively PASS Native. Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
 **STOP_WITH_FINDINGS** (operator matrix **NOT_RUN** on `55eadcc`). Historical
 session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
@@ -169,7 +171,7 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 | Native | **NOT_RUN** | Group B (B01–B03) not executed; see acceptance session 2 |
 | Hardware | **N/A** |
 
-**Exit blocker:** **yes** until #161 merges **and** Native B01–B03 PASS on merge SHA.
+**Exit blocker:** **yes** until Native B01–B03 **PASS** on the session 2 execution baseline (#161 is merged on `main`).
 
 ---
 
@@ -287,7 +289,7 @@ WP name is **optional**. M11 purpose (v0.1): production stem separation. Exit Ga
 | --- | --- | --- | --- |
 | Width-driven high-res waveform | #129 + WFM2 #145 + query #124 | **PASS** | Native zoom matrix optional |
 | Zoom not stuck at 640 points | #129/#130; `targetPoints` 32–4096 | **PASS** | Canvas follow-on only |
-| Stereo independently displayable | #124/#145 peaks; lanes **Draft** #161; `STEREO_RANGE` fixture | **PARTIAL** | Merge #161 + Native B01–B03 PASS |
+| Stereo independently displayable | #124/#145 peaks; lanes **#161** on `main`; `STEREO_RANGE` fixture | **PARTIAL** | Native B01–B03 PASS on session 2 baseline |
 | Analysis job does not block Library UI | Job API + `0f39f50` analysis UX | **PASS** | M7-05 draft quit evidence still open |
 | Derived assets do not mutate originals | TRIM/SLICE_EXPORT tests + invariant docs | **PARTIAL** | Native SHA + restart **NOT_RUN** |
 
@@ -314,7 +316,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 ### A. M7 EXIT BLOCKER
 
-1. **Integrated Native acceptance session 2** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) on current `main` **`55eadcc`**. Session 1 and baseline `b2c7765` are not the execution target. **Supersedes** #153/#154 operator intent only when every session 2 group A row is **PASS** with the evidence named in that record; **do not** edit historical #153/#154 or session 1 checklists to PASS.
+1. **Integrated Native acceptance session 2** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) on execution baseline **`55eadcc`** (product `main` may be ahead). Session 1 and baseline `b2c7765` are not the execution target. **Supersedes** #153/#154 operator intent only when every session 2 group A row is **PASS** with the evidence named in that record; **do not** edit historical #153/#154 or session 1 checklists to PASS.
 
    Required sequence (sanitized evidence):
 
