@@ -11,7 +11,8 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 
 | Item | Value |
 | --- | --- |
-| Next execution baseline | **`af4097a42b247aab420a5217752afaf54869577f`** — product `main` (PR [#165](https://github.com/kaz4g/masterocta/pull/165); includes #164 `7d15b15`, marker selection locked during derived export). Record PASS only on this SHA, or on a newer reviewed `main` SHA written here before the run. |
+| Next execution baseline | **`eb40ffb0f582917e414b8c8e86d134f91d347aae`** — current product `origin/main` (PR [#167](https://github.com/kaz4g/masterocta/pull/167) merge tip; includes [#166](https://github.com/kaz4g/masterocta/pull/166) Home / RootRegistry entry, #165, #164 `7d15b15`, …). Record remaining GUI **PASS** only on this SHA or a newer reviewed `main` SHA written here before the run. |
+| Partial automated attempt | **`af4097a42b247aab420a5217752afaf54869577f`** — prep/launch + **A01** / **B01** only; **not** M7 completion evidence |
 | Historical prep SHA | `008478dbcd4e82d21d71e2d0575da7bd92f8c226` (not an execution target) |
 | Superseded session 1 baseline | `b2c7765772bd3894472ba936664cabc0db92fcf1` (do not execute) |
 | Prior main (Phase 1 post-merge) | `d5a7cedcd547b540f7d34a0518d0e8b63a2791c4` (PR #160) |
@@ -20,10 +21,10 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 | Node | v22.18.0 |
 | pnpm | 11.24.0 |
 | Rust | 1.98.0 (via `~/.cargo/bin`) |
-| Product execution SHA | **`af4097a42b247aab420a5217752afaf54869577f`** (detached worktree `.worktrees/m7-native-exec-af4097a`) |
+| Partial attempt product SHA | **`af4097a42b247aab420a5217752afaf54869577f`** (detached worktree `.worktrees/m7-native-exec-af4097a`) |
 | Evidence docs base | **`eb40ffb0f582917e414b8c8e86d134f91d347aae`** (`origin/main` after PR #167) |
 
-**Gate note:** Record PASS only on the next execution baseline above. The `008478d` prep, the `3379b9d` operator attempt (stopped on F-A12-1, fixed by #163), and the **NOT_RUN** matrix written while `main` was `55eadcc` are not completion evidence. A PASS filled in against `55eadcc` does not accept `af4097a`.
+**Gate note:** M7 exit requires Group A/B **PASS** on the **next execution baseline** (`eb40ffb` or newer reviewed `main`). The **`af4097a`** partial attempt (A01/B01 only) does not exercise #166 Home entry used by A02/B02. Historical `55eadcc` **NOT_RUN** and `008478d` prep are not completion evidence.
 
 ## 2. Preparation evidence
 
@@ -41,14 +42,29 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 Mono fixture root (register read-only for Group A):
 
 ```text
-/private/var/folders/.../T/mo-ui-native-set-OIDdxv
+/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-OIDdxv
 ```
 
-Stereo fixture root (separate; Group B):
+Mono manifest copy (isolated HOME):
 
 ```text
-/private/var/folders/.../T/mo-ui-native-set-JIFQug
+/tmp/masterocta-ui-native-af4097a42b24-20260928T041235Z/fixture-manifest.json
 ```
+
+Stereo fixture root (separate; Group B — **exact** path for B02):
+
+```text
+/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-JIFQug
+```
+
+Stereo manifest (repo copy + isolated HOME copy):
+
+```text
+docs/testing/evidence/M7_INT2_20260928_af4097a_stereo_fixture_manifest.json
+/tmp/masterocta-ui-native-af4097a42b24-20260928T041235Z/m7-session2-evidence/stereo-fixture-manifest.json
+```
+
+If either temporary root is gone before B02, regenerate with `generate-m7-stereo-native-fixture.mjs` (or re-run prep for mono), record the new `fixtureRoot` in this document and commit an updated manifest under `docs/testing/evidence/` before registering.
 
 Launch (2026-09-28):
 
@@ -120,7 +136,7 @@ REAL_HOME="${REAL_HOME:-$HOME}" \
 
 1. **F-OP-1 — Operator GUI matrix not completed (2026-09-28).** Prep, fixture integrity, Native launch, and **A01** (catalog binding) **PASS** on **`af4097a`**. **A02–A15** and **B02–B03** require a human operator in the Native window (register, slice, export, stale, quit/relaunch, stereo lanes). This automated session did not perform those steps; rows remain **NOT_RUN**. Do not infer PASS from CI or file existence alone.
 2. **Historical stop @ `55eadcc`.** The 2026-09-27 **NOT_RUN** matrix at `55eadcc` stays historical; it was not backfilled to PASS.
-3. **#164** (`7d15b15`) on **`af4097a`** locks marker selection during derived export (A05/A11). Next action: same isolated HOME discipline, operator completes **A02–A15** and **B02–B03** on **`af4097a`**, then update this record. Product code must not be patched mid-session.
+3. **Next operator session:** fresh isolated HOME, worktree @ **`eb40ffb`** (current product `main`, includes #166 Home). Complete **A02–A15** and **B02–B03**; use the exact stereo `fixtureRoot` above or a regenerated manifest recorded here before B02. Product code must not be patched mid-session.
 
 ## 5. Product code
 

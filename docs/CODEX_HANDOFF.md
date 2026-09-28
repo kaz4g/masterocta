@@ -39,9 +39,8 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
-GitHub `main` 基準（product）: `af4097a42b247aab420a5217752afaf54869577f`（PR #165 merge。
-#147–#154 derived lineage / TRIM / slice export / Inspector lineage、#161 stereo lanes、
-#163–#165 後続 product を含む）。次の Native session 2 実行 baseline は product `main` **`af4097a`**。`55eadcc` は matrix **NOT_RUN** の停止記録であり、その SHA の PASS では現在の product を受入にしない。
+GitHub `main` 基準（product）: `eb40ffb0f582917e414b8c8e86d134f91d347aae`（#166 Home、#165、#164、#161 等を含む）。
+次の Native session 2 実行 baseline は product `main` **`eb40ffb`**。`af4097a` は A01/B01 の部分試行のみ（M7 完了証拠ではない）。
 M7 完了判定の正本: [`docs/planning/M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
@@ -332,7 +331,7 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 
 **M5:** **COMPLETE**（rename / reference-safe）。**Gate C:** **PASS**（personal / local）。
 **M6:** **IN_PROGRESS**（[`DEVELOPMENT_STATUS.md`](planning/DEVELOPMENT_STATUS.md)）。
-**M7:** **IN_PROGRESS**。product `main` **`af4097a`**（#165）。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
+**M7:** **IN_PROGRESS**。product `main` **`eb40ffb`**。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
 （2026-09-28: **`af4097a`** で prep/launch 済み。**A01** / **B01** **PASS**。**A02–A15** / **B02–B03** は operator GUI **NOT_RUN**。M7 完了には全行 PASS が必要）。
@@ -344,7 +343,7 @@ M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit
 
 **次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
 （[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の A01–A15 / B01–B03。
-次の実行は product `main` **`af4097a`**（#164 の export 中マーカー選択を含む。`55eadcc` では走らせない）。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
+次の実行は product `main` **`eb40ffb`**（#166 Home 含む。`af4097a` 部分試行は完了扱いにしない）。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
 
 **履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
 Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
