@@ -1,0 +1,22 @@
+{
+  "fixtureRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-JIFQug",
+  "ownedRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-JIFQug",
+  "generator": "generate-m7-stereo-native-fixture.mjs",
+  "productExecutionSha": "af4097a42b247aab420a5217752afaf54869577f",
+  "isolatedHome": "/tmp/masterocta-ui-native-af4097a42b24-20260928T041235Z",
+  "files": [
+    {
+      "pathRelative": "SET/AUDIO/STEREO_RANGE.wav",
+      "byteSize": 705644,
+      "sha256": "219088198bd411f7def4db2861dc7260cce5c76fccf2de888ef2c2144e25065c",
+      "sampleRate": 44100,
+      "channels": 2,
+      "bitsPerSample": 16,
+      "frameCount": 176400,
+      "role": "stereoSample",
+      "attackFramesLeft": [4410, 26460, 88200],
+      "attackFramesRight": [13230, 52920, 110250],
+      "leftDistinctFromRight": true
+    }
+  ]
+}
