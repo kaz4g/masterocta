@@ -12,7 +12,7 @@ function parseFramesLine(text: string): { startFrame: string; endExclusive: stri
 }
 
 async function dragPendingRangeOnSliceWaveform(slice: Locator) {
-  const waveform = slice.getByLabel("Slice waveform");
+  const waveform = slice.getByLabel(uiText("ja", "slicing.waveformAria"));
   await expect(waveform).toBeVisible();
   const box = await waveform.boundingBox();
   expect(box).not.toBeNull();

@@ -76,7 +76,9 @@ test("read-only library supports attack review, boundary editing and undo", asyn
   await expect(boundary).toHaveValue("11025");
   await expect(editor.getByLabel(uiText("ja", "slicing.fixedAria", { frame: "11025" }))).not.toBeChecked();
   await editor.getByRole("button", { name: uiText("ja", "waveform.zoomIn") }).click();
-  await expect(editor.locator(".slice-coordinate")).not.toHaveText(/\[0, 44100\)/);
+  const waveformViewport = editor.locator(".slice-coordinate").filter({ hasText: /Hz$/ });
+  await expect(waveformViewport).not.toHaveText(/\[0, 44100\)/);
+  await expect(waveformViewport).toHaveText(/\[0, 22050\)/);
   const calls: string[] = await page.evaluate(() => (window as any).__E2E_SLICE_CALLS__.map((c: any) => c.cmd));
   expect(calls).not.toContain("v2_root_enable_write");
   expect(calls).not.toContain("v2_change_apply");
