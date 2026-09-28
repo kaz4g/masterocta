@@ -148,7 +148,7 @@ function deleteDialog(page: Page) {
 test.beforeEach(async ({ page }) => {
   await setupTauriMocks(page)
   await page.goto('/')
-  await page.getByRole('button', { name: /scan/i }).click()
+  await page.getByRole('button', { name: uiText('ja', 'home.scanForProjects') }).click()
   await expect(page.getByText('PROJ_A')).toBeVisible()
   await expect(page.getByText(uiText('ja', 'legacy.notice'))).toBeVisible()
 })
