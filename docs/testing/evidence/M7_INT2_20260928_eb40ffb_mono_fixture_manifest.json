@@ -1,11 +1,113 @@
 {
+  "productExecutionSha": "eb40ffb0f582917e414b8c8e86d134f91d347aae",
+  "isolatedHome": "/tmp/masterocta-ui-native-eb40ffb0f582-20260928T043652Z",
   "fixtureRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-J2YHEs",
   "ownedRoot": "/private/var/folders/sk/_4wz3w4x0q332fry3ryng1mr0000gn/T/mo-ui-native-set-J2YHEs",
   "generator": "generate-ui-workspace-native-fixture.mjs",
-  "productExecutionSha": "eb40ffb0f582917e414b8c8e86d134f91d347aae",
-  "isolatedHome": "/tmp/masterocta-ui-native-eb40ffb0f582-20260928T043652Z",
-  "rangeWav": {
-    "pathRelative": "SET/AUDIO/RANGE.wav",
-    "sha256": "43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1"
-  }
+  "setLayout": "SET/AUDIO/ (Set = directory containing AUDIO/)",
+  "project": {
+    "pathRelative": "SET/ACCEPT_PROJ/project.work",
+    "sha256": "742b8228026b0d25b6de72e915adcec428b954f3be769e4f4e177cdfab7c7ae6",
+    "sourceFixture": "src-tauri/tests/fixtures/real_device_os_1_40/project.work"
+  },
+  "acceptanceLocations": {
+    "emptyList": {
+      "catalogKind": "project",
+      "relativePath": "SET/ACCEPT_PROJ",
+      "displayName": "ACCEPT_PROJ",
+      "note": "Project location with zero indexed audio files (only project.work)."
+    },
+    "searchZero": {
+      "catalogKind": "set_audio_pool",
+      "parentPath": "SET",
+      "exampleQuery": "xyzzy_nomatch",
+      "note": "Audio pool contains files; query with no matches yields zero hits."
+    }
+  },
+  "files": [
+    {
+      "pathRelative": "SET/AUDIO/RANGE.wav",
+      "byteSize": 529244,
+      "sha256": "43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 264600,
+      "role": "sampleA",
+      "attackFrames": [22050, 66150, 110250, 198450],
+      "rangeA": { "start": 44100, "endExclusive": 132300 },
+      "rangeB": { "start": 176400, "endExclusive": 220500 }
+    },
+    {
+      "pathRelative": "SET/AUDIO/ALT_FOUR_SEC.wav",
+      "byteSize": 352844,
+      "sha256": "6c593d608fe6d94bc780703e73458857ec01831895574dd1019b31dc5606aec0",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 176400,
+      "role": "sampleB",
+      "attackFrames": [8820, 52920, 132300]
+    },
+    {
+      "pathRelative": "SET/AUDIO/キック_受入.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "japaneseName"
+    },
+    {
+      "pathRelative": "SET/AUDIO/very_long_disposable_name_for_layout_overflow_acceptance_check.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "longName"
+    },
+    {
+      "pathRelative": "SET/AUDIO/zz_no_search_hit.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "searchZeroHint"
+    },
+    {
+      "pathRelative": "SET/AUDIO/ops_clone_src.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "opsClone"
+    },
+    {
+      "pathRelative": "SET/AUDIO/ops_rename_src.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "opsRename"
+    },
+    {
+      "pathRelative": "SET/AUDIO/ops_copy_src.wav",
+      "byteSize": 88244,
+      "sha256": "3fa20276d8a4131431490ed129d0b05fafa4e9c82d4339b5cf635512103d6615",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitsPerSample": 16,
+      "frameCount": 44100,
+      "role": "opsCopy"
+    }
+  ]
 }
