@@ -383,7 +383,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'slicing.deleteBoundaryAria': '境界を削除 {frame}',
   'slicing.boundaryAria': '境界 {frame}',
   'slicing.frameAriaValue': 'フレーム {value}',
-  'slicing.candidateWarningLine': 'フレーム {frame}: {warnings}',
+  'slicing.candidateWarningsAtFrame': 'フレーム {frame}',
   'slicing.warning.leftEdgeTruncated': 'ファイル先頭ですでに音が鳴っています',
   'slicing.warning.preRollClipped': 'プリロールが範囲で切り詰められました',
   'slicing.warning.uncertainAttack': 'アタック位置が不確かです',

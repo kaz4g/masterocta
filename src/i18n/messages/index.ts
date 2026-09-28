@@ -45,7 +45,7 @@ export type MessageParams = {
   'slicing.deleteBoundaryAria': { frame: string }
   'slicing.boundaryAria': { frame: string }
   'slicing.frameAriaValue': { value: string }
-  'slicing.candidateWarningLine': { frame: string; warnings: string }
+  'slicing.candidateWarningsAtFrame': { frame: string }
   'slicing.warningsTruncated': { count: number }
   'slicing.draftSummary': { count: number; revision: number }
   'slicing.sliceExportReview': { displayName: string; markerId: string }

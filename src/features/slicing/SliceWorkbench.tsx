@@ -41,15 +41,17 @@ interface Props {
 const WIDTH = 640;
 const PAGE = 50;
 
-function formatCandidateWarningLabels(
-  t: TranslateFn,
-  codes: string[],
-): string {
-  return codes.map((w) => {
-    if (w === "LEFT_EDGE_TRUNCATED") return t("slicing.warning.leftEdgeTruncated");
-    if (w === "PRE_ROLL_CLIPPED") return t("slicing.warning.preRollClipped");
-    return t("slicing.warning.uncertainAttack");
-  }).join(", ");
+function translateCandidateWarningCode(t: TranslateFn, code: string): string {
+  switch (code) {
+    case "LEFT_EDGE_TRUNCATED":
+      return t("slicing.warning.leftEdgeTruncated");
+    case "PRE_ROLL_CLIPPED":
+      return t("slicing.warning.preRollClipped");
+    case "BOUNDARY_UNCERTAIN":
+      return t("slicing.warning.uncertainAttack");
+    default:
+      return t("slicing.warning.uncertainAttack");
+  }
 }
 
 // A new file/root unmounts the session, cancelling every pending response and sound.
@@ -1052,10 +1054,14 @@ function SliceSession({
           <ul>
             {warnings.slice(0, PAGE).map(c => (
               <li key={c.candidateId}>
-                {t("slicing.candidateWarningLine", {
-                  frame: c.suggestedStartFrame,
-                  warnings: formatCandidateWarningLabels(t, c.warnings),
-                })}
+                {t("slicing.candidateWarningsAtFrame", { frame: c.suggestedStartFrame })}
+                <ul className="slice-candidate-warnings">
+                  {c.warnings.map((w, index) => (
+                    <li key={`${c.candidateId}:${index}:${w}`}>
+                      {translateCandidateWarningCode(t, w)}
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>

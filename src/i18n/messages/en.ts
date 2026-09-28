@@ -377,7 +377,7 @@ export const enMessages = {
   'slicing.deleteBoundaryAria': 'Delete boundary {frame}',
   'slicing.boundaryAria': 'Boundary {frame}',
   'slicing.frameAriaValue': 'Frame {value}',
-  'slicing.candidateWarningLine': 'Frame {frame}: {warnings}',
+  'slicing.candidateWarningsAtFrame': 'Frame {frame}',
   'slicing.warning.leftEdgeTruncated': 'sound already active at file start',
   'slicing.warning.preRollClipped': 'pre-roll clipped by region',
   'slicing.warning.uncertainAttack': 'uncertain attack position',
