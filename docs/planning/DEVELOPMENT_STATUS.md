@@ -1,9 +1,9 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
-- Updated: 2026-09-28 (final Native session 2 attempt @ `eb40ffb`; GUI NOT_RUN)
-- Product baseline: GitHub `origin/main` **`eb40ffb0f582917e414b8c8e86d134f91d347aae`** (includes #166 Home, #165, #164 `7d15b15`, …)
-- Final session 2 execution @ **`eb40ffb`**: prep/launch + **A01** / **B01** **PASS**; GUI **NOT_RUN**. Historical: **`af4097a`**, **`55eadcc`** — not backfilled to PASS
+- Updated: 2026-09-28 (Native session 3 @ `04725cb3`; GUI NOT_RUN)
+- Product baseline: GitHub `origin/main` **`04725cb3a1942716e11f1b90a6387733f9302da4`** (#170 SliceWorkbench i18n; includes #161–#166, #164, …)
+- Session 3 execution @ **`04725cb3`**: prep/launch + **A01** / **B01** **PASS**; GUI **NOT_RUN**. Historical: session 2 **`eb40ffb`/`af4097a`**, **`55eadcc`** — not backfilled to PASS
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -25,10 +25,10 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-09-28)
 
-Product `main` is **`eb40ffb`** (#166 Home + prior merges). Integrated Native **session 2**
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS** on execution baseline **`eb40ffb`** (2026-09-28 final session: **A01** / **B01** **PASS**; **A02–A15** / **B02–B03** operator **NOT_RUN**).
-**M7** **IN_PROGRESS** until every A/B row is **PASS** on `eb40ffb` (or newer reviewed `main` recorded in that doc).
+Product `main` is **`04725cb3`** (PR #170). Integrated Native **session 3**
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md)
+**STOP_WITH_FINDINGS** on execution baseline **`04725cb3`** (**A01** / **B01** **PASS**; **A02–A15** / **B02–B03** operator **NOT_RUN**).
+**M7** **IN_PROGRESS** until every A/B row is **PASS** on `04725cb3` (or newer reviewed `main` recorded in session 3 doc).
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
@@ -52,7 +52,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | Integrated Native session 2 **STOP_WITH_FINDINGS** @ `eb40ffb` (A01/B01 only); operator GUI **NOT_RUN**. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **IN_PROGRESS** | Integrated Native session 3 **STOP_WITH_FINDINGS** @ `04725cb3` (A01/B01 only); operator GUI **NOT_RUN**. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -98,14 +98,14 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | --- | --- | --- | --- | --- | --- |
 | M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
 | M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
-| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145, #161 (`3379b9d`) | Tests + lane UI tests | **NOT_RUN** | Independent L/R lanes on `main`; Exit row 3 Native **NOT_RUN** until B01–B03 on session 2 execution baseline |
+| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145, #161 (`3379b9d`) | Tests + lane UI tests | **NOT_RUN** | Independent L/R lanes on `main`; Exit row 3 Native **NOT_RUN** until B01–B03 on session 3 execution baseline |
 | M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
 | M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PARTIAL** on `0f39f50` | Implementation on main. Native: A/B/D exercised; **C post-quit SQLite not recorded**. Integrated Native must include quit + `slice_drafts` SELECT. 100-clip / `.ot` are Auto Slice / M11 |
 | M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **NOT_RUN** (#153 + #154 checklists) | Lineage, Mac TRIM, `SLICE_EXPORT` UI, Inspector parent/children **on main**. mac_derived Library browse / derived waveform / batch / `.ot` are **non-goals**. Exit blocker = integrated Native (original SHA + restart lineage) |
 | M7-07 stem separation adapter spike | **DEFERRED** | enum `STEM` / `StemRole` only | — | — | Not in v0.1 Exit Gate; spike deferred to **M11 prep** (enum-only ≠ spike). See audit §11 |
 | M7-08 optional stem separation workflow | **DEFERRED** | — | — | — | Optional WP; production stem is **M11**. Not an M7 exit blocker |
 
-**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display** implementation on `main` (#161); Native **NOT_RUN** on session 2 baseline; analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native A01–A15 PASS. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
+**M7 exit gate (v0.1):** Width/zoom **PASS**; **stereo independent display** implementation on `main` (#161); Native **NOT_RUN** on session 3 baseline; analysis non-blocking **PASS** (implementation); derived original-preservation **PARTIAL** until integrated Native A01–A15 PASS. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
 
 ---
 
@@ -180,11 +180,11 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** — operator GUI on product `main` **`eb40ffb`**
-(**A02–A15** / **B02–B03**; #166 Home path). Final automated session recorded **A01** / **B01** only; **`af4097a`** is historical.
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3`** — operator GUI on product `main` **`04725cb3`**
+(**A02–A15** / **B02–B03**; #170 + #166 Home path). Session 3 automated prep recorded **A01** / **B01** only; session 2 / **`af4097a`** are historical.
 
-**Reason:** Execute A01–A15 and B01–B03 in
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),
+**Reason:** Complete A02–A15 and B02–B03 in
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md),
 including the failed/cancelled re-analysis check, the stereo fixture root
 register/scan/select step, restart re-registration, and the export/lineage
 no-write evidence named there. Do not execute session 1 or baseline `b2c7765`.
@@ -214,7 +214,7 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 | C | Apply candidates; draft + SQLite after quit | **Partial** — Apply + draft revision PASS; persistence verified via **file switch**, not documented post-quit `SELECT` |
 | D | Range B → `ANALYSIS_REGION_MISMATCH` | **Yes** — fail-closed mismatch PASS |
 
-**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native session 2 (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) must record quit + isolated-catalog `slice_drafts` evidence, after fixture re-registration, before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
+**Conclusion (2026-09-21 review fix):** Do **not** treat M7-05 Native as **PASS**. Step C (post-quit draft persistence) was **Partial** only. Integrated Native session 3 (`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3`) must record quit + isolated-catalog `slice_drafts` evidence, after fixture re-registration, before M7-05 → **COMPLETE**. Keep `M7_RANGE_TO_SLICE_NATIVE_ACCEPTANCE.md` historical.
 
 ---
 

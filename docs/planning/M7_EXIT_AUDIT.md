@@ -12,14 +12,16 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 ## 1. Audit identity
 
 **Reconciled for M7 finalization (2026-09-28):** product `origin/main` is
-`eb40ffb0f582917e414b8c8e86d134f91d347aae` (includes #166 Home / RootRegistry entry,
-#165, #164 `7d15b15`, …). Final automated session 2 attempt on that SHA recorded
-prep/launch + **A01** / **B01** **PASS**; operator GUI **NOT_RUN**. Partial **`af4097a`**
-and historical **`55eadcc`** are not M7 exit evidence. Session 2 **STOP_WITH_FINDINGS**
-until full Group A/B **PASS** on `eb40ffb` (or newer reviewed `main` recorded in the
-session 2 doc). Integrated Native **session 2**:
+`04725cb3a1942716e11f1b90a6387733f9302da4` (PR #170; includes #161–#166, #164, …).
+Session 3 automated attempt on that SHA recorded prep/launch + **A01** / **B01** **PASS**;
+operator GUI **NOT_RUN**. Session 2 **`eb40ffb`**, partial **`af4097a`**, and historical
+**`55eadcc`** are not mixed into session 3 PASS. Session 3 **STOP_WITH_FINDINGS** until
+full Group A/B **PASS** on `04725cb3` (or newer reviewed `main` recorded in the session 3
+doc). Integrated Native **session 3**:
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md)
+**STOP_WITH_FINDINGS**. Session 2
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS**. Historical session 1
+is historical. Historical session 1
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
 remains **NOT_RUN**. Baseline `b2c7765` is not the execution target. **M7** remains
 **IN_PROGRESS** — not COMPLETE.
@@ -170,10 +172,10 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 | Main | #124, #145, #161 |
 | Automated | **PASS** (query + lane unit tests on #161 branch) |
 | E2E | **PARTIAL** |
-| Native | **NOT_RUN** | Group B (B01–B03) not executed; see acceptance session 2 |
+| Native | **NOT_RUN** | Group B (B01–B03) not executed; see acceptance session 3 |
 | Hardware | **N/A** |
 
-**Exit blocker:** **yes** until Native B01–B03 **PASS** on the session 2 execution baseline (#161 is merged on `main`).
+**Exit blocker:** **yes** until Native B01–B03 **PASS** on the session 3 execution baseline (#161 is merged on `main`).
 
 ---
 
@@ -291,7 +293,7 @@ WP name is **optional**. M11 purpose (v0.1): production stem separation. Exit Ga
 | --- | --- | --- | --- |
 | Width-driven high-res waveform | #129 + WFM2 #145 + query #124 | **PASS** | Native zoom matrix optional |
 | Zoom not stuck at 640 points | #129/#130; `targetPoints` 32–4096 | **PASS** | Canvas follow-on only |
-| Stereo independently displayable | #124/#145 peaks; lanes **#161** on `main`; `STEREO_RANGE` fixture | **PARTIAL** | Native B01–B03 PASS on session 2 baseline |
+| Stereo independently displayable | #124/#145 peaks; lanes **#161** on `main`; `STEREO_RANGE` fixture | **PARTIAL** | Native B01–B03 PASS on session 3 baseline |
 | Analysis job does not block Library UI | Job API + `0f39f50` analysis UX | **PASS** | M7-05 draft quit evidence still open |
 | Derived assets do not mutate originals | TRIM/SLICE_EXPORT tests + invariant docs | **PARTIAL** | Native SHA + restart **NOT_RUN** |
 
@@ -318,7 +320,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 ### A. M7 EXIT BLOCKER
 
-1. **Integrated Native acceptance session 2** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) on product `main` **`eb40ffb`** (includes #166 Home entry for A02/B02, #164 export marker lock, …). Session 1, baseline `b2c7765`, historical `55eadcc`, and the partial **`af4097a`** attempt are not completion targets. **Supersedes** #153/#154 only when every session 2 row is **PASS** on `eb40ffb` (or newer reviewed `main` recorded in that document).
+1. **Integrated Native acceptance session 3** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3`) on product `main` **`04725cb3`** (includes #170 i18n, #166 Home, #164 export marker lock, …). Session 1–2, baseline `b2c7765`, historical `55eadcc`, **`af4097a`**, and **`eb40ffb`** partial attempts are not completion targets. **Supersedes** #153/#154 only when every session 3 row is **PASS** on `04725cb3` (or newer reviewed `main` recorded in that document).
 
    Required sequence (sanitized evidence):
 
@@ -334,7 +336,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
    - **Quit + relaunch** same isolated HOME: second catalog-binding check, then read-only fixture re-register, rescan, and `RANGE.wav` reselect before comparing the restored draft and the same lineage child
    - **Slice draft persistence:** post-quit `slice_drafts` SELECT on isolated catalog (sanitized)
 
-2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): lanes are on `main` via #161. Native B01–B03 still required. Register the generator-owned stereo `fixtureRoot` recorded in the session 2 document (read-only), scan, and select `SET/AUDIO/STEREO_RANGE.wav`. Mono `RANGE.wav` cannot prove this criterion. Exit row 3 stays **PARTIAL** until Native PASS.
+2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): lanes are on `main` via #161. Native B01–B03 still required. Register the generator-owned stereo `fixtureRoot` recorded in the session 3 document (read-only), scan, and select `SET/AUDIO/STEREO_RANGE.wav`. Mono `RANGE.wav` cannot prove this criterion. Exit row 3 stays **PARTIAL** until Native PASS.
 
 ### B. M7 COMPLETION QUALITY (not Exit Gate)
 
@@ -355,9 +357,9 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 Do **not** reopen #153/#154 Native as separate historical PASSes.
 
-**Primary next Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
+**Primary next Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3` (operator GUI completion)
 
-One operator session on product `main` **`eb40ffb`** (or newer reviewed `main` SHA recorded in the session 2 doc before PASS), fresh isolated `HOME`, fixture harness plus the **exact** stereo `fixtureRoot` in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) / `docs/testing/evidence/`. Do not complete M7 on **`af4097a`** alone (#166 not exercised).
+Complete remaining rows on product `main` **`04725cb3`** using the isolated HOME and **exact** fixture roots in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) / `docs/testing/evidence/M7_INT3_*`. Do not mix session 2 partial PASS into session 3.
 
 Until derived-flow Native **PASS** (full checklist §15.A.1 / integrated record group A), M7-06 stays **IMPLEMENTED_NOT_FULLY_ACCEPTED**. M7 milestone stays **IN_PROGRESS** while Exit Gate stereo is **PARTIAL** and/or Native gaps remain (not **COMPLETE**).
 
@@ -365,7 +367,7 @@ Until derived-flow Native **PASS** (full checklist §15.A.1 / integrated record 
 
 ## 17. Recommended next Work ID
 
-**Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
+**Primary:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-3` (operator GUI)
 
 **Reason:** operator Native for the derived path, including failed/cancelled re-analysis, export no-write evidence, quit, and fixture re-registration. Stereo display is group B of the same session, not a separate next Work ID.
 
@@ -383,7 +385,7 @@ Call M7 **COMPLETE** only when:
 1. Exit Gate rows 1–2 and 4 are **PASS** on main (including Native where required),
 2. Exit Gate row 3 (stereo **independently displayable**) is **PASS** (not data-only),
 3. Exit Gate row 5 (derived originals unchanged) is **PASS** via integrated Native,
-4. Integrated Native groups A and B are **PASS** on product `main` **`eb40ffb`** (or later reviewed `main` SHA recorded in the session 2 doc), in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md). Partial **`af4097a`** or **`55eadcc`** alone does not satisfy this rule. Session 1 stays historical **NOT_RUN**,
+4. Integrated Native groups A and B are **PASS** on product `main` **`04725cb3`** (or later reviewed `main` SHA recorded in the session 3 doc), in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md). Partial session 2 / **`af4097a`** / **`55eadcc`** alone does not satisfy this rule. Session 1 stays historical **NOT_RUN**,
 5. M7-07/08 remain **DEFERRED** to M11 (documented; not silently required).
 
 Do not require Canvas, production stem engine, `.ot`, or Library injection.
