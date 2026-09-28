@@ -11,7 +11,7 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 
 | Item | Value |
 | --- | --- |
-| Execution baseline | **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (PR [#163](https://github.com/kaz4g/masterocta/pull/163) merge; includes #161). Product `main` may be ahead (e.g. **`af4097a`** after #165); that does not substitute for this matrix. |
+| Next execution baseline | **`af4097a42b247aab420a5217752afaf54869577f`** — product `main` (PR [#165](https://github.com/kaz4g/masterocta/pull/165); includes #164 `7d15b15`, marker selection locked during derived export). Record PASS only on this SHA, or on a newer reviewed `main` SHA written here before the run. |
 | Historical prep SHA | `008478dbcd4e82d21d71e2d0575da7bd92f8c226` (not an execution target) |
 | Superseded session 1 baseline | `b2c7765772bd3894472ba936664cabc0db92fcf1` (do not execute) |
 | Prior main (Phase 1 post-merge) | `d5a7cedcd547b540f7d34a0518d0e8b63a2791c4` (PR #160) |
@@ -20,7 +20,7 @@ Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./
 | Node | v22.18.0 |
 | pnpm | workspace lockfile (frozen install on CI) |
 
-**Gate note:** Record PASS only on the execution baseline above. The `008478d` prep and the `3379b9d` operator attempt (stopped on F-A12-1, fixed by #163) are not completion evidence.
+**Gate note:** Record PASS only on the next execution baseline above. The `008478d` prep, the `3379b9d` operator attempt (stopped on F-A12-1, fixed by #163), and the **NOT_RUN** matrix written while `main` was `55eadcc` are not completion evidence. A PASS filled in against `55eadcc` does not accept `af4097a`.
 
 ## 2. Preparation evidence (automated — PASS)
 
@@ -81,9 +81,9 @@ REAL_HOME="${REAL_HOME:-$HOME}" \
 
 ## 4. Findings (STOP)
 
-1. **Operator GUI matrix not executed** against `55eadcc` (no substitute for A01–A15 / B01–B03 PASS under the observations in §3).
-2. **#161** is merged (`3379b9d`). **#163** is merged (`55eadcc`) and fixes F-A12-1 (analysis-session expiry hid Slice Export). A `3379b9d` attempt stopped on that finding and is not this matrix.
-3. Re-run the full matrix on `55eadcc` with a fresh isolated HOME. Register the mono fixture and the recorded stereo fixture root separately.
+1. **Operator GUI matrix not executed.** The stop was recorded while `main` was `55eadcc`. Those **NOT_RUN** cells stay historical; they are not a PASS, and they are not the next run.
+2. **#161** is merged (`3379b9d`). **#163** is merged (`55eadcc`) and fixes F-A12-1 (analysis-session expiry hid Slice Export). A `3379b9d` attempt stopped on that finding and is not this matrix. **#164** (`7d15b15`) locks waveform marker selection while a derived export is in flight (A05/A11) and is on product `main` **`af4097a`**.
+3. Re-run the full matrix on **`af4097a`** (or a newer reviewed `main` SHA recorded in §1 before the run) with a fresh isolated HOME. Do not run `55eadcc`. Register the mono fixture and the recorded stereo fixture root separately.
 
 ## 5. Product code
 

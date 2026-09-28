@@ -1,9 +1,9 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1` (reconciliation); prior: `MO-M7-EXIT-AUDIT-1`
-- Updated: 2026-09-28 (M7 status reconciliation; Native execution baseline unchanged)
-- Product baseline: GitHub `origin/main` **`af4097a42b247aab420a5217752afaf54869577f`** (merge PR #165)
-- Native session 2 execution baseline: **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** (PR #163) — matrix **NOT_RUN**; later `main` merges do not retroactively PASS Native
+- Updated: 2026-09-28 (next Native run is product `main`; historical stop stays NOT_RUN)
+- Product baseline / next Native session 2 execution baseline: GitHub `origin/main` **`af4097a42b247aab420a5217752afaf54869577f`** (merge PR #165; includes #164 `7d15b15`)
+- Historical session 2 stop: **`55eadcc7d671eb2259f8ea15634f787a234c1dbd`** — matrix **NOT_RUN**. A PASS on that SHA does not accept current product `main`
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -29,10 +29,12 @@ PR #161 (**stereo channel lanes**) is **MERGED** at `3379b9d`. PR #163 (Slice Ex
 after analysis-session expiry) is **MERGED** at `55eadcc`. PR #165 (UI action
 consolidation) is **MERGED** at `af4097a` on product `main`. Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN** on `55eadcc`). Historical
-session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
+**STOP_WITH_FINDINGS** (A01–A15 / B01–B03 **NOT_RUN**; that stop was written at
+`55eadcc`). Next run is product `main` **`af4097a`**, which includes #164 export
+marker selection. Historical session 1
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
 remains **NOT_RUN** (baseline `b2c7765` is not the execution target). **M7** stays
-**IN_PROGRESS** until that session 2 matrix is **PASS**.
+**IN_PROGRESS** until the session 2 matrix is **PASS** on `af4097a` or a newer reviewed `main` SHA.
 
 ## Historical GitHub audit snapshot (M7 exit audit, 2026-09-21)
 
@@ -56,7 +58,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | Stereo lanes **MERGED** (#161); integrated Native session 2 **NOT_RUN** on execution baseline `55eadcc`. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **IN_PROGRESS** | Stereo lanes **MERGED** (#161); integrated Native session 2 **NOT_RUN**. Next run is product `main` `af4097a` (includes #164). M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -184,8 +186,8 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on execution baseline **`55eadcc`**
-(product `main` may be ahead, e.g. **`af4097a`** after #165 — that does not substitute for the matrix)
+**Primary:** **`MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`** on product `main` **`af4097a`**
+(includes #164 `7d15b15`. Do not run the historical stop SHA `55eadcc`.)
 
 **Reason:** Execute A01–A15 and B01–B03 in
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md),

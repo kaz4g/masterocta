@@ -11,14 +11,19 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 
 ## 1. Audit identity
 
-**Reconciled for M7 finalization (2026-09-28):** product `main` is
-`af4097a42b247aab420a5217752afaf54869577f` (PR #165 merge; includes #161 at
-`3379b9d`, #163 at `55eadcc`). **Native session 2 execution baseline** remains
-`55eadcc7d671eb2259f8ea15634f787a234c1dbd` — operator matrix **NOT_RUN** there;
-later product merges do not retroactively PASS Native. Integrated Native **session 2**:
+**Reconciled for M7 finalization (2026-09-28):** product `main` and the **next**
+Native session 2 execution baseline are
+`af4097a42b247aab420a5217752afaf54869577f` (PR #165 merge). That SHA includes #161
+(`3379b9d`), #163 (`55eadcc`), and #164 (`7d15b15`, marker selection locked during
+derived export — A05/A11). The session 2 record is still **STOP_WITH_FINDINGS**
+with the operator matrix **NOT_RUN**; that stop was written against `55eadcc` and
+must not be backfilled to PASS. A later PASS is valid for M7 exit only when the
+matrix is run on `af4097a` (or a newer reviewed `main` SHA written into the session 2
+doc at execution time). PASS on `55eadcc` alone does not accept current export
+behavior. Integrated Native **session 2**:
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)
-**STOP_WITH_FINDINGS** (operator matrix **NOT_RUN** on `55eadcc`). Historical
-session 1 [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
+**STOP_WITH_FINDINGS**. Historical session 1
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md)
 remains **NOT_RUN**. Baseline `b2c7765` is not the execution target. **M7** remains
 **IN_PROGRESS** — not COMPLETE.
 
@@ -316,7 +321,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 ### A. M7 EXIT BLOCKER
 
-1. **Integrated Native acceptance session 2** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) on execution baseline **`55eadcc`** (product `main` may be ahead). Session 1 and baseline `b2c7765` are not the execution target. **Supersedes** #153/#154 operator intent only when every session 2 group A row is **PASS** with the evidence named in that record; **do not** edit historical #153/#154 or session 1 checklists to PASS.
+1. **Integrated Native acceptance session 2** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`) on product `main` **`af4097a`** (includes #164 marker-selection-during-export). Session 1, baseline `b2c7765`, and the historical stop SHA `55eadcc` are not the execution target. **Supersedes** #153/#154 operator intent only when every session 2 group A row is **PASS** on `af4097a` (or a newer reviewed `main` SHA recorded in that document) with the evidence named there; **do not** edit historical #153/#154 or session 1 checklists to PASS, and **do not** treat a `55eadcc`-only PASS as M7 completion.
 
    Required sequence (sanitized evidence):
 
@@ -355,7 +360,7 @@ Do **not** reopen #153/#154 Native as separate historical PASSes.
 
 **Primary next Work ID:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
 
-One operator session on `main` **`55eadcc`**, isolated `HOME`, existing fixture harness (`scripts/prepare-ui-workspace-native-acceptance.sh`) plus the recorded stereo fixture root. Record results in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md). Leave session 1, `M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`, and `M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md` as **NOT_RUN** historical checklists.
+One operator session on product `main` **`af4097a`** (or a newer reviewed `main` SHA recorded in the session 2 doc before PASS), isolated `HOME`, existing fixture harness (`scripts/prepare-ui-workspace-native-acceptance.sh`) plus the recorded stereo fixture root. Record results in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md). Leave session 1, `M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md`, and `M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md` as **NOT_RUN** historical checklists. Do not execute `55eadcc` as a substitute: it predates #164 (`7d15b15`).
 
 Until derived-flow Native **PASS** (full checklist §15.A.1 / integrated record group A), M7-06 stays **IMPLEMENTED_NOT_FULLY_ACCEPTED**. M7 milestone stays **IN_PROGRESS** while Exit Gate stereo is **PARTIAL** and/or Native gaps remain (not **COMPLETE**).
 
@@ -381,7 +386,7 @@ Call M7 **COMPLETE** only when:
 1. Exit Gate rows 1–2 and 4 are **PASS** on main (including Native where required),
 2. Exit Gate row 3 (stereo **independently displayable**) is **PASS** (not data-only),
 3. Exit Gate row 5 (derived originals unchanged) is **PASS** via integrated Native,
-4. Integrated Native groups A (derived flow, §15.A.1) and B (stereo, §15.A.2) are **PASS** on `main` **`55eadcc`** (or a later reviewed main SHA recorded in the session 2 doc), in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md). Session 1 stays historical **NOT_RUN**,
+4. Integrated Native groups A (derived flow, §15.A.1) and B (stereo, §15.A.2) are **PASS** on product `main` **`af4097a`** (or a later reviewed main SHA recorded in the session 2 doc at execution time), in [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md). A PASS recorded only against `55eadcc` does not satisfy this rule. Session 1 stays historical **NOT_RUN**,
 5. M7-07/08 remain **DEFERRED** to M11 (documented; not silently required).
 
 Do not require Canvas, production stem engine, `.ot`, or Library injection.

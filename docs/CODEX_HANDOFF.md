@@ -41,7 +41,7 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 GitHub `main` 基準（product）: `af4097a42b247aab420a5217752afaf54869577f`（PR #165 merge。
 #147–#154 derived lineage / TRIM / slice export / Inspector lineage、#161 stereo lanes、
-#163–#165 後続 product を含む）。M7 Native session 2 実行 baseline は **`55eadcc`**（matrix **NOT_RUN**）。
+#163–#165 後続 product を含む）。次の Native session 2 実行 baseline は product `main` **`af4097a`**。`55eadcc` は matrix **NOT_RUN** の停止記録であり、その SHA の PASS では現在の product を受入にしない。
 M7 完了判定の正本: [`docs/planning/M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 
 方針は、現行Octatrack Managerを全面破棄するリライトではない。現行版を解析知識、
@@ -335,7 +335,7 @@ Application Supportへ、ファイルの相対パス・サイズ・mtime・conte
 **M7:** **IN_PROGRESS**。product `main` **`af4097a`**（#165）。正本 [`M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。
 Integrated Native **session 2**
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) **STOP_WITH_FINDINGS**
-（A01–A15 / B01–B03 は execution baseline **`55eadcc`** で未実施）。#165 以降の merge は Native PASS を構成しない。
+（A01–A15 / B01–B03 は **NOT_RUN**。停止記録は `55eadcc`。次の実行は product `main` **`af4097a`**。`55eadcc` だけの PASS は M7 完了にしない）。
 session 1 と基準 `b2c7765` は実行対象ではない。
 M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit audit。
 
@@ -344,7 +344,7 @@ M7-07/08 **DEFERRED**（M11）。**次:** session 2 の A/B matrix → docs exit
 
 **次 Work ID（Primary）:** `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-2`
 （[`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) の A01–A15 / B01–B03。
-execution baseline **`55eadcc`**（product `main` が先に進んでも同じ）。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
+次の実行は product `main` **`af4097a`**（#164 の export 中マーカー選択を含む。`55eadcc` では走らせない）。session 1・#153/#154 の **NOT_RUN** は歴史として残し、PASS へ書き換えない）。
 
 **履歴 — MO-M7-DERIVED-LINEAGE-QUERY-UI-1:** **MERGED** #154（`37f86c9`、head `6a5ec66`）。
 Native lineage: [`docs/testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md`](testing/M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md)（**NOT_RUN**）。
