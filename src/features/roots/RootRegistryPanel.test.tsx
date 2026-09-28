@@ -381,7 +381,7 @@ describe("RootRegistryPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
     expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
     fireEvent.click(screen.getByText("KICK.wav"));
-    fireEvent.click(screen.getAllByRole("button", { name: tJa("operations.copyAction") })[0]);
+    fireEvent.click(screen.getByRole("button", { name: tJa("operations.copyAction") }));
     const closeRoot = screen.getByRole("button", { name: tJa("sources.closeRoot") });
     fireEvent.change(screen.getByLabelText("Destination relative path"), {
       target: { value: "LIVE_SET/PROJECT_A/KICK_COPY.wav" },
@@ -444,7 +444,8 @@ describe("RootRegistryPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
     expect(await screen.findByText("PROJECT_A")).toBeInTheDocument();
     fireEvent.click(screen.getByText("KICK.wav"));
-    expect(screen.getAllByRole("button", { name: tJa("inspector.renameAction") }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: tJa("inspector.renameAction") })).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: tJa("operations.sampleMenuAria") })).toHaveLength(1);
     expect(screen.getByText(tJa("operations.preparedHint"))).toBeInTheDocument();
     expect(renameClient.recoveryStatus).toHaveBeenCalled();
   });

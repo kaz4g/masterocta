@@ -27,18 +27,6 @@ export async function showListFromContextBar(
   await toggle.click();
 }
 
-export async function showListFromStatusBar(
-  page: Page,
-  locale: "ja" | "en",
-): Promise<void> {
-  const toggle = page.getByTestId("app-shell-status").getByRole("button", {
-    name: uiText(locale, "workspace.showListStatusAria"),
-    exact: true,
-  });
-  await expect(toggle).toBeVisible({ timeout: 15000 });
-  await toggle.click();
-}
-
 export async function expectEditEnabledInContextBar(
   page: Page,
   locale: "ja" | "en",

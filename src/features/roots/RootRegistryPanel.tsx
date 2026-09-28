@@ -692,7 +692,7 @@ export function RootRegistryPanel({
       onEnableWrite={() => void enableWrite()}
       onDisableWrite={() => void disableWrite()}
       catalogReady={catalogReady}
-      onOpenClone={() => openCloneOperations()}
+      onOpenClone={catalogReady ? undefined : () => openCloneOperations()}
     />
   );
 
@@ -718,7 +718,7 @@ export function RootRegistryPanel({
           <Button
             variant="secondary"
             aria-pressed={centerView === "inspector"}
-            onClick={() => setCenterView("inspector")}
+            onClick={() => showInspectorPane()}
           >
             {t("workspace.showInspector")}
           </Button>
@@ -736,10 +736,6 @@ export function RootRegistryPanel({
       recovery={recovery}
       renameRecovery={renameRecovery}
       onOpenOperations={openOperationsFromStatus}
-      onShowInspector={showInspectorPane}
-      inspectorHidden={narrowWorkspace && centerView === "list"}
-      onShowList={() => setCenterView("list")}
-      listHidden={narrowWorkspace && centerView === "inspector"}
     />
   );
 
@@ -804,11 +800,6 @@ export function RootRegistryPanel({
                 totalFiles={library.audioFiles.length}
                 catalogRefreshing={catalogRefreshing}
                 catalogError={catalogError}
-                onSampleRename={() => openRenameForSelection()}
-                onSampleCopy={() => openCopyForSelection()}
-                sampleRenameDisabled={renameBlocked || writeEnabled !== true}
-                sampleCopyDisabled={copyBlocked}
-                sampleOpsBusy={sessionInteractionBusy}
               />
             </div>
             {sliceWorkspaceExpanded && selectedAsset !== null && selectedLibraryFile !== undefined && (
