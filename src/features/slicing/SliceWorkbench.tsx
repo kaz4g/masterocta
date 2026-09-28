@@ -6,6 +6,7 @@ import {
   type SliceExportResult, type SliceProposal, type SliceRange, type SliceWaveform,
 } from "../../api/slices";
 import { useTranslate } from "../../i18n";
+import type { TranslateFn } from "../../i18n/messages";
 import { durationLabelForFrame, formatPreviewFrameTimeSeconds } from "../waveform/frameMath";
 import type { LibraryCommittedGeometryRange } from "../waveform/WaveformPreview";
 import { frame, frameAt, inRange, pointerRatioInMeetSvg, position, previewChannels } from "./frames";
@@ -39,6 +40,17 @@ interface Props {
 }
 const WIDTH = 640;
 const PAGE = 50;
+
+function formatCandidateWarningLabels(
+  t: TranslateFn,
+  codes: string[],
+): string {
+  return codes.map((w) => {
+    if (w === "LEFT_EDGE_TRUNCATED") return t("slicing.warning.leftEdgeTruncated");
+    if (w === "PRE_ROLL_CLIPPED") return t("slicing.warning.preRollClipped");
+    return t("slicing.warning.uncertainAttack");
+  }).join(", ");
+}
 
 // A new file/root unmounts the session, cancelling every pending response and sound.
 export function SliceWorkbench(props: Props) {
@@ -881,9 +893,18 @@ function SliceSession({
           </button>
         </div>
       </div>
-      <div className="slice-actions"><button onClick={() => zoom(true)}>Zoom in</button><button onClick={() => zoom(false)}>Zoom out</button><button aria-label="Pan earlier" onClick={() => pan(-1n)}>←</button><button aria-label="Pan later" onClick={() => pan(1n)}>→</button><button onClick={() => setView(draft.region)}>Full region</button></div>
-      <p className="slice-coordinate">Frames [{view.startFrame}, {view.endExclusive}) · {job?.sampleRate} Hz</p>
-      <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label="Slice waveform"
+      <div className="slice-actions">
+        <button type="button" onClick={() => zoom(true)}>{t("waveform.zoomIn")}</button>
+        <button type="button" onClick={() => zoom(false)}>{t("waveform.zoomOut")}</button>
+        <button type="button" aria-label={t("waveform.panEarlier")} onClick={() => pan(-1n)}>←</button>
+        <button type="button" aria-label={t("waveform.panLater")} onClick={() => pan(1n)}>→</button>
+        <button type="button" onClick={() => setView(draft.region)}>{t("slicing.fullRegion")}</button>
+      </div>
+      <p className="slice-coordinate">
+        {t("waveform.viewportFrames", { start: view.startFrame, end: view.endExclusive })}
+        {job?.sampleRate != null ? ` · ${job.sampleRate} Hz` : ""}
+      </p>
+      <svg viewBox="0 0 640 160" preserveAspectRatio="xMidYMid meet" width="100%" height="160" className="slice-waveform" aria-label={t("slicing.waveformAria")}
         onDoubleClick={e => {
           if (markerGestureDisabled || rangeReselectMode) return;
           const at = frameAtPointer(e.clientX, e.currentTarget, view);
@@ -972,12 +993,20 @@ function SliceSession({
             />
           );
         })}
-        {proposal?.candidates.filter(c => inRange(c.suggestedStartFrame, view)).map(c => <line key={c.candidateId} className="slice-candidate" x1={position(c.suggestedStartFrame, view) * WIDTH} x2={position(c.suggestedStartFrame, view) * WIDTH} y1="0" y2="160"><title>{`Candidate at ${c.suggestedStartFrame}${c.warnings.length ? " — review boundary" : ""}`}</title></line>)}
+        {proposal?.candidates.filter(c => inRange(c.suggestedStartFrame, view)).map(c => (
+          <line key={c.candidateId} className="slice-candidate" x1={position(c.suggestedStartFrame, view) * WIDTH} x2={position(c.suggestedStartFrame, view) * WIDTH} y1="0" y2="160">
+            <title>
+              {c.warnings.length
+                ? t("slicing.candidateAtReview", { frame: c.suggestedStartFrame })
+                : t("slicing.candidateAt", { frame: c.suggestedStartFrame })}
+            </title>
+          </line>
+        ))}
         {draft.markers.filter(m => inRange(m.startFrame, view)).map((m) => {
           const value = drag?.id === m.markerId ? drag.frame : m.startFrame;
           const x = position(value, view) * WIDTH;
           return <g key={m.markerId} className={`slice-marker ${m.locked ? "is-locked" : ""} ${selected === m.markerId ? "is-selected" : ""}`}
-            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-label={`Boundary ${m.startFrame}`} aria-valuetext={`Frame ${value}`} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
+            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-label={t("slicing.boundaryAria", { frame: m.startFrame })} aria-valuetext={t("slicing.frameAriaValue", { value })} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
             onDoubleClick={e => e.stopPropagation()}
             onPointerDown={e => { if (markerGestureDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
             onKeyDown={e => {
@@ -993,9 +1022,13 @@ function SliceSession({
           </g>;
         })}
       </svg>
-      <p className="slice-hint">Dashed: candidates · orange: draft · blue: fixed. Drag a draft boundary or use ←/→ (Shift: 10 frames). Double-click to insert.</p>
-      <div className="slice-actions"><button disabled={mutationDisabled} onClick={() => void play(view)}>Play visible region</button><button disabled={!selectedMarker || mutationDisabled} onClick={() => { if (selectedMarker) void play(selectedMarker); }}>Play selected slice</button><button onClick={stop} disabled={!playing && !previewing}>Stop</button></div>
-      <p className="slice-hint">Preview supports up to 30 seconds per region. Zoom in for longer slices.</p>
+      <p className="slice-hint">{t("slicing.draftLegend")}</p>
+      <div className="slice-actions">
+        <button type="button" disabled={mutationDisabled} onClick={() => void play(view)}>{t("slicing.playVisibleRegion")}</button>
+        <button type="button" disabled={!selectedMarker || mutationDisabled} onClick={() => { if (selectedMarker) void play(selectedMarker); }}>{t("slicing.playSelectedSlice")}</button>
+        <button type="button" onClick={stop} disabled={!playing && !previewing}>{t("waveform.stop")}</button>
+      </div>
+      <p className="slice-hint">{t("slicing.previewLimitHint")}</p>
     </>
   ) : null;
 
@@ -1013,20 +1046,48 @@ function SliceSession({
       </p>
       {proposal?.candidateCount === 0 && <p>{t("slicing.noAttacksFound")}</p>}
       {proposal?.exceedsDraftLimit && <p role="alert">{t("slicing.exceedsDraftLimit")}</p>}
-      {warnings.length > 0 && <details><summary>{warnings.length} candidate boundaries need review</summary><ul>{warnings.slice(0, PAGE).map(c => <li key={c.candidateId}>Frame {c.suggestedStartFrame}: {c.warnings.map(w => w === "LEFT_EDGE_TRUNCATED" ? "sound already active at file start" : w === "PRE_ROLL_CLIPPED" ? "pre-roll clipped by region" : "uncertain attack position").join(", ")}</li>)}</ul>{warnings.length > PAGE && <p>Showing the first {PAGE} warnings. Zoom into candidates to inspect their positions.</p>}</details>}
+      {warnings.length > 0 && (
+        <details>
+          <summary>{t("slicing.reviewBoundaries", { count: warnings.length })}</summary>
+          <ul>
+            {warnings.slice(0, PAGE).map(c => (
+              <li key={c.candidateId}>
+                {t("slicing.candidateWarningLine", {
+                  frame: c.suggestedStartFrame,
+                  warnings: formatCandidateWarningLabels(t, c.warnings),
+                })}
+              </li>
+            ))}
+          </ul>
+          {warnings.length > PAGE && (
+            <p>{t("slicing.warningsTruncated", { count: PAGE })}</p>
+          )}
+        </details>
+      )}
       <div className="slice-actions">
         <button disabled={mutationDisabled || proposing || !proposal || proposal.exceedsDraftLimit} onClick={() => { if (proposal) void edit({ kind: "acceptProposal", proposalId: proposal.proposalId }); }}>{t("slicing.applyCandidates")}</button>
-        <button disabled={mutationDisabled || !draft.canUndo} onClick={() => void edit({ kind: "undo" })}>Undo</button><button disabled={mutationDisabled || !draft.canRedo} onClick={() => void edit({ kind: "redo" })}>Redo</button>
+        <button type="button" disabled={mutationDisabled || !draft.canUndo} onClick={() => void edit({ kind: "undo" })}>{t("slicing.undo")}</button>
+        <button type="button" disabled={mutationDisabled || !draft.canRedo} onClick={() => void edit({ kind: "redo" })}>{t("slicing.redo")}</button>
       </div>
       <p>{t("slicing.draftSummary", { count: draft.markers.length, revision: draft.revision })}</p>
       {draft.markers.length > 64 && <p className="slice-notice">{t("slicing.exceedsOtLimit")}</p>}
       <form className="slice-actions" onSubmit={e => { e.preventDefault(); try { frame(insertFrame); void edit({ kind: "insert", frame: insertFrame }); } catch (err) { setError(normalizeSliceError(err)); } }}>
-        <label>Insert at frame<input aria-label="Insert at frame" inputMode="numeric" value={insertFrame} onChange={e => setInsertFrame(e.target.value)} disabled={mutationDisabled} /></label><button disabled={mutationDisabled}>Insert boundary</button>
+        <label>
+          {t("slicing.insertAtFrame")}
+          <input aria-label={t("slicing.insertAtFrame")} inputMode="numeric" value={insertFrame} onChange={e => setInsertFrame(e.target.value)} disabled={mutationDisabled} />
+        </label>
+        <button type="submit" disabled={mutationDisabled}>{t("slicing.insertBoundary")}</button>
       </form>
-      <div className="slice-table"><table><thead><tr><th>Start frame</th><th>End (exclusive)</th><th>Fixed</th><th>Actions</th></tr></thead><tbody>
+      <div className="slice-table"><table><thead><tr><th>{t("slicing.columnStartFrame")}</th><th>{t("slicing.columnEndExclusive")}</th><th>{t("slicing.columnFixed")}</th><th>{t("slicing.columnActions")}</th></tr></thead><tbody>
         {draft.markers.slice(page * PAGE, (page + 1) * PAGE).map(m => <MarkerRow key={`${m.markerId}:${m.startFrame}`} marker={m} disabled={mutationDisabled} selectDisabled={editing || exporting} selected={selected === m.markerId} onSelect={() => setSelected(m.markerId)} edit={edit} />)}
       </tbody></table></div>
-      {draft.markers.length > PAGE && <div className="slice-actions"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous boundaries</button><span>Page {page + 1} / {Math.ceil(draft.markers.length / PAGE)}</span><button disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>Next boundaries</button></div>}
+      {draft.markers.length > PAGE && (
+        <div className="slice-actions">
+          <button type="button" disabled={page === 0} onClick={() => setPage(p => p - 1)}>{t("slicing.previousBoundaries")}</button>
+          <span>{t("slicing.pageOf", { current: page + 1, total: Math.ceil(draft.markers.length / PAGE) })}</span>
+          <button type="button" disabled={(page + 1) * PAGE >= draft.markers.length} onClick={() => setPage(p => p + 1)}>{t("slicing.nextBoundaries")}</button>
+        </div>
+      )}
       {selectedMarker && draft.revision > 0 ? (
         <section className="slice-export" aria-labelledby="slice-export-heading">
           <h3 id="slice-export-heading">{t("slicing.sliceExportHeading")}</h3>
@@ -1118,6 +1179,7 @@ function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit 
   marker: SliceMarker; disabled: boolean; selectDisabled: boolean; selected: boolean; onSelect: () => void;
   edit: (input: SliceEdit) => Promise<void>;
 }) {
+  const t = useTranslate();
   const [value, setValue] = useState(marker.startFrame);
   function commit() {
     if (value !== marker.startFrame) {
@@ -1126,9 +1188,12 @@ function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit 
     }
   }
   return <tr className={selected ? "is-selected" : ""}>
-    <td><input aria-label={`Start frame ${marker.markerId}`} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
+    <td><input aria-label={t("slicing.startFrameAria", { markerId: marker.markerId })} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
     <td>{marker.endExclusive}</td>
-    <td><input aria-label={`Fixed ${marker.startFrame}`} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
-    <td><button disabled={selectDisabled} onClick={onSelect}>Select</button><button disabled={disabled} aria-label={`Delete boundary ${marker.startFrame}`} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>Delete</button></td>
+    <td><input aria-label={t("slicing.fixedAria", { frame: marker.startFrame })} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
+    <td>
+      <button type="button" disabled={selectDisabled} onClick={onSelect}>{t("slicing.select")}</button>
+      <button type="button" disabled={disabled} aria-label={t("slicing.deleteBoundaryAria", { frame: marker.startFrame })} onClick={() => void edit({ kind: "delete", markerId: marker.markerId })}>{t("slicing.delete")}</button>
+    </td>
   </tr>;
 }
