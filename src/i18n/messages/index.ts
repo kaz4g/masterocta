@@ -40,7 +40,7 @@ export type MessageParams = {
   'slicing.candidateAt': { frame: string }
   'slicing.candidateAtReview': { frame: string }
   'slicing.pageOf': { current: number; total: number }
-  'slicing.startFrameAria': { markerId: string }
+  'slicing.startFrameAria': { frame: string }
   'slicing.fixedAria': { frame: string }
   'slicing.deleteBoundaryAria': { frame: string }
   'slicing.boundaryAria': { frame: string }
@@ -48,7 +48,7 @@ export type MessageParams = {
   'slicing.candidateWarningsAtFrame': { frame: string }
   'slicing.warningsTruncated': { count: number }
   'slicing.draftSummary': { count: number; revision: number }
-  'slicing.sliceExportReview': { displayName: string; markerId: string }
+  'slicing.sliceExportReview': { displayName: string }
   'slicing.sliceExportRangeFrames': { start: string; end: string }
   'slicing.sliceExportRangeDuration': { duration: string }
   'slicing.sliceExportRangeFrameCount': { frames: string }

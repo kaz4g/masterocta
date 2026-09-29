@@ -378,7 +378,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'slicing.pageOf': 'ページ {current} / {total}',
   'slicing.select': '選択',
   'slicing.delete': '削除',
-  'slicing.startFrameAria': '開始フレーム {markerId}',
+  'slicing.startFrameAria': '開始フレーム {frame}',
   'slicing.fixedAria': '固定 {frame}',
   'slicing.deleteBoundaryAria': '境界を削除 {frame}',
   'slicing.boundaryAria': '境界 {frame}',
@@ -397,7 +397,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'slicing.reanalyze48000':
     ' Octatrack 出力には別の 44.1 kHz アセットと再解析が必要です。',
   'slicing.sliceExportHeading': 'Slice Export',
-  'slicing.sliceExportReview': '{displayName} · スライス {markerId}',
+  'slicing.sliceExportReview': '{displayName} · 選択中のスライス',
   'slicing.sliceExportRangeFrames': 'フレーム [{start}, {end})',
   'slicing.sliceExportRangeDuration': '長さ {duration}',
   'slicing.sliceExportRangeFrameCount': '長さ {frames} フレーム',

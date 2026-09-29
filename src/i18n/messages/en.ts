@@ -372,7 +372,7 @@ export const enMessages = {
   'slicing.pageOf': 'Page {current} / {total}',
   'slicing.select': 'Select',
   'slicing.delete': 'Delete',
-  'slicing.startFrameAria': 'Start frame {markerId}',
+  'slicing.startFrameAria': 'Start frame {frame}',
   'slicing.fixedAria': 'Fixed {frame}',
   'slicing.deleteBoundaryAria': 'Delete boundary {frame}',
   'slicing.boundaryAria': 'Boundary {frame}',
@@ -391,7 +391,7 @@ export const enMessages = {
   'slicing.reanalyze48000':
     ' Octatrack output will require a separate 44.1 kHz asset and re-analysis.',
   'slicing.sliceExportHeading': 'Slice Export',
-  'slicing.sliceExportReview': '{displayName} · slice {markerId}',
+  'slicing.sliceExportReview': '{displayName} · selected slice',
   'slicing.sliceExportRangeFrames': 'Frames [{start}, {end})',
   'slicing.sliceExportRangeDuration': 'Duration {duration}',
   'slicing.sliceExportRangeFrameCount': 'Length {frames} frames',

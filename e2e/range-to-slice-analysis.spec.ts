@@ -165,6 +165,6 @@ test("library range selection flows into explicit slice analysis", async ({ page
 
   await slice.getByRole("button", { name: uiText("ja", "slicing.applyCandidates") }).click();
   await expect(
-    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { markerId: "candidate-11025" })),
+    slice.getByLabel(uiText("ja", "slicing.startFrameAria", { frame: "11025" })),
   ).toHaveValue("11025");
 });

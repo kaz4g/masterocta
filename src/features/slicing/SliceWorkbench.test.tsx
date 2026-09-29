@@ -621,6 +621,53 @@ describe("attack slicing workbench", () => {
     expect(await screen.findByTestId("slice-export-success")).toHaveTextContent("asset-export-1");
   });
 
+  it("does not expose internal markerId in export review or start-frame aria (ja/en)", async () => {
+    const internalMarkerId = "onset:internal-test-id";
+    const api = client();
+    vi.mocked(api.edit).mockResolvedValue({
+      ...empty,
+      revision: 1,
+      canUndo: true,
+      markers: [{
+        markerId: internalMarkerId,
+        startFrame: "956",
+        endExclusive: "44100",
+        manual: false,
+        locked: false,
+      }],
+    });
+    mount(api, { withLocaleToggle: true });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
+    await waitFor(() => expect(api.edit).toHaveBeenCalled());
+    fireEvent.focus(await screen.findByDisplayValue("956"));
+
+    expect(document.body.textContent).not.toContain(internalMarkerId);
+    for (const el of document.querySelectorAll("[aria-label], [aria-valuetext]")) {
+      const label = el.getAttribute("aria-label") ?? "";
+      const valueText = el.getAttribute("aria-valuetext") ?? "";
+      expect(`${label} ${valueText}`).not.toContain(internalMarkerId);
+    }
+
+    expect(screen.getByText(tJa("slicing.sliceExportReview", { displayName: "loop.wav" }))).toBeInTheDocument();
+    expect(screen.getByText(tJa("slicing.sliceExportRangeFrames", { start: "956", end: "44100" }))).toBeInTheDocument();
+    expect(screen.getByText(tJa("slicing.sliceExportRangeDuration", { duration: "0:00" }))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle locale" }));
+    expect(document.body.textContent).not.toContain(internalMarkerId);
+    expect(screen.getByText(tEn("slicing.sliceExportReview", { displayName: "loop.wav" }))).toBeInTheDocument();
+    expect(screen.getByLabelText(tEn("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956");
+
+    fireEvent.click(screen.getByRole("button", { name: tEn("slicing.exportDerived") }));
+    fireEvent.click(screen.getByRole("button", { name: tEn("slicing.exportDerivedConfirm") }));
+    await waitFor(() => expect(api.exportDerived).toHaveBeenCalledWith(
+      "root-1",
+      "file-1",
+      internalMarkerId,
+      1,
+    ));
+  });
+
   it("keeps persisted-draft export available after the analysis session expires", async () => {
     const api = client();
     await prepareDraftWithSelection(api);
@@ -981,7 +1028,7 @@ describe("attack slicing workbench", () => {
     });
     await detect();
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
-    await waitFor(() => expect(screen.getByLabelText(tJa("slicing.startFrameAria", { markerId: "candidate-1" }))).toHaveValue("956"));
+    await waitFor(() => expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956"));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
     await waitFor(() => expect(api.start).toHaveBeenCalledTimes(2));
@@ -991,7 +1038,7 @@ describe("attack slicing workbench", () => {
       expect.anything(),
       expect.objectContaining({ kind: "replaceRegion" }),
     );
-    expect(screen.getByLabelText(tJa("slicing.startFrameAria", { markerId: "candidate-1" }))).toHaveValue("956");
+    expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956");
     expect(screen.getByRole("region", { name: tJa("slicing.pendingRangeHeading") })).toHaveTextContent("5000");
   });
 
@@ -1016,7 +1063,7 @@ describe("attack slicing workbench", () => {
     });
     await detect();
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
-    await waitFor(() => expect(screen.getByLabelText(tJa("slicing.startFrameAria", { markerId: "candidate-1" }))).toHaveValue("956"));
+    await waitFor(() => expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956"));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
     await waitFor(() => expect(api.status).toHaveBeenCalledWith("root-1", "job-2"));
@@ -1027,7 +1074,7 @@ describe("attack slicing workbench", () => {
       1,
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(tJa("slicing.error.SOURCE_CHANGED"));
-    expect(screen.getByLabelText(tJa("slicing.startFrameAria", { markerId: "candidate-1" }))).toHaveValue("956");
+    expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956");
     await waitFor(() => expect(
       screen.getByRole("button", { name: tJa("slicing.applyCandidates") }),
     ).toBeEnabled());
