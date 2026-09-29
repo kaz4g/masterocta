@@ -801,6 +801,7 @@ describe("attack slicing workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
     const otherBoundary = screen.getByRole("slider", { name: tJa("slicing.boundaryAria", { frame: "2000" }) });
     expect(otherBoundary).toHaveAttribute("tabindex", "-1");
+    expect(otherBoundary).toHaveAttribute("aria-disabled", "true");
     fireEvent.pointerDown(otherBoundary);
     fireEvent.keyDown(otherBoundary, { key: "ArrowRight" });
     expect(screen.getByText(confirmedRange)).toBeInTheDocument();
@@ -837,7 +838,8 @@ describe("attack slicing workbench", () => {
     expect(screen.getByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
   });
 
-  it("disables export while a request is pending", async () => {
+  // jsdom does not expose macOS Accessibility enabled state; aria-disabled is the contract we assert here.
+  it("locks selection, boundary sliders, and export actions while derived export is in flight", async () => {
     const api = client();
     let finish!: () => void;
     vi.mocked(api.exportDerived).mockReturnValue(new Promise((resolve) => {
@@ -849,11 +851,25 @@ describe("attack slicing workbench", () => {
       });
     }));
     await prepareDraftWithSelection(api);
+    const boundary = screen.getByRole("slider", { name: tJa("slicing.boundaryAria", { frame: "956" }) });
+    expect(boundary).toHaveAttribute("tabindex", "0");
+    expect(boundary).not.toHaveAttribute("aria-disabled", "true");
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerived") }));
     fireEvent.click(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") }));
     expect(screen.getByRole("button", { name: tJa("slicing.exportDerivedConfirm") })).toBeDisabled();
+    expect(screen.getByRole("button", { name: tJa("slicing.exportDerivedCancel") })).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: tJa("slicing.select") })[0]).toBeDisabled();
+    expect(boundary).toHaveAttribute("tabindex", "-1");
+    expect(boundary).toHaveAttribute("aria-disabled", "true");
+    fireEvent.pointerDown(boundary);
+    fireEvent.keyDown(boundary, { key: "ArrowRight" });
+    expect(api.edit).toHaveBeenCalledTimes(1);
     finish();
     await waitFor(() => expect(api.exportDerived).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("slice-export-success")).toBeInTheDocument());
+    expect(boundary).toHaveAttribute("tabindex", "0");
+    expect(boundary).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: tJa("slicing.exportDerived") })).toBeEnabled();
   });
 
   it("invalidates export confirmation while a draft edit is pending", async () => {

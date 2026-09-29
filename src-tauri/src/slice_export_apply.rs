@@ -291,10 +291,11 @@ mod tests {
     use ot_domain::slice_draft::{DraftMarker, SliceDraft};
     use ot_domain::slicing::{FrameRange, PcmFrame};
     use ot_domain::{FileInstance, TrimIntent};
-    use ot_storage_ports::CatalogRootIdentity;
+    use ot_storage_ports::slice_drafts::SliceDraftCatalog;
+    use ot_storage_ports::{AssetDerivationCatalog, CatalogRootIdentity};
     use serde_json::json;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -388,6 +389,23 @@ mod tests {
         )
     }
 
+    fn draft_binding(
+        ot_root: &Path,
+        identity: &CatalogRootIdentity,
+        file: &FileInstance,
+    ) -> SliceDraftBinding {
+        let bytes = fs::read(ot_root.join("SET/AUDIO/export.wav")).unwrap();
+        let cancelled = AtomicBool::new(false);
+        let layout = inspect_wav_layout(&bytes, &cancelled).unwrap();
+        SliceDraftBinding {
+            root: identity.clone(),
+            relative_path: file.relative_path.clone(),
+            source_hash: file.content_hash.clone(),
+            sample_rate: layout.info.sample_rate,
+            frame_count: layout.info.frame_count,
+        }
+    }
+
     fn save_draft(
         ot_root: &Path,
         catalog: &SharedCatalog,
@@ -395,18 +413,43 @@ mod tests {
         file: &FileInstance,
         draft: &SliceDraft,
     ) -> u64 {
-        let bytes = fs::read(ot_root.join("SET/AUDIO/export.wav")).unwrap();
-        let cancelled = AtomicBool::new(false);
-        let layout = inspect_wav_layout(&bytes, &cancelled).unwrap();
-        let binding = SliceDraftBinding {
-            root: identity.clone(),
-            relative_path: file.relative_path.clone(),
-            source_hash: file.content_hash.clone(),
-            sample_rate: layout.info.sample_rate,
-            frame_count: layout.info.frame_count,
-        };
+        let binding = draft_binding(ot_root, identity, file);
         let mut guard = catalog.lock().unwrap();
         guard.save_slice_draft(&binding, draft, 0).unwrap().revision
+    }
+
+    fn derivation_count(catalog: &SharedCatalog) -> usize {
+        catalog
+            .lock()
+            .unwrap()
+            .list_derivation_edges()
+            .unwrap()
+            .len()
+    }
+
+    fn count_files_with_suffix(root: &Path, suffix: &str) -> usize {
+        if !root.is_dir() {
+            return 0;
+        }
+        let mut total = 0;
+        for entry in fs::read_dir(root).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                total += count_files_with_suffix(&path, suffix);
+            } else if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(suffix))
+            {
+                total += 1;
+            }
+        }
+        total
+    }
+
+    fn derived_product_root(data: &Path) -> PathBuf {
+        data.join("MasterOCTa").join("derived-audio")
     }
 
     #[test]
@@ -457,6 +500,57 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(json!(err)["code"], "STALE_DRAFT");
+    }
+
+    #[test]
+    fn slice_export_ipc_rejects_stale_revision_after_draft_advance_without_writes() {
+        let (ot_root, data, registry, catalog, derived, root_id, file_id, file) = fixture();
+        let identity = catalog_identity(&registry.resolve(&root_id).unwrap().session).unwrap();
+        let binding = draft_binding(ot_root.path(), &identity, &file);
+        let revision_n = save_draft(
+            ot_root.path(),
+            &catalog,
+            &identity,
+            &file,
+            &draft_with_marker(FIXTURE_FRAMES, "mid", 500, 3_500),
+        );
+        let derivations_before = derivation_count(&catalog);
+        let published_before =
+            count_files_with_suffix(&derived_product_root(data.path()).join("published"), ".wav");
+        let parts_before = count_files_with_suffix(&derived_product_root(data.path()), ".part");
+        {
+            let mut guard = catalog.lock().unwrap();
+            let saved = guard.load_slice_draft(&binding).unwrap().unwrap();
+            assert_eq!(saved.revision, revision_n);
+            let advanced = guard
+                .save_slice_draft(&binding, &saved, revision_n)
+                .unwrap();
+            assert_eq!(advanced.revision, revision_n + 1);
+        }
+        let err = slice_export_apply_sync(
+            &registry, &catalog, &derived, &root_id, &file_id, "mid", revision_n,
+        )
+        .unwrap_err();
+        assert_eq!(json!(err)["code"], "STALE_DRAFT");
+        assert_eq!(
+            catalog
+                .lock()
+                .unwrap()
+                .load_slice_draft(&binding)
+                .unwrap()
+                .unwrap()
+                .revision,
+            revision_n + 1
+        );
+        assert_eq!(derivation_count(&catalog), derivations_before);
+        assert_eq!(
+            count_files_with_suffix(&derived_product_root(data.path()).join("published"), ".wav"),
+            published_before
+        );
+        assert_eq!(
+            count_files_with_suffix(&derived_product_root(data.path()), ".part"),
+            parts_before
+        );
     }
 
     #[test]

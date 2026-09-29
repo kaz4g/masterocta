@@ -1008,7 +1008,7 @@ function SliceSession({
           const value = drag?.id === m.markerId ? drag.frame : m.startFrame;
           const x = position(value, view) * WIDTH;
           return <g key={m.markerId} className={`slice-marker ${m.locked ? "is-locked" : ""} ${selected === m.markerId ? "is-selected" : ""}`}
-            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-label={t("slicing.boundaryAria", { frame: m.startFrame })} aria-valuetext={t("slicing.frameAriaValue", { value })} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
+            role="slider" tabIndex={markerGestureDisabled ? -1 : 0} aria-disabled={markerGestureDisabled ? true : undefined} aria-label={t("slicing.boundaryAria", { frame: m.startFrame })} aria-valuetext={t("slicing.frameAriaValue", { value })} aria-valuemin={0} aria-valuemax={Number(frame(draft.region.endExclusive) - frame(draft.region.startFrame) - 1n)} aria-valuenow={Number(frame(value) - frame(draft.region.startFrame))}
             onDoubleClick={e => e.stopPropagation()}
             onPointerDown={e => { if (markerGestureDisabled) return; e.preventDefault(); setSelected(m.markerId); dragRef.current = { id: m.markerId, frame: m.startFrame }; setDrag(dragRef.current); e.currentTarget.ownerSVGElement?.setPointerCapture(e.pointerId); }}
             onKeyDown={e => {
