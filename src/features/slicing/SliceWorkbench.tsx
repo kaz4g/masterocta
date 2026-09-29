@@ -1097,7 +1097,7 @@ function SliceSession({
       {selectedMarker && draft.revision > 0 ? (
         <section className="slice-export" aria-labelledby="slice-export-heading">
           <h3 id="slice-export-heading">{t("slicing.sliceExportHeading")}</h3>
-          <p>{t("slicing.sliceExportReview", { displayName, markerId: selectedMarker.markerId })}</p>
+          <p>{t("slicing.sliceExportReview", { displayName })}</p>
           <p>{t("slicing.sliceExportRangeFrames", {
             start: selectedMarker.startFrame,
             end: selectedMarker.endExclusive,
@@ -1194,7 +1194,7 @@ function MarkerRow({ marker, disabled, selectDisabled, selected, onSelect, edit 
     }
   }
   return <tr className={selected ? "is-selected" : ""}>
-    <td><input aria-label={t("slicing.startFrameAria", { markerId: marker.markerId })} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
+    <td><input aria-label={t("slicing.startFrameAria", { frame: marker.startFrame })} value={value} inputMode="numeric" disabled={disabled} onFocus={() => { if (!selectDisabled) onSelect(); }} onChange={e => setValue(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") setValue(marker.startFrame); }} /></td>
     <td>{marker.endExclusive}</td>
     <td><input aria-label={t("slicing.fixedAria", { frame: marker.startFrame })} type="checkbox" checked={marker.locked} disabled={disabled} onChange={e => void edit({ kind: "setLock", markerId: marker.markerId, locked: e.target.checked })} /></td>
     <td>
