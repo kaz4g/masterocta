@@ -517,8 +517,7 @@ mod tests {
         let derivations_before = derivation_count(&catalog);
         let published_before =
             count_files_with_suffix(&derived_product_root(data.path()).join("published"), ".wav");
-        let parts_before =
-            count_files_with_suffix(&derived_product_root(data.path()), ".part");
+        let parts_before = count_files_with_suffix(&derived_product_root(data.path()), ".part");
         {
             let mut guard = catalog.lock().unwrap();
             let saved = guard.load_slice_draft(&binding).unwrap().unwrap();
@@ -529,13 +528,7 @@ mod tests {
             assert_eq!(advanced.revision, revision_n + 1);
         }
         let err = slice_export_apply_sync(
-            &registry,
-            &catalog,
-            &derived,
-            &root_id,
-            &file_id,
-            "mid",
-            revision_n,
+            &registry, &catalog, &derived, &root_id, &file_id, "mid", revision_n,
         )
         .unwrap_err();
         assert_eq!(json!(err)["code"], "STALE_DRAFT");
