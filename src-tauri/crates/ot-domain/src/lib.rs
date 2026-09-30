@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+pub mod arrangement;
 pub mod derivation;
 pub mod derived_slice_export;
 pub mod derived_trim;

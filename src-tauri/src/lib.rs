@@ -1,6 +1,7 @@
 // Allow certain clippy lints that would require significant refactoring
 #![allow(clippy::too_many_arguments)]
 
+mod arrangement_reader;
 mod asset_derivation_query;
 mod audio_pool;
 mod audio_runtime;

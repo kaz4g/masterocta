@@ -2,9 +2,10 @@
 //! sample-slot reference each track machine points at.
 //!
 //! Working and SavedCheckpoint Bank documents are kept as separate entries.
-//! A reader must never substitute one role for the other. Scene, Arranger, and
-//! Recorder semantics are not decoded; they are listed as unmodeled dependencies
-//! so downstream planning fails closed instead of treating them as absent.
+//! A reader must never substitute one role for the other. Scene and Recorder
+//! semantics are not decoded. Arranger files are inspected separately and do
+//! not yield Bank or Pattern indexes (`arrangement`). Those dependencies stay
+//! listed here so Bank planning still fails closed.
 
 use crate::{
     RecorderBufferId, RootRelativePath, SampleSlotId, StateDocumentParseStatus, StateDocumentRole,
@@ -20,6 +21,12 @@ pub const AUDIO_TRACKS_PER_PART: u8 = 8;
 pub struct InvalidStructureIndex {
     kind: &'static str,
     value: u8,
+}
+
+impl InvalidStructureIndex {
+    pub(crate) fn for_value(kind: &'static str, value: u8) -> Self {
+        Self { kind, value }
+    }
 }
 
 impl fmt::Display for InvalidStructureIndex {
