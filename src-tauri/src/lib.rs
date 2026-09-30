@@ -18,6 +18,7 @@ mod prepared_rename_runtime;
 mod project_compatibility;
 pub mod project_manager;
 mod project_reader;
+mod project_structure_reader;
 mod purge;
 mod rename_planning_facts;
 mod rename_recovery_runtime;
