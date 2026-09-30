@@ -642,10 +642,13 @@ pub struct ProjectDocument {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct FileInstanceId(String);
 
+const FILE_INSTANCE_ID_V2_PREFIX: &str = "fileinst:v2:";
+
 impl FileInstanceId {
     pub fn parse(value: impl Into<String>) -> Result<Self, InvalidFileInstanceId> {
         let value = value.into();
-        validate_prefixed_sha256(&value, FILE_INSTANCE_ID_PREFIX)
+        validate_prefixed_sha256(&value, FILE_INSTANCE_ID_V2_PREFIX)
+            .or_else(|_| validate_prefixed_sha256(&value, FILE_INSTANCE_ID_PREFIX))
             .map_err(|_| InvalidFileInstanceId)?;
         Ok(Self(value))
     }
@@ -673,7 +676,8 @@ pub struct InvalidFileInstanceId;
 
 impl fmt::Display for InvalidFileInstanceId {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("file instance ID must be a fileinst:v1 SHA-256 identifier")
+        formatter
+            .write_str("file instance ID must be a fileinst:v1 or fileinst:v2 SHA-256 identifier")
     }
 }
 

@@ -379,6 +379,21 @@ impl RootRegistry {
         }
     }
 
+    pub fn registered_session_count_for_device_fingerprint(&self, fingerprint: &str) -> usize {
+        let Ok(state) = self.state.lock() else {
+            return 0;
+        };
+        state
+            .roots
+            .values()
+            .filter(|entry| entry.session.device_fingerprint == fingerprint)
+            .count()
+    }
+
+    pub fn allow_legacy_unscoped_journals_for_fingerprint(&self, fingerprint: &str) -> bool {
+        self.registered_session_count_for_device_fingerprint(fingerprint) <= 1
+    }
+
     pub fn register(&self, raw_path: &str) -> Result<RootSession, RootRegistryError> {
         let candidate = Path::new(raw_path);
         if raw_path.trim().is_empty() || !candidate.is_absolute() {

@@ -143,6 +143,7 @@ pub fn build_rename_planning_facts(
         root: RenameRootObservation {
             root_id: resolved.session.root_id.clone(),
             device_fingerprint: resolved.session.device_fingerprint.clone(),
+            canonical_directory_hash: resolved.session.canonical_directory_hash.clone(),
             live_observed_revision,
             base_catalog_scan_revision,
             scan_completed: true,
@@ -151,6 +152,7 @@ pub fn build_rename_planning_facts(
         source: RenameSourceObservation {
             file_instance_id: derive_file_instance_id(
                 &resolved.session.device_fingerprint,
+                &resolved.session.canonical_directory_hash,
                 &source.relative_path,
             ),
             catalog_relative_path: source.relative_path.clone(),

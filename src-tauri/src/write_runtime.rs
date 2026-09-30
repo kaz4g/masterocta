@@ -290,9 +290,15 @@ impl WriteRuntime {
     pub fn recovery_required(
         &self,
         root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
     ) -> Result<Vec<ChangeOperationStatus>, WriteRuntimeError> {
         self.executor
-            .incomplete_journals_for_root(root_fingerprint)
+            .incomplete_journals_for_logical_root(
+                root_fingerprint,
+                root_directory_hash,
+                allow_legacy_unscoped_journals,
+            )
             .map_err(WriteRuntimeError::Executor)?
             .into_iter()
             .map(|journal| {
@@ -437,6 +443,7 @@ impl WriteAuthority for RegistryWriteAuthority<'_> {
         Ok(ApprovedExecutionRoot {
             root_id: resolved.session.root_id,
             device_fingerprint: resolved.session.device_fingerprint,
+            canonical_directory_hash: resolved.session.canonical_directory_hash,
             observed_revision: resolved.session.observed_revision,
             canonical_path: resolved.canonical_path,
             write_enabled: resolved.session.capabilities.write,
@@ -461,6 +468,7 @@ impl RecoveryAuthority for RegistryRecoveryAuthority<'_> {
         Ok(ApprovedRecoveryRoot {
             root_id: resolved.session.root_id,
             device_fingerprint: resolved.session.device_fingerprint,
+            canonical_directory_hash: resolved.session.canonical_directory_hash,
             canonical_path: resolved.canonical_path,
             stable_device_identity: resolved.session.capabilities.stable_device_identity,
         })

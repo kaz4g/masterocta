@@ -54,8 +54,8 @@ CREATE UNIQUE INDEX roots_legacy_fingerprint
     ON roots(fingerprint)
     WHERE canonical_path_hash IS NULL;
 
-CREATE UNIQUE INDEX roots_directory_locator
-    ON roots(canonical_path_hash)
+CREATE UNIQUE INDEX roots_logical_root
+    ON roots(fingerprint, canonical_path_hash)
     WHERE canonical_path_hash IS NOT NULL;
 
 UPDATE roots

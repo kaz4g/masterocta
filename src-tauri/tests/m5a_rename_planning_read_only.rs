@@ -59,13 +59,14 @@ fn build_fixture_facts(
         root: RenameRootObservation {
             root_id: RootId::new("integration-root").unwrap(),
             device_fingerprint: root_fingerprint.to_owned(),
+            canonical_directory_hash: "d".repeat(64),
             live_observed_revision: 3,
             base_catalog_scan_revision: 3,
             scan_completed: true,
             identity_is_stable: true,
         },
         source: RenameSourceObservation {
-            file_instance_id: derive_file_instance_id(root_fingerprint, &source),
+            file_instance_id: derive_file_instance_id(root_fingerprint, &"d".repeat(64), &source),
             catalog_relative_path: source.clone(),
             catalog_byte_size: source_size,
             catalog_content_hash: hash(b'a'),

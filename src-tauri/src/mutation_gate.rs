@@ -14,14 +14,16 @@ pub fn ensure_cross_domain_mutation_allowed(
         .resolve(root_id)
         .map_err(CrossDomainMutationBlocked::Registry)?;
     let fingerprint = resolved.session.device_fingerprint.as_str();
+    let directory_hash = resolved.session.canonical_directory_hash.as_str();
+    let allow_legacy = registry.allow_legacy_unscoped_journals_for_fingerprint(fingerprint);
     let additive = write
-        .recovery_required(fingerprint)
+        .recovery_required(fingerprint, directory_hash, allow_legacy)
         .map_err(CrossDomainMutationBlocked::Write)?;
     if !additive.is_empty() {
         return Err(CrossDomainMutationBlocked::AdditiveRecoveryRequired);
     }
     let rename = rename_runtime
-        .incomplete_operations(fingerprint)
+        .incomplete_operations(fingerprint, directory_hash, allow_legacy)
         .map_err(CrossDomainMutationBlocked::Rename)?;
     if rename.iter().any(|status| {
         status.journal_status.is_some_and(|journal_status| {

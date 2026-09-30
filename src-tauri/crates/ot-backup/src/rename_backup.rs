@@ -776,13 +776,14 @@ mod tests {
             root: RenameRootObservation {
                 root_id: RootId::new("root-session-1").unwrap(),
                 device_fingerprint: fingerprint(),
+                canonical_directory_hash: "d".repeat(64),
                 live_observed_revision: 9,
                 base_catalog_scan_revision: 9,
                 scan_completed: true,
                 identity_is_stable: true,
             },
             source: RenameSourceObservation {
-                file_instance_id: derive_file_instance_id(&fingerprint(), &source),
+                file_instance_id: derive_file_instance_id(&fingerprint(), &"d".repeat(64), &source),
                 catalog_relative_path: source.clone(),
                 catalog_byte_size: AUDIO_BYTES.len() as u64,
                 catalog_content_hash: hash_bytes(AUDIO_BYTES),

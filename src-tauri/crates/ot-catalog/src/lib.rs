@@ -23,7 +23,7 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 14;
+const LATEST_SCHEMA_VERSION: u64 = 15;
 const PROJECTION_REPAIR_META_KEY: &str = "observational_projection_repair_applied";
 const MIGRATION_REQUIRES_FOREIGN_KEYS_OFF: u64 = 8;
 const MIGRATIONS: &[(u64, &str)] = &[
@@ -71,6 +71,10 @@ const MIGRATIONS: &[(u64, &str)] = &[
     (
         14,
         include_str!("../migrations/0014_root_directory_identity.sql"),
+    ),
+    (
+        15,
+        include_str!("../migrations/0015_root_and_draft_logical_scope.sql"),
     ),
 ];
 
@@ -186,22 +190,17 @@ impl SqliteCatalog {
 
     fn root_row_id(&self, identity: &CatalogRootIdentity) -> Result<Option<i64>, CatalogError> {
         if let Some(directory_hash) = identity.directory_hash() {
-            let row: Option<(i64, String)> = self
+            let row: Option<i64> = self
                 .connection
                 .query_row(
-                    "SELECT id, fingerprint FROM roots WHERE canonical_path_hash = ?1",
-                    params![directory_hash],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    "SELECT id FROM roots \
+                     WHERE canonical_path_hash = ?1 AND fingerprint = ?2",
+                    params![directory_hash, identity.as_str()],
+                    |row| row.get(0),
                 )
                 .optional()
                 .map_err(unavailable)?;
-            return match row {
-                Some((id, fingerprint)) if fingerprint == identity.as_str() => Ok(Some(id)),
-                Some(_) => Err(CatalogError::Integrity {
-                    message: "directory identity is bound to a different device fingerprint".into(),
-                }),
-                None => Ok(None),
-            };
+            return Ok(row);
         }
 
         let mut statement = self
@@ -446,20 +445,16 @@ impl LibraryCatalog for SqliteCatalog {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(unavailable)?;
-        let existing: Option<(i64, String)> = transaction
+        let existing: Option<i64> = transaction
             .query_row(
-                "SELECT id, fingerprint FROM roots WHERE canonical_path_hash = ?1",
-                params![directory_hash],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                "SELECT id FROM roots \
+                 WHERE canonical_path_hash = ?1 AND fingerprint = ?2",
+                params![directory_hash, observation.identity.as_str()],
+                |row| row.get(0),
             )
             .optional()
             .map_err(unavailable)?;
-        if let Some((id, fingerprint)) = existing {
-            if fingerprint != observation.identity.as_str() {
-                return Err(CatalogError::Integrity {
-                    message: "directory identity is bound to a different device fingerprint".into(),
-                });
-            }
+        if let Some(id) = existing {
             transaction
                 .execute(
                     "UPDATE roots \
@@ -489,8 +484,32 @@ impl LibraryCatalog for SqliteCatalog {
             )
             .optional()
             .map_err(unavailable)?;
-        if legacy_root.is_some() {
-            return Err(CatalogError::LegacyRootDirectoryUnbound);
+        if let Some(legacy_id) = legacy_root {
+            let bound = transaction
+                .execute(
+                    "UPDATE roots \
+                     SET canonical_path_hash = ?1, \
+                         identity_is_stable = ?2, \
+                         display_name = ?3, \
+                         last_observed_revision = ?4, \
+                         last_observed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+                     WHERE id = ?5 AND canonical_path_hash IS NULL",
+                    params![
+                        directory_hash,
+                        observation.identity_is_stable,
+                        observation.display_name,
+                        observed_revision,
+                        legacy_id,
+                    ],
+                )
+                .map_err(unavailable)?;
+            if bound != 1 {
+                return Err(CatalogError::Integrity {
+                    message: "legacy catalog root could not be bound to directory identity".into(),
+                });
+            }
+            transaction.commit().map_err(unavailable)?;
+            return Ok(());
         }
 
         transaction
@@ -2390,8 +2409,10 @@ fn apply_migration(
     version: u64,
     sql: &str,
 ) -> Result<(), CatalogError> {
-    let foreign_keys_off =
-        version == MIGRATION_REQUIRES_FOREIGN_KEYS_OFF || version == 13 || version == 14;
+    let foreign_keys_off = version == MIGRATION_REQUIRES_FOREIGN_KEYS_OFF
+        || version == 13
+        || version == 14
+        || version == 15;
     let previous_foreign_keys = if foreign_keys_off {
         Some(set_foreign_keys(connection, false)?)
     } else {
@@ -4613,7 +4634,7 @@ INSERT INTO slot_assignments (
     }
 
     #[test]
-    fn legacy_root_without_directory_identity_is_not_overwritten() {
+    fn legacy_root_binds_directory_identity_on_first_observation() {
         let (_directory, _path, mut catalog) = open_temp_catalog();
         let fingerprint = format!("rootfp:v1:{}", "9".repeat(64));
         catalog
@@ -4634,44 +4655,36 @@ INSERT INTO slot_assignments (
                 [],
             )
             .unwrap();
-        let attempt = observation_at('9', 3001, "stereo-attempt");
+        let attempt = observation_at('9', 3001, "bound-root");
         let snapshot = snapshot_with_files(vec![file_instance(
-            "SET/AUDIO/STEREO_RANGE.wav",
+            "SET/AUDIO/RANGE.wav",
             'e',
             4,
             Some(1),
             SampleStorageScope::SetAudioPool,
         )]);
 
-        assert_eq!(
-            catalog.observe_root(&attempt).unwrap_err(),
-            CatalogError::LegacyRootDirectoryUnbound
-        );
-        assert_eq!(
-            catalog.store_snapshot(&attempt, &snapshot).unwrap_err(),
-            CatalogError::LegacyRootDirectoryUnbound
-        );
+        catalog.observe_root(&attempt).unwrap();
+        catalog.store_snapshot(&attempt, &snapshot).unwrap();
 
-        let preserved: (String, Option<String>, i64, i64) = catalog
+        let bound: (String, String, i64, i64) = catalog
             .connection
             .query_row(
                 "SELECT display_name, canonical_path_hash, \
                         (SELECT COUNT(*) FROM roots), \
-                        (SELECT COUNT(*) FROM scan_sessions) \
-                 FROM roots",
+                        (SELECT COUNT(*) FROM scan_sessions WHERE root_id = 1) \
+                 FROM roots WHERE id = 1",
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
-        assert_eq!(preserved.0, "legacy-mono");
-        assert!(preserved.1.is_none());
-        assert_eq!(preserved.2, 1);
-        assert_eq!(preserved.3, 1);
-        let files: i64 = catalog
-            .connection
-            .query_row("SELECT COUNT(*) FROM file_instances", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(files, 0);
+        assert_eq!(bound.0, "bound-root");
+        assert_eq!(
+            bound.1,
+            attempt.identity.directory_hash().unwrap().to_owned()
+        );
+        assert_eq!(bound.2, 1);
+        assert_eq!(bound.3, 2);
     }
 
     #[test]
@@ -4757,7 +4770,7 @@ INSERT INTO slot_assignments (
                 row.get(0)
             })
             .unwrap();
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
         let user: (i64, Option<String>, String) = catalog
             .connection
             .query_row(

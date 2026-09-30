@@ -768,6 +768,7 @@ impl CloneWriteAuthority for RegistryCloneWriteAuthority<'_> {
             ApprovedExecutionRoot {
                 root_id: resolved.session.root_id,
                 device_fingerprint: resolved.session.device_fingerprint,
+                canonical_directory_hash: resolved.session.canonical_directory_hash,
                 observed_revision: resolved.session.observed_revision,
                 canonical_path: resolved.canonical_path,
                 write_enabled: resolved.session.capabilities.write,
@@ -851,6 +852,7 @@ impl ContinuedCloneWriteAuthority for ContinuationCloneWriteAuthority<'_> {
             ApprovedExecutionRoot {
                 root_id: resolved.session.root_id,
                 device_fingerprint: resolved.session.device_fingerprint,
+                canonical_directory_hash: resolved.session.canonical_directory_hash,
                 observed_revision: resolved.session.observed_revision,
                 canonical_path: resolved.canonical_path,
                 write_enabled: resolved.session.capabilities.write,

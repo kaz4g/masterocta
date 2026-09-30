@@ -64,6 +64,8 @@ pub struct PreparedPlanPayload {
     pub plan_id: String,
     pub root_id: String,
     pub device_fingerprint: String,
+    #[serde(default)]
+    pub canonical_directory_hash: String,
     pub base_observed_revision: u64,
     pub source_file_instance_id: String,
     pub source_relative_path: String,
@@ -711,6 +713,7 @@ impl PreparedPlanPayload {
             plan_id: plan.id.as_str().to_owned(),
             root_id: plan.root_id.as_str().to_owned(),
             device_fingerprint: plan.device_fingerprint.clone(),
+            canonical_directory_hash: plan.canonical_directory_hash.clone(),
             base_observed_revision: plan.base_observed_revision,
             source_file_instance_id: plan.source_file_instance_id.as_str().to_owned(),
             source_relative_path: plan.source_relative_path.as_str().to_owned(),
@@ -760,6 +763,7 @@ impl PreparedPlanPayload {
             root_id: RootId::new(&self.root_id)
                 .map_err(|_| PreparedRenameRuntimeError::InvalidPlanId)?,
             device_fingerprint: self.device_fingerprint.clone(),
+            canonical_directory_hash: self.canonical_directory_hash.clone(),
             base_observed_revision: self.base_observed_revision,
             source_file_instance_id: FileInstanceId::parse(&self.source_file_instance_id)
                 .map_err(|_| PreparedRenameRuntimeError::PlanIntegrityMismatch)?,
@@ -1352,6 +1356,7 @@ mod tests {
             id: PlanId::parse(format!("plan:v1:{}", "0".repeat(64))).unwrap(),
             root_id: root_id.clone(),
             device_fingerprint: format!("rootfp:v1:{}", "b".repeat(64)),
+            canonical_directory_hash: "d".repeat(64),
             base_observed_revision: 1,
             source_file_instance_id: FileInstanceId::parse(format!(
                 "fileinst:v1:{}",
@@ -1714,6 +1719,7 @@ mod tests {
             root: ApprovedExecutionRoot {
                 root_id: fixture.plan.root_id.clone(),
                 device_fingerprint: fixture.plan.device_fingerprint.clone(),
+                canonical_directory_hash: fixture.plan.canonical_directory_hash.clone(),
                 observed_revision: fixture.plan.base_observed_revision,
                 canonical_path: fixture.media_root.canonicalize().unwrap(),
                 write_enabled: true,

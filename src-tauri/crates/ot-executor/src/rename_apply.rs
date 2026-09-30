@@ -22,6 +22,26 @@ use ot_domain::{ContentHash, RootRelativePath};
 use ot_plan::{PlanId, RenameImpactPlan};
 use rustix::fs::{self as descriptor_fs, AtFlags, Dir, Mode, OFlags, RenameFlags};
 
+fn rename_recovery_root_scope_matches(
+    journal: &RenameOperationJournal,
+    authorization: &RenameRecoveryAuthorization,
+    root: &ApprovedRecoveryRoot,
+) -> bool {
+    match (
+        journal.root_directory_hash.as_deref(),
+        authorization.root_directory_hash.as_deref(),
+    ) {
+        (Some(journal_hash), Some(authorization_hash))
+            if journal_hash == authorization_hash
+                && journal_hash == root.canonical_directory_hash.as_str() =>
+        {
+            true
+        }
+        (None, None) => true,
+        _ => false,
+    }
+}
+
 /// Temporary/cloned execution root. Distinct from [`ApprovedExecutionRoot`] so
 /// apply cannot target a live mounted volume through a generic write grant.
 #[derive(Clone, Debug)]
@@ -218,6 +238,9 @@ impl RenameSampleExecutor {
         if journal.root_fingerprint != root.device_fingerprint
             || authorization.root_fingerprint != root.device_fingerprint
         {
+            return Err(ExecutorError::RootChanged);
+        }
+        if !rename_recovery_root_scope_matches(&journal, &authorization, &root) {
             return Err(ExecutorError::RootChanged);
         }
         match journal.status {
@@ -1648,6 +1671,7 @@ mod tests {
             Ok(ApprovedRecoveryRoot {
                 root_id: root.root_id,
                 device_fingerprint: root.device_fingerprint,
+                canonical_directory_hash: root.canonical_directory_hash,
                 canonical_path: root.canonical_path,
                 stable_device_identity: root.stable_device_identity,
             })
@@ -1732,13 +1756,14 @@ mod tests {
             root: RenameRootObservation {
                 root_id: RootId::new("root-session-1").unwrap(),
                 device_fingerprint: fingerprint(),
+                canonical_directory_hash: "d".repeat(64),
                 live_observed_revision: 9,
                 base_catalog_scan_revision: 9,
                 scan_completed: true,
                 identity_is_stable: true,
             },
             source: RenameSourceObservation {
-                file_instance_id: derive_file_instance_id(&fingerprint(), &source),
+                file_instance_id: derive_file_instance_id(&fingerprint(), &"d".repeat(64), &source),
                 catalog_relative_path: source.clone(),
                 catalog_byte_size: AUDIO_BYTES.len() as u64,
                 catalog_content_hash: hash_bytes(AUDIO_BYTES),
@@ -1841,6 +1866,7 @@ mod tests {
             root: Mutex::new(ApprovedExecutionRoot {
                 root_id: RootId::new("root-session-1").unwrap(),
                 device_fingerprint: fingerprint(),
+                canonical_directory_hash: "d".repeat(64),
                 observed_revision: 9,
                 canonical_path: root.canonicalize().unwrap(),
                 write_enabled: true,
@@ -1916,6 +1942,7 @@ mod tests {
         let current_root = ApprovedExecutionRoot {
             root_id: current_root_id.clone(),
             device_fingerprint: fixture.plan.device_fingerprint.clone(),
+            canonical_directory_hash: fixture.plan.canonical_directory_hash.clone(),
             observed_revision: 10,
             canonical_path: fixture.clone.canonicalize().unwrap(),
             write_enabled: true,
@@ -1936,6 +1963,7 @@ mod tests {
         let current_root = ApprovedExecutionRoot {
             root_id: RootId::new("root-session-2").unwrap(),
             device_fingerprint: format!("rootfp:v1:{}", "b".repeat(64)),
+            canonical_directory_hash: fixture.plan.canonical_directory_hash.clone(),
             observed_revision: 10,
             canonical_path: fixture.clone.canonicalize().unwrap(),
             write_enabled: true,

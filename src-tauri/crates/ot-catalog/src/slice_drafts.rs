@@ -29,8 +29,14 @@ fn validate(binding: &SliceDraftBinding, draft: &SliceDraft) -> Result<(), Error
 impl SliceDraftCatalog for SqliteCatalog {
     fn load_slice_draft(&self, binding: &SliceDraftBinding) -> Result<Option<SliceDraft>, Error> {
         let row = self.connection.query_row(
-            "SELECT id, revision, sample_rate, frame_count, region_start, region_end FROM slice_drafts WHERE root_fingerprint=?1 AND relative_path=?2 AND source_hash=?3",
-            params![binding.root.as_str(), binding.relative_path.as_str(), binding.source_hash.as_str()],
+            "SELECT id, revision, sample_rate, frame_count, region_start, region_end FROM slice_drafts \
+             WHERE root_fingerprint=?1 AND root_directory_hash=?2 AND relative_path=?3 AND source_hash=?4",
+            params![
+                binding.root.as_str(),
+                binding.root.draft_directory_scope(),
+                binding.relative_path.as_str(),
+                binding.source_hash.as_str()
+            ],
             |r| Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,u32>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(4)?,r.get::<_,String>(5)?)),
         ).optional().map_err(unavailable)?;
         let Some((id, revision, sample_rate, frame_count, start, end)) = row else {
@@ -111,16 +117,64 @@ impl SliceDraftCatalog for SqliteCatalog {
             .map_err(unavailable)?;
         let next_revision = expected_revision + 1;
         let count = if expected_revision == 0 {
-            transaction.execute("INSERT INTO slice_drafts (root_fingerprint,relative_path,source_hash,sample_rate,frame_count,region_start,region_end,revision) VALUES (?1,?2,?3,?4,?5,?6,?7,1) ON CONFLICT(root_fingerprint,relative_path,source_hash) DO NOTHING",
-                params![binding.root.as_str(),binding.relative_path.as_str(),binding.source_hash.as_str(),binding.sample_rate,binding.frame_count.to_string(),draft.region.start().to_string(),draft.region.end_exclusive().to_string()]).map_err(unavailable)?
+            transaction
+                .execute(
+                    "INSERT INTO slice_drafts \
+                 (root_fingerprint, root_directory_hash, relative_path, source_hash, sample_rate, \
+                  frame_count, region_start, region_end, revision) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,1) \
+                 ON CONFLICT(root_fingerprint, root_directory_hash, relative_path, source_hash) \
+                 DO NOTHING",
+                    params![
+                        binding.root.as_str(),
+                        binding.root.draft_directory_scope(),
+                        binding.relative_path.as_str(),
+                        binding.source_hash.as_str(),
+                        binding.sample_rate,
+                        binding.frame_count.to_string(),
+                        draft.region.start().to_string(),
+                        draft.region.end_exclusive().to_string()
+                    ],
+                )
+                .map_err(unavailable)?
         } else {
-            transaction.execute("UPDATE slice_drafts SET region_start=?4,region_end=?5,revision=?6 WHERE root_fingerprint=?1 AND relative_path=?2 AND source_hash=?3 AND revision=?7 AND sample_rate=?8 AND frame_count=?9",
-                params![binding.root.as_str(),binding.relative_path.as_str(),binding.source_hash.as_str(),draft.region.start().to_string(),draft.region.end_exclusive().to_string(),next_revision as i64,expected_revision as i64,binding.sample_rate,binding.frame_count.to_string()]).map_err(unavailable)?
+            transaction
+                .execute(
+                    "UPDATE slice_drafts SET region_start=?5, region_end=?6, revision=?7 \
+                 WHERE root_fingerprint=?1 AND root_directory_hash=?2 AND relative_path=?3 \
+                   AND source_hash=?4 AND revision=?8 AND sample_rate=?9 AND frame_count=?10",
+                    params![
+                        binding.root.as_str(),
+                        binding.root.draft_directory_scope(),
+                        binding.relative_path.as_str(),
+                        binding.source_hash.as_str(),
+                        draft.region.start().to_string(),
+                        draft.region.end_exclusive().to_string(),
+                        next_revision as i64,
+                        expected_revision as i64,
+                        binding.sample_rate,
+                        binding.frame_count.to_string()
+                    ],
+                )
+                .map_err(unavailable)?
         };
         if count != 1 {
             return Err(Error::Conflict);
         }
-        let id: i64=transaction.query_row("SELECT id FROM slice_drafts WHERE root_fingerprint=?1 AND relative_path=?2 AND source_hash=?3",params![binding.root.as_str(),binding.relative_path.as_str(),binding.source_hash.as_str()],|r|r.get(0)).map_err(unavailable)?;
+        let id: i64 = transaction
+            .query_row(
+                "SELECT id FROM slice_drafts \
+                 WHERE root_fingerprint=?1 AND root_directory_hash=?2 AND relative_path=?3 \
+                   AND source_hash=?4",
+                params![
+                    binding.root.as_str(),
+                    binding.root.draft_directory_scope(),
+                    binding.relative_path.as_str(),
+                    binding.source_hash.as_str()
+                ],
+                |r| r.get(0),
+            )
+            .map_err(unavailable)?;
         for table in [
             "slice_draft_markers",
             "slice_draft_suppressed",

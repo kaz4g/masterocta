@@ -61,6 +61,12 @@ impl CatalogRootIdentity {
     pub fn directory_hash(&self) -> Option<&str> {
         self.directory_hash.as_deref()
     }
+
+    /// Scope for slice drafts and other logical-root keys that still store the
+    /// device fingerprint separately from the directory locator.
+    pub fn draft_directory_scope(&self) -> &str {
+        self.directory_hash.as_deref().unwrap_or("")
+    }
 }
 
 fn validate_fingerprint(value: &str) -> Result<(), CatalogError> {

@@ -12,7 +12,7 @@ use std::fmt;
 use crate::{encode_field, validate_prefixed_sha256, PlanError, PlanId, ROOT_FINGERPRINT_PREFIX};
 
 const RENAME_PLAN_CANONICAL_PREFIX: &[u8] = b"masterocta:rename-impact-plan:v2";
-const RENAME_PLAN_SCHEMA_VERSION: u8 = 2;
+const RENAME_PLAN_SCHEMA_VERSION: u8 = 3;
 const LEGACY_RENAME_PLAN_CANONICAL_PREFIX: &[u8] = b"masterocta:rename-impact-plan:v1";
 const LEGACY_RENAME_PLAN_SCHEMA_VERSION: u8 = 1;
 
@@ -32,6 +32,7 @@ pub enum UnicodeNormalizationForm {
 pub struct RenameRootObservation {
     pub root_id: RootId,
     pub device_fingerprint: String,
+    pub canonical_directory_hash: String,
     pub live_observed_revision: u64,
     pub base_catalog_scan_revision: u64,
     pub scan_completed: bool,
@@ -197,6 +198,7 @@ pub struct RenameImpactPlan {
     pub id: PlanId,
     pub root_id: RootId,
     pub device_fingerprint: String,
+    pub canonical_directory_hash: String,
     pub base_observed_revision: u64,
     pub source_file_instance_id: FileInstanceId,
     pub source_relative_path: RootRelativePath,
@@ -547,6 +549,10 @@ fn derive_rename_plan_id_with_schema(
 
     encode_field(&mut hasher, 20, &plan.reference_update_count.to_be_bytes());
 
+    if schema_version >= 3 {
+        encode_field(&mut hasher, 21, plan.canonical_directory_hash.as_bytes());
+    }
+
     let digest = hasher.finalize();
     PlanId(format!("plan:v1:{digest:x}"))
 }
@@ -568,6 +574,9 @@ pub fn validate_rename_plan_freshness(
         reasons.push(RenameStaleReason::RootIdentityChanged);
     }
     if plan.device_fingerprint != facts.root.device_fingerprint {
+        reasons.push(RenameStaleReason::RootIdentityChanged);
+    }
+    if plan.canonical_directory_hash != facts.root.canonical_directory_hash {
         reasons.push(RenameStaleReason::RootIdentityChanged);
     }
     if plan.base_observed_revision != facts.root.live_observed_revision {
@@ -827,6 +836,7 @@ fn build_planned_impact(
         .unwrap(),
         root_id: facts.root.root_id.clone(),
         device_fingerprint: facts.root.device_fingerprint.clone(),
+        canonical_directory_hash: facts.root.canonical_directory_hash.clone(),
         base_observed_revision: facts.root.live_observed_revision,
         source_file_instance_id: facts.source.file_instance_id.clone(),
         source_relative_path: facts.source.live_relative_path.clone(),
@@ -1368,6 +1378,10 @@ mod tests {
         ContentHash::parse(format!("sha256:{}", format!("{byte:02x}").repeat(32))).unwrap()
     }
 
+    fn directory_hash() -> String {
+        "d".repeat(64)
+    }
+
     fn root_fingerprint() -> String {
         format!("rootfp:v1:{}", "a".repeat(64))
     }
@@ -1376,6 +1390,7 @@ mod tests {
         RenameRootObservation {
             root_id: RootId::new("root-session-1").unwrap(),
             device_fingerprint: root_fingerprint(),
+            canonical_directory_hash: directory_hash(),
             live_observed_revision: 9,
             base_catalog_scan_revision: 9,
             scan_completed: true,
@@ -1386,7 +1401,11 @@ mod tests {
     fn base_source(path: &str) -> RenameSourceObservation {
         let relative_path = RootRelativePath::parse(path).unwrap();
         RenameSourceObservation {
-            file_instance_id: derive_file_instance_id(&root_fingerprint(), &relative_path),
+            file_instance_id: derive_file_instance_id(
+                &root_fingerprint(),
+                &directory_hash(),
+                &relative_path,
+            ),
             catalog_relative_path: relative_path.clone(),
             catalog_byte_size: 128,
             catalog_content_hash: hash(b'b'),
