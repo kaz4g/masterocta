@@ -200,6 +200,7 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 
 - `MO-PSE-READ-MODEL-1` (B1, first unit): read-only `ot_domain::project_structure` plus a backend adapter reading `bankNN.work` / `bankNN.strd` as separate entries (Pattern→Part, Part→Track machine→slot). Fixture tests only; no Tauri command, DTO, UI, catalog migration, or write path. Scene / Arranger / Recorder are listed as unmodeled dependencies. Arranger references to Banks are the main unknown for later Bank Move/Swap plans.
 - `MO-PSE-CI-FOUNDATION-1` (#191): Read-only Project Structure CI / fixture gate. See [`../testing/PSE_CI_FOUNDATION.md`](../testing/PSE_CI_FOUNDATION.md). Does not authorize Bank Apply.
+- `MO-PSE-READ-MODEL-2`: `v2_project_structure_read(root_id, project_relative_path)` maps the B1 model to a DTO through RootRegistry. No absolute paths, UI, ChangePlan, Arranger parser, or write. Arranger rows, `project.work` `[STATES]`, and whether a Bank file stores its own index remain unmodeled.
 
 ---
 
