@@ -2,7 +2,7 @@
 
 - Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
 - Status: Active canonical index
-- Updated: 2026-09-21
+- Updated: 2026-09-30 (proposed Project Structure track link only; M5–M11 numbers unchanged)
 - Implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
 - M7 completion map: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 
@@ -192,9 +192,25 @@ Stem separation (M7-07/08) must not reorder ahead of M7-02/04/06 without documen
 
 ---
 
+## Proposed tracks outside v0.1 numbering
+
+Tracks below are **not** milestone IDs. They do not insert M12, and they do not
+rename M8 (Performance Domain & Node Protocol).
+
+| Track | Status | Document |
+| --- | --- | --- |
+| Project Structure Control Plane | **PROPOSED** (design only; no Apply) | [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) |
+
+The first implementation slice, when separately approved, is a read-only
+structure viewer plus Bank copy/move/swap ChangePlans. It stays off the M7
+Sample/Slice worktree. Scene has no current read model.
+
+---
+
 ## Related indexes
 
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
 - M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
+- Project structure proposal: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)
 - Architecture decisions: [`ADR_INDEX.md`](./ADR_INDEX.md)
 - Agent handoff entrypoint: [`../CODEX_HANDOFF.md`](../CODEX_HANDOFF.md)
