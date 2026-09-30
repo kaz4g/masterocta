@@ -83,6 +83,13 @@ Rust/Tauri verification may require macOS or Linux GTK/WebKit system packages.
 If the environment blocks a command, report the exact environmental blocker and
 do not present the unrun check as passing.
 
+## Cursor Cloud specific instructions
+
+- `pnpm install --frozen-lockfile` (Node.js 22.13+, Corepack, pnpm 11.24.0) installs the app and `user-guide`. Canonical checks stay in Minimum verification above.
+- Before `cargo` or `pnpm run tauri:dev` on Linux, install `libwebkit2gtk-4.1-dev`, `libssl-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `pkg-config`, and a C toolchain. Use Rust **stable** with `clippy` and `rustfmt` (`rustup default stable`). An older preinstalled toolchain will not match CI.
+- The Vite dev server is `pnpm exec vite --port 1420 --strictPort --host 127.0.0.1`. Scan, browse, and catalog registration need the Tauri shell (`pnpm run tauri:dev`). Do not leave that dev server running during Playwright, which also binds port 1420.
+- `pnpm exec playwright test e2e/homepage.spec.ts --project=chromium` covers the home screen after `pnpm exec playwright install chromium`. Keep destructive tests on fixtures or a temp directory, never on original Octatrack media.
+
 ## Project skills
 
 Repository-specific Codex skills live under `.agents/skills/`. Read the matching
