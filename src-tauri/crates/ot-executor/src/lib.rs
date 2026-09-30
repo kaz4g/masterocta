@@ -16,9 +16,10 @@ pub use rename_apply::{
     VerifiedCloneRoot, VerifiedContinuationCloneRoot,
 };
 pub use rename_prepare::{
-    RenameChangedSlot, RenameJournalOperationKind, RenameJournalStatus, RenameOperationJournal,
-    RenamePrepareResult, RenameProjectRewriteRecord, RenameRecoveryAuthorization,
-    RenameSampleExecutor, RenameSemanticDiff, RenameStagedFileRecord, RenameStagedFileRole,
+    logical_root_journal_matches, RenameChangedSlot, RenameJournalOperationKind,
+    RenameJournalStatus, RenameOperationJournal, RenamePrepareResult, RenameProjectRewriteRecord,
+    RenameRecoveryAuthorization, RenameSampleExecutor, RenameSemanticDiff, RenameStagedFileRecord,
+    RenameStagedFileRole,
 };
 use rustix::fs::{self as descriptor_fs, AtFlags, Mode, OFlags, RenameFlags};
 use serde::{Deserialize, Serialize};
@@ -94,6 +95,7 @@ impl OperationId {
 pub struct ApprovedExecutionRoot {
     pub root_id: RootId,
     pub device_fingerprint: String,
+    pub canonical_directory_hash: String,
     pub observed_revision: u64,
     pub canonical_path: PathBuf,
     pub write_enabled: bool,
@@ -108,6 +110,7 @@ pub trait WriteAuthority {
 pub struct ApprovedRecoveryRoot {
     pub root_id: RootId,
     pub device_fingerprint: String,
+    pub canonical_directory_hash: String,
     pub canonical_path: PathBuf,
     pub stable_device_identity: bool,
 }
@@ -209,6 +212,8 @@ pub struct OperationJournal {
     pub operation_id: String,
     pub plan_id: String,
     pub root_fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_directory_hash: Option<String>,
     pub base_observed_revision: u64,
     pub source_relative_path: String,
     pub destination_relative_path: String,
@@ -286,6 +291,7 @@ impl LegacyOperationJournal {
             operation_id: self.operation_id,
             plan_id: self.plan_id,
             root_fingerprint: self.root_fingerprint,
+            root_directory_hash: None,
             base_observed_revision: self.base_observed_revision,
             source_relative_path: self.source_relative_path,
             destination_relative_path: self.destination_relative_path,
@@ -502,9 +508,11 @@ impl AdditiveCopyExecutor {
         Ok(Some(journal))
     }
 
-    pub fn incomplete_journals_for_root(
+    pub fn incomplete_journals_for_logical_root(
         &self,
         root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
     ) -> Result<Vec<OperationJournal>, ExecutorError> {
         validate_root_fingerprint(root_fingerprint)?;
         let directory = &self.local_paths.journal_directory;
@@ -545,17 +553,28 @@ impl AdditiveCopyExecutor {
             let journal = read_journal(&entry.path())?;
             let operation_id = OperationId::parse(journal.operation_id.clone())?;
             validate_standalone_journal(&journal, &operation_id, &entry.path())?;
-            if journal.root_fingerprint == root_fingerprint
-                && !matches!(
-                    journal.status,
-                    JournalStatus::Committed | JournalStatus::RolledBack | JournalStatus::Abandoned
-                )
-            {
+            if logical_root_journal_matches(
+                journal.root_fingerprint.as_str(),
+                journal.root_directory_hash.as_deref(),
+                root_fingerprint,
+                root_directory_hash,
+                allow_legacy_unscoped_journals,
+            ) && !matches!(
+                journal.status,
+                JournalStatus::Committed | JournalStatus::RolledBack | JournalStatus::Abandoned
+            ) {
                 journals.push(journal);
             }
         }
         journals.sort_by(|left, right| left.operation_id.cmp(&right.operation_id));
         Ok(journals)
+    }
+
+    pub fn incomplete_journals_for_root(
+        &self,
+        root_fingerprint: &str,
+    ) -> Result<Vec<OperationJournal>, ExecutorError> {
+        self.incomplete_journals_for_logical_root(root_fingerprint, "", true)
     }
 
     fn execute_internal<A: WriteAuthority>(
@@ -647,7 +666,7 @@ impl AdditiveCopyExecutor {
             let _ = fs::remove_dir_all(&staging_directory);
             return Err(ExecutorError::InvalidJournal);
         }
-        let mut journal = new_journal(plan, &operation_id, &backup);
+        let mut journal = new_journal(plan, &operation_id, &backup, &initial_root);
         if let Err(error) = write_journal(&journal_path, &journal) {
             let _ = cleanup_staging(&staging_base, &operation_id);
             return Err(error);
@@ -1863,12 +1882,14 @@ fn new_journal(
     plan: &ChangePlan,
     operation_id: &OperationId,
     backup: &VerifiedBackup,
+    root: &ApprovedExecutionRoot,
 ) -> OperationJournal {
     OperationJournal {
         schema: JOURNAL_SCHEMA.into(),
         operation_id: operation_id.as_str().into(),
         plan_id: plan.id.as_str().into(),
         root_fingerprint: plan.device_fingerprint.clone(),
+        root_directory_hash: Some(root.canonical_directory_hash.clone()),
         base_observed_revision: plan.base_observed_revision,
         source_relative_path: plan.operation.source.relative_path.as_str().into(),
         destination_relative_path: plan.operation.destination_relative_path.as_str().into(),
@@ -2603,6 +2624,7 @@ mod tests {
             Ok(ApprovedRecoveryRoot {
                 root_id: root.root_id,
                 device_fingerprint: root.device_fingerprint,
+                canonical_directory_hash: root.canonical_directory_hash,
                 canonical_path: root.canonical_path,
                 stable_device_identity: root.stable_device_identity,
             })
@@ -2672,6 +2694,7 @@ mod tests {
                     root: Mutex::new(ApprovedExecutionRoot {
                         root_id,
                         device_fingerprint: fingerprint,
+                        canonical_directory_hash: "d".repeat(64),
                         observed_revision: 1,
                         canonical_path: root,
                         write_enabled: true,
@@ -2877,7 +2900,11 @@ mod tests {
         assert_eq!(journal.status, JournalStatus::Committed);
         assert_eq!(journal.recovery_binding, LEGACY_RECOVERY_BINDING);
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
         assert!(matches!(
@@ -2926,7 +2953,11 @@ mod tests {
             Some(LEGACY_RECOVERY_FAILURE)
         );
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
         assert!(matches!(
@@ -3261,7 +3292,11 @@ mod tests {
             Some("RECOVERED_INCOMPLETE_OPERATION")
         );
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
         assert!(!fixture.destination.exists());
@@ -3295,7 +3330,11 @@ mod tests {
         assert!(!fixture.destination.exists());
         assert_eq!(fs::read(&fixture.source).unwrap(), fixture.source_bytes);
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
     }
@@ -3331,7 +3370,11 @@ mod tests {
         assert!(!fixture.destination.exists());
         assert_eq!(fs::read(&fixture.source).unwrap(), fixture.source_bytes);
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
         assert!(matches!(
@@ -3407,7 +3450,11 @@ mod tests {
         assert_eq!(fs::read(&temporary).unwrap(), before);
         assert_eq!(fs::read(&fixture.source).unwrap(), fixture.source_bytes);
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
 
@@ -3458,7 +3505,11 @@ mod tests {
         assert_eq!(pending.failure_code.as_deref(), Some("DESTINATION_CHANGED"));
         assert_eq!(
             executor
-                .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+                .incomplete_journals_for_logical_root(
+                    &fixture.plan.device_fingerprint,
+                    &"d".repeat(64),
+                    false,
+                )
                 .unwrap()
                 .len(),
             1
@@ -3685,6 +3736,7 @@ mod tests {
             let initial = ApprovedRecoveryRoot {
                 root_id: root.root_id.clone(),
                 device_fingerprint: root.device_fingerprint.clone(),
+                canonical_directory_hash: root.canonical_directory_hash.clone(),
                 canonical_path: root.canonical_path,
                 stable_device_identity: true,
             };
@@ -3781,7 +3833,11 @@ mod tests {
         let journal = executor.operation_journal(&operation_id).unwrap().unwrap();
         assert_eq!(journal.operation_id, operation_id.as_str());
         let incomplete = executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap();
         assert_eq!(incomplete.len(), 1);
         assert_eq!(incomplete[0].operation_id, operation_id.as_str());
@@ -3794,7 +3850,11 @@ mod tests {
             .recover_incomplete(&fixture.plan, &fixture.authority)
             .unwrap();
         assert!(executor
-            .incomplete_journals_for_root(&fixture.plan.device_fingerprint)
+            .incomplete_journals_for_logical_root(
+                &fixture.plan.device_fingerprint,
+                &"d".repeat(64),
+                false,
+            )
             .unwrap()
             .is_empty());
     }

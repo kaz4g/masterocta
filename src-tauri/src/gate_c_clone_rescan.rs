@@ -112,6 +112,7 @@ impl RecoveryAuthority for FixtureAuthority {
         Ok(ApprovedRecoveryRoot {
             root_id: root.root_id,
             device_fingerprint: root.device_fingerprint,
+            canonical_directory_hash: root.canonical_directory_hash,
             canonical_path: root.canonical_path,
             stable_device_identity: root.stable_device_identity,
         })
@@ -260,6 +261,7 @@ fn authority_for(root: &Path, session: &RootSession) -> FixtureAuthority {
         root: Mutex::new(ApprovedExecutionRoot {
             root_id: session.root_id.clone(),
             device_fingerprint: session.device_fingerprint.clone(),
+            canonical_directory_hash: session.canonical_directory_hash.clone(),
             observed_revision: session.observed_revision,
             canonical_path: root.canonicalize().expect("canonical clone"),
             write_enabled: true,
@@ -340,13 +342,18 @@ fn planning_facts_from_snapshot(
         root: RenameRootObservation {
             root_id: session.root_id.clone(),
             device_fingerprint: session.device_fingerprint.clone(),
+            canonical_directory_hash: session.canonical_directory_hash.clone(),
             live_observed_revision: session.observed_revision,
             base_catalog_scan_revision: scan_revision,
             scan_completed: true,
             identity_is_stable: session.capabilities.stable_device_identity,
         },
         source: RenameSourceObservation {
-            file_instance_id: derive_file_instance_id(&session.device_fingerprint, &source),
+            file_instance_id: derive_file_instance_id(
+                &session.device_fingerprint,
+                &session.canonical_directory_hash,
+                &source,
+            ),
             catalog_relative_path: source.clone(),
             catalog_byte_size: source_instance.byte_size,
             catalog_content_hash: source_instance.content_hash.clone(),
@@ -583,8 +590,7 @@ fn prepare_clone_fixture() -> PreparedClone {
     )
     .expect("register and baseline scan");
     let baseline_revision =
-        gate_c_latest_completed_scan_revision(&catalog, &session.device_fingerprint)
-            .expect("baseline revision");
+        gate_c_latest_completed_scan_revision(&catalog, &session).expect("baseline revision");
 
     let facts = planning_facts_from_snapshot(
         &clone,
@@ -672,11 +678,8 @@ fn gate_c_rename_apply_then_fresh_rescan_has_zero_missing_references() {
         &fixture.session.root_id,
     )
     .expect("fresh rescan");
-    let post_revision = gate_c_latest_completed_scan_revision(
-        &fixture.catalog,
-        &fixture.session.device_fingerprint,
-    )
-    .expect("post revision");
+    let post_revision = gate_c_latest_completed_scan_revision(&fixture.catalog, &fixture.session)
+        .expect("post revision");
     assert!(post_revision > fixture.baseline_revision);
     assert_post_apply_snapshot(&post_snapshot, &fixture.source_hash);
 }

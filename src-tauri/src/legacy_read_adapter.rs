@@ -2366,7 +2366,11 @@ mod tests {
         topology.sample_settings = scan_sample_settings(&canonical, &topology).unwrap();
 
         let catalog_path = root.path().canonicalize().unwrap().join("catalog.sqlite3");
-        let identity = CatalogRootIdentity::new(format!("rootfp:v1:{}", "c".repeat(64))).unwrap();
+        let identity = CatalogRootIdentity::with_directory(
+            format!("rootfp:v1:{}", "c".repeat(64)),
+            "d".repeat(64),
+        )
+        .unwrap();
         let observation = CatalogRootObservation {
             identity: identity.clone(),
             identity_is_stable: true,

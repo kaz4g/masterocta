@@ -430,8 +430,9 @@ mod tests {
         fn ensure_derived_root(
             &mut self,
         ) -> Result<ot_storage_ports::CatalogRootIdentity, CatalogError> {
-            ot_storage_ports::CatalogRootIdentity::new(
+            ot_storage_ports::CatalogRootIdentity::with_directory(
                 ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+                ot_domain::MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR,
             )
             .map_err(|_| CatalogError::InvalidRootIdentity)
         }

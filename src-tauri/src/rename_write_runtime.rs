@@ -197,6 +197,7 @@ impl RenameWriteRuntime {
 
     pub fn authorize(
         &self,
+        registry: &RootRegistry,
         root_id: &RootId,
         plan_id: &str,
     ) -> Result<RenameAuthorityRecord, RenameWriteRuntimeError> {
@@ -211,7 +212,12 @@ impl RenameWriteRuntime {
         if &stored.plan.root_id != root_id {
             return Err(RenameWriteRuntimeError::PlanNotFound);
         }
-        self.ensure_recovery_clear(&stored.plan.device_fingerprint)?;
+        self.ensure_recovery_clear(
+            &stored.plan.device_fingerprint,
+            &stored.plan.canonical_directory_hash,
+            registry
+                .allow_legacy_unscoped_journals_for_fingerprint(&stored.plan.device_fingerprint),
+        )?;
         if let Some(authority) = stored.authority.as_ref() {
             if authority.expires_at > now {
                 return Ok(authority.clone());
@@ -545,9 +551,15 @@ impl RenameWriteRuntime {
     pub fn incomplete_operations(
         &self,
         root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
     ) -> Result<Vec<RenameSessionStatus>, RenameWriteRuntimeError> {
         self.executor
-            .incomplete_rename_journals_for_root(root_fingerprint)
+            .incomplete_rename_journals_for_logical_root(
+                root_fingerprint,
+                root_directory_hash,
+                allow_legacy_unscoped_journals,
+            )
             .map_err(RenameWriteRuntimeError::Executor)?
             .into_iter()
             .map(|journal| {
@@ -570,8 +582,17 @@ impl RenameWriteRuntime {
             .collect()
     }
 
-    fn ensure_recovery_clear(&self, root_fingerprint: &str) -> Result<(), RenameWriteRuntimeError> {
-        let incomplete = self.incomplete_operations(root_fingerprint)?;
+    fn ensure_recovery_clear(
+        &self,
+        root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
+    ) -> Result<(), RenameWriteRuntimeError> {
+        let incomplete = self.incomplete_operations(
+            root_fingerprint,
+            root_directory_hash,
+            allow_legacy_unscoped_journals,
+        )?;
         if incomplete.iter().any(|status| {
             status.journal_status.is_some_and(|journal_status| {
                 matches!(
@@ -698,6 +719,7 @@ impl WriteAuthority for RegistryWriteAuthority<'_> {
         Ok(ApprovedExecutionRoot {
             root_id: resolved.session.root_id,
             device_fingerprint: resolved.session.device_fingerprint,
+            canonical_directory_hash: resolved.session.canonical_directory_hash,
             observed_revision: resolved.session.observed_revision,
             canonical_path: resolved.canonical_path,
             write_enabled: resolved.session.capabilities.write,
@@ -722,6 +744,7 @@ impl RecoveryAuthority for RegistryRenameRecoveryAuthority<'_> {
         Ok(ApprovedRecoveryRoot {
             root_id: resolved.session.root_id,
             device_fingerprint: resolved.session.device_fingerprint,
+            canonical_directory_hash: resolved.session.canonical_directory_hash,
             canonical_path: resolved.canonical_path,
             stable_device_identity: resolved.session.capabilities.stable_device_identity,
         })
@@ -977,6 +1000,7 @@ fn phase_from_journal_status(status: RenameJournalStatus) -> RenameOperationPhas
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::root_registry::RootRegistry;
     use ot_domain::{ContentHash, FileInstanceId, RootRelativePath};
     use ot_plan::derive_rename_plan_id;
     use tempfile::TempDir;
@@ -990,6 +1014,7 @@ mod tests {
             id: PlanId::parse(format!("plan:v1:{}", "0".repeat(64))).unwrap(),
             root_id: root_id.clone(),
             device_fingerprint: format!("rootfp:v1:{}", "b".repeat(64)),
+            canonical_directory_hash: "d".repeat(64),
             base_observed_revision: 1,
             source_file_instance_id: FileInstanceId::parse(format!(
                 "fileinst:v1:{}",
@@ -1013,6 +1038,10 @@ mod tests {
         let id = derive_rename_plan_id(&plan);
         plan.id = id;
         plan
+    }
+
+    fn registry() -> RootRegistry {
+        RootRegistry::default()
     }
 
     fn runtime() -> RenameWriteRuntime {
@@ -1043,13 +1072,14 @@ mod tests {
         let plan = sample_plan(&root_id, "a");
         let plan_id = plan.id.as_str().to_owned();
         runtime.store_plan(plan.clone()).unwrap();
-        let authority = runtime.authorize(&root_id, &plan_id).unwrap();
+        let registry = registry();
+        let authority = runtime.authorize(&registry, &root_id, &plan_id).unwrap();
         runtime.store_plan(plan).unwrap();
         assert!(matches!(
             runtime.verify_authority(&root_id, &plan_id, &authority.authority_id),
             Err(RenameWriteRuntimeError::AuthorityNotFound)
         ));
-        runtime.authorize(&root_id, &plan_id).unwrap();
+        runtime.authorize(&registry, &root_id, &plan_id).unwrap();
     }
 
     #[test]
@@ -1059,8 +1089,9 @@ mod tests {
         let plan = sample_plan(&root_id, "a");
         let plan_id = plan.id.as_str().to_owned();
         runtime.store_plan(plan).unwrap();
-        let first = runtime.authorize(&root_id, &plan_id).unwrap();
-        let second = runtime.authorize(&root_id, &plan_id).unwrap();
+        let registry = registry();
+        let first = runtime.authorize(&registry, &root_id, &plan_id).unwrap();
+        let second = runtime.authorize(&registry, &root_id, &plan_id).unwrap();
         assert_eq!(first.authority_id, second.authority_id);
     }
 
@@ -1071,7 +1102,7 @@ mod tests {
         let plan = sample_plan(&root_id, "a");
         let plan_id = plan.id.as_str().to_owned();
         runtime.store_plan(plan).unwrap();
-        runtime.authorize(&root_id, &plan_id).unwrap();
+        runtime.authorize(&registry(), &root_id, &plan_id).unwrap();
         assert!(matches!(
             runtime.verify_authority(&root_id, &plan_id, "rename-auth:v1:deadbeef"),
             Err(RenameWriteRuntimeError::AuthorityMismatch)

@@ -11,21 +11,40 @@ pub mod rename;
 
 pub use rename::*;
 
-/// Derive the opaque catalog file-instance identifier for a root fingerprint
-/// and validated root-relative path.
+const FILE_INSTANCE_ID_V2_PREFIX: &str = "fileinst:v2";
+
+/// Derive the opaque catalog file-instance identifier scoped to a logical root
+/// (device fingerprint plus canonical directory locator) and relative path.
 pub fn derive_file_instance_id(
     root_fingerprint: &str,
+    directory_hash: &str,
     relative_path: &RootRelativePath,
 ) -> FileInstanceId {
-    use ot_domain::FileInstanceId;
+    FileInstanceId::parse(opaque_file_instance_id_string(
+        root_fingerprint,
+        directory_hash,
+        relative_path.as_str(),
+    ))
+    .expect("derived id")
+}
 
+pub fn opaque_file_instance_id_string(
+    root_fingerprint: &str,
+    directory_hash: &str,
+    relative_path: &str,
+) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"fileinst:v1");
-    for value in [root_fingerprint, relative_path.as_str()] {
+    hasher.update(FILE_INSTANCE_ID_V2_PREFIX.as_bytes());
+    for value in [root_fingerprint, directory_hash, relative_path] {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value.as_bytes());
     }
-    FileInstanceId::parse(format!("fileinst:v1:{:x}", hasher.finalize())).expect("derived id")
+    let digest = hasher.finalize();
+    let lowercase_hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("{FILE_INSTANCE_ID_V2_PREFIX}:{lowercase_hex}")
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]

@@ -433,7 +433,11 @@ mod tests {
         catalog.register_asset_derivation(&derivation).unwrap();
 
         let observation = ot_storage_ports::CatalogRootObservation {
-            identity: ot_storage_ports::CatalogRootIdentity::new(ROOT_FINGERPRINT).unwrap(),
+            identity: ot_storage_ports::CatalogRootIdentity::with_directory(
+                ROOT_FINGERPRINT,
+                "e".repeat(64),
+            )
+            .unwrap(),
             identity_is_stable: true,
             display_name: "Fixture".into(),
             observed_revision: 1,

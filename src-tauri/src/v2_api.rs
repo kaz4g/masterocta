@@ -323,9 +323,10 @@ pub(crate) fn opaque_file_instance_id(
     root_identity: &CatalogRootIdentity,
     file: &FileInstance,
 ) -> String {
-    opaque_catalog_id(
-        "fileinst:v1",
-        &[root_identity.as_str(), file.relative_path.as_str()],
+    ot_plan::opaque_file_instance_id_string(
+        root_identity.as_str(),
+        root_identity.draft_directory_scope(),
+        file.relative_path.as_str(),
     )
 }
 
@@ -1733,7 +1734,8 @@ pub struct ChangeRecoveryStatusDto {
 
 fn validate_file_instance_id(file_instance_id: &str) -> Result<(), ApiError> {
     let digest = file_instance_id
-        .strip_prefix("fileinst:v1:")
+        .strip_prefix("fileinst:v2:")
+        .or_else(|| file_instance_id.strip_prefix("fileinst:v1:"))
         .ok_or_else(invalid_file_instance_id)?;
     if digest.len() != 64
         || !digest
@@ -1748,7 +1750,7 @@ fn validate_file_instance_id(file_instance_id: &str) -> Result<(), ApiError> {
 fn invalid_file_instance_id() -> ApiError {
     ApiError::new(
         "INVALID_FILE_INSTANCE_ID",
-        "file instance ID must be an opaque fileinst:v1 identifier",
+        "file instance ID must be an opaque fileinst:v1 or fileinst:v2 identifier",
         false,
     )
 }
@@ -2113,11 +2115,11 @@ pub(crate) fn rename_runtime_error(error: RenameWriteRuntimeError) -> ApiError {
 
 fn latest_completed_scan_revision(
     catalog: &SharedCatalog,
-    fingerprint: &str,
+    session: &RootSession,
 ) -> Result<u64, ApiError> {
     use ot_storage_ports::{CatalogScanStatus, LibraryCatalog};
 
-    let identity = CatalogRootIdentity::new(fingerprint.to_string()).map_err(catalog_error)?;
+    let identity = catalog_identity(session)?;
     let catalog = catalog.lock().map_err(|_| catalog_lock_error())?;
     let scan = catalog
         .latest_scan(&identity)
@@ -2210,8 +2212,7 @@ pub(crate) fn plan_rename_sample_sync(
         ));
     }
 
-    let scan_revision =
-        latest_completed_scan_revision(catalog, resolved.session.device_fingerprint.as_str())?;
+    let scan_revision = latest_completed_scan_revision(catalog, &resolved.session)?;
     let live_snapshot = scan_library_snapshot_sync(registry, catalog, root_id)?;
     verify_catalog_matches_live_scan(&snapshot, &live_snapshot)
         .map_err(rename_planning_facts_error)?;
@@ -2403,8 +2404,7 @@ fn verify_stored_rename_plan_freshness(
         })?
         .clone();
 
-    let scan_revision =
-        latest_completed_scan_revision(catalog, resolved.session.device_fingerprint.as_str())?;
+    let scan_revision = latest_completed_scan_revision(catalog, &resolved.session)?;
     let live_snapshot = scan_library_snapshot_sync(registry, catalog, root_id)?;
     verify_catalog_matches_live_scan(&snapshot, &live_snapshot)
         .map_err(rename_planning_facts_error)?;
@@ -2443,7 +2443,7 @@ pub(crate) fn authorize_rename_sync(
         .map_err(rename_runtime_error)?;
     verify_stored_rename_plan_freshness(registry, catalog, root_id, &plan, true)?;
     let authority = rename_runtime
-        .authorize(root_id, plan_id)
+        .authorize(registry, root_id, plan_id)
         .map_err(rename_runtime_error)?;
     Ok(rename_authority_dto(&authority))
 }
@@ -3652,8 +3652,14 @@ pub(crate) fn rename_recovery_status_sync(
     root_id: &RootId,
 ) -> Result<RenameRecoveryStatusDto, ApiError> {
     let resolved = registry.resolve(root_id)?;
+    let allow_legacy = registry
+        .allow_legacy_unscoped_journals_for_fingerprint(&resolved.session.device_fingerprint);
     let operations = rename_runtime
-        .incomplete_operations(&resolved.session.device_fingerprint)
+        .incomplete_operations(
+            &resolved.session.device_fingerprint,
+            &resolved.session.canonical_directory_hash,
+            allow_legacy,
+        )
         .map_err(rename_runtime_error)?
         .into_iter()
         .map(|status| rename_status_dto(&status))
@@ -3866,7 +3872,11 @@ fn storage_error(message: &str) -> ApiError {
 }
 
 pub(crate) fn catalog_identity(session: &RootSession) -> Result<CatalogRootIdentity, ApiError> {
-    CatalogRootIdentity::new(session.device_fingerprint.clone()).map_err(catalog_error)
+    CatalogRootIdentity::with_directory(
+        session.device_fingerprint.clone(),
+        session.canonical_directory_hash.clone(),
+    )
+    .map_err(catalog_error)
 }
 
 fn catalog_observation(session: &RootSession) -> Result<CatalogRootObservation, ApiError> {
@@ -3967,9 +3977,9 @@ pub(crate) fn gate_c_rescan_catalog_only(
 #[cfg(test)]
 pub(crate) fn gate_c_latest_completed_scan_revision(
     catalog: &SharedCatalog,
-    fingerprint: &str,
+    session: &RootSession,
 ) -> Result<u64, ApiError> {
-    latest_completed_scan_revision(catalog, fingerprint)
+    latest_completed_scan_revision(catalog, session)
 }
 
 pub(crate) fn catalog_lock_error() -> ApiError {
@@ -4000,6 +4010,11 @@ pub(crate) fn catalog_error(error: CatalogError) -> ApiError {
         CatalogError::Unavailable { .. } => (
             "CATALOG_UNAVAILABLE",
             "the local catalog is temporarily unavailable",
+            true,
+        ),
+        CatalogError::LegacyRootDirectoryUnbound => (
+            "LEGACY_ROOT_DIRECTORY_UNBOUND",
+            "this catalog root has no directory identity, so it was left unchanged",
             true,
         ),
         CatalogError::InvalidRootIdentity
@@ -4119,8 +4134,14 @@ fn change_recovery_status_sync(
     root_id: &RootId,
 ) -> Result<ChangeRecoveryStatusDto, ApiError> {
     let resolved = registry.resolve(root_id)?;
+    let allow_legacy = registry
+        .allow_legacy_unscoped_journals_for_fingerprint(&resolved.session.device_fingerprint);
     let operations = write
-        .recovery_required(&resolved.session.device_fingerprint)
+        .recovery_required(
+            &resolved.session.device_fingerprint,
+            &resolved.session.canonical_directory_hash,
+            allow_legacy,
+        )
         .map_err(write_runtime_error)?
         .into_iter()
         .map(Into::into)
@@ -6239,11 +6260,13 @@ mod tests {
         .unwrap();
 
         let destination_metadata = fs::metadata(&destination).unwrap();
+        let resolved = registry.resolve(&root_id).unwrap();
         let journal = OperationJournal {
             schema: "masterocta-operation-journal:v3".into(),
             operation_id: operation_id.clone(),
             plan_id: plan_id.as_str().to_owned(),
             root_fingerprint: session.device_fingerprint.clone(),
+            root_directory_hash: Some(resolved.session.canonical_directory_hash.clone()),
             base_observed_revision: session.observed_revision,
             source_relative_path: source_relative_path.into(),
             destination_relative_path: destination_relative_path.into(),
@@ -6596,7 +6619,7 @@ mod tests {
     }
 
     #[test]
-    fn a_second_root_with_the_same_catalog_identity_cannot_replace_the_first() {
+    fn two_directories_on_one_device_stay_distinct_catalog_roots() {
         let first_root = TempDir::new().unwrap();
         let second_root = TempDir::new().unwrap();
         create_set_project(first_root.path(), "FIRST_SET", "FIRST_PROJECT");
@@ -6605,16 +6628,35 @@ mod tests {
         let (_data_directory, catalog) = catalog();
         let first =
             register_root_sync(&registry, &catalog, first_root.path().to_str().unwrap()).unwrap();
-        let first_root_id = RootId::new(first.root_id).unwrap();
+        let second =
+            register_root_sync(&registry, &catalog, second_root.path().to_str().unwrap()).unwrap();
+        let first_root_id = RootId::new(first.root_id.clone()).unwrap();
+        let second_root_id = RootId::new(second.root_id.clone()).unwrap();
 
-        let error = register_root_sync(&registry, &catalog, second_root.path().to_str().unwrap())
-            .unwrap_err();
-        let snapshot = list_library_sync(&registry, &catalog, &first_root_id).unwrap();
+        assert_ne!(first.root_id, second.root_id);
+        assert_eq!(first.device_fingerprint, second.device_fingerprint);
+        let first_snapshot = list_library_sync(&registry, &catalog, &first_root_id).unwrap();
+        let second_snapshot = list_library_sync(&registry, &catalog, &second_root_id).unwrap();
+        assert_eq!(first_snapshot.sets[0].display_name, "FIRST_SET");
+        assert_eq!(
+            first_snapshot.sets[0].projects[0].display_name,
+            "FIRST_PROJECT"
+        );
+        assert_eq!(second_snapshot.sets[0].display_name, "SECOND_SET");
+        assert_eq!(
+            second_snapshot.sets[0].projects[0].display_name,
+            "SECOND_PROJECT"
+        );
 
-        assert_eq!(error.code, "ROOT_IDENTITY_AMBIGUOUS");
-        assert_eq!(snapshot.sets.len(), 1);
-        assert_eq!(snapshot.sets[0].display_name, "FIRST_SET");
-        assert_eq!(snapshot.sets[0].projects[0].display_name, "FIRST_PROJECT");
+        let reopened =
+            register_root_sync(&registry, &catalog, first_root.path().to_str().unwrap()).unwrap();
+        let second_after = list_library_sync(&registry, &catalog, &second_root_id).unwrap();
+        assert_eq!(reopened.root_id, first.root_id);
+        assert_eq!(second_after.sets[0].display_name, "SECOND_SET");
+        assert_eq!(
+            second_after.sets[0].projects[0].display_name,
+            "SECOND_PROJECT"
+        );
     }
 
     #[test]
@@ -6688,7 +6730,7 @@ mod tests {
         assert_eq!(dto.audio_files[0].storage_scope, "set_audio_pool");
         assert!(dto.audio_files[0]
             .file_instance_id
-            .starts_with("fileinst:v1:"));
+            .starts_with("fileinst:v2:"));
         assert!(dto.audio_files[0].asset_id.starts_with("asset:v1:"));
         assert!(dto.usage_edges.is_empty());
 
@@ -10728,6 +10770,7 @@ mod tests {
                 operation_id: operation_id.clone(),
                 plan_id: fixture.plan_id.clone(),
                 root_fingerprint: resolved.session.device_fingerprint.clone(),
+                root_directory_hash: Some(resolved.session.canonical_directory_hash.clone()),
                 base_observed_revision: resolved.session.observed_revision,
                 source_relative_path: "SET/AUDIO/unused.wav".into(),
                 destination_relative_path: "SET/AUDIO/additive-gate.wav".into(),

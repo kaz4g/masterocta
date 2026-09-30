@@ -10,6 +10,11 @@ pub const MAC_DERIVED_AUDIO_ROOT_LABEL: &str = "masterocta.mac-derived-audio.v1"
 pub const MAC_DERIVED_AUDIO_ROOT_FINGERPRINT: &str =
     "rootfp:v1:13bdc6604b00a52484f01428a1a34715c78b14fb852702113a04631db05f6951";
 
+/// SHA-256(`rootloc:v1\0mac-derived-audio`). Directory locator for the synthetic
+/// derived-audio catalog root. This is not a filesystem path.
+pub const MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR: &str =
+    "db99f06b42c08df29edd9d7f0a7a0ccfe8fc47aac831c41a23d82bedb6eda84b";
+
 pub const TRIM_PROCESSOR_NAME: &str = "masterocta-trim";
 pub const TRIM_PROCESSOR_REVISION: &str = "pcm-wav-v1";
 

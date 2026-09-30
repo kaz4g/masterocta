@@ -80,6 +80,8 @@ pub struct RenameOperationJournal {
     pub plan_id: String,
     pub operation_kind: RenameJournalOperationKind,
     pub root_fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_directory_hash: Option<String>,
     pub base_observed_revision: u64,
     pub source_relative_path: String,
     pub destination_relative_path: String,
@@ -100,6 +102,8 @@ pub struct RenameRecoveryAuthorization {
     pub plan_id: String,
     pub root_id: String,
     pub root_fingerprint: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root_directory_hash: Option<String>,
     pub base_observed_revision: u64,
     pub source_relative_path: String,
     pub destination_relative_path: String,
@@ -110,6 +114,22 @@ pub struct RenameRecoveryAuthorization {
     pub reference_update_count: u64,
     pub staged_files: Vec<RenameStagedFileRecord>,
     pub project_rewrites: Vec<RenameProjectRewriteRecord>,
+}
+
+pub fn logical_root_journal_matches(
+    journal_fingerprint: &str,
+    journal_directory_hash: Option<&str>,
+    root_fingerprint: &str,
+    root_directory_hash: &str,
+    allow_legacy_unscoped_journals: bool,
+) -> bool {
+    if journal_fingerprint != root_fingerprint {
+        return false;
+    }
+    match journal_directory_hash {
+        Some(stored) => stored == root_directory_hash,
+        None => allow_legacy_unscoped_journals,
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -246,6 +266,7 @@ impl RenameSampleExecutor {
             plan_id: plan.id.as_str().to_owned(),
             operation_kind: RenameJournalOperationKind::RenameSample,
             root_fingerprint: plan.device_fingerprint.clone(),
+            root_directory_hash: Some(plan.canonical_directory_hash.clone()),
             base_observed_revision: plan.base_observed_revision,
             source_relative_path: plan.source_relative_path.as_str().to_owned(),
             destination_relative_path: plan.destination_relative_path.as_str().to_owned(),
@@ -301,9 +322,11 @@ impl RenameSampleExecutor {
         }
     }
 
-    pub fn rename_journals_for_root(
+    pub fn rename_journals_for_logical_root(
         &self,
         root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
     ) -> Result<Vec<RenameOperationJournal>, ExecutorError> {
         validate_rename_root_fingerprint(root_fingerprint)?;
         let Some(rename_directory) = self.rename_journal_directory()? else {
@@ -325,7 +348,13 @@ impl RenameSampleExecutor {
                 continue;
             }
             let journal = read_rename_journal(&entry.path())?;
-            if journal.root_fingerprint == root_fingerprint {
+            if logical_root_journal_matches(
+                journal.root_fingerprint.as_str(),
+                journal.root_directory_hash.as_deref(),
+                root_fingerprint,
+                root_directory_hash,
+                allow_legacy_unscoped_journals,
+            ) {
                 journals.push(journal);
             }
         }
@@ -333,12 +362,25 @@ impl RenameSampleExecutor {
         Ok(journals)
     }
 
-    pub fn incomplete_rename_journals_for_root(
+    pub fn rename_journals_for_root(
         &self,
         root_fingerprint: &str,
     ) -> Result<Vec<RenameOperationJournal>, ExecutorError> {
+        self.rename_journals_for_logical_root(root_fingerprint, "", true)
+    }
+
+    pub fn incomplete_rename_journals_for_logical_root(
+        &self,
+        root_fingerprint: &str,
+        root_directory_hash: &str,
+        allow_legacy_unscoped_journals: bool,
+    ) -> Result<Vec<RenameOperationJournal>, ExecutorError> {
         Ok(self
-            .rename_journals_for_root(root_fingerprint)?
+            .rename_journals_for_logical_root(
+                root_fingerprint,
+                root_directory_hash,
+                allow_legacy_unscoped_journals,
+            )?
             .into_iter()
             .filter(|journal| {
                 !matches!(
@@ -347,6 +389,13 @@ impl RenameSampleExecutor {
                 )
             })
             .collect())
+    }
+
+    pub fn incomplete_rename_journals_for_root(
+        &self,
+        root_fingerprint: &str,
+    ) -> Result<Vec<RenameOperationJournal>, ExecutorError> {
+        self.incomplete_rename_journals_for_logical_root(root_fingerprint, "", true)
     }
 
     fn rename_journal_directory(&self) -> Result<Option<PathBuf>, ExecutorError> {
@@ -911,6 +960,7 @@ fn rename_recovery_authorization(
         plan_id: plan.id.as_str().to_owned(),
         root_id: plan.root_id.as_str().to_owned(),
         root_fingerprint: plan.device_fingerprint.clone(),
+        root_directory_hash: Some(plan.canonical_directory_hash.clone()),
         base_observed_revision: plan.base_observed_revision,
         source_relative_path: plan.source_relative_path.as_str().to_owned(),
         destination_relative_path: plan.destination_relative_path.as_str().to_owned(),
@@ -1350,13 +1400,14 @@ mod tests {
             root: RenameRootObservation {
                 root_id: RootId::new("root-session-1").unwrap(),
                 device_fingerprint: fingerprint(),
+                canonical_directory_hash: "d".repeat(64),
                 live_observed_revision: 9,
                 base_catalog_scan_revision: 9,
                 scan_completed: true,
                 identity_is_stable: true,
             },
             source: RenameSourceObservation {
-                file_instance_id: derive_file_instance_id(&fingerprint(), &source),
+                file_instance_id: derive_file_instance_id(&fingerprint(), &"d".repeat(64), &source),
                 catalog_relative_path: source.clone(),
                 catalog_byte_size: AUDIO_BYTES.len() as u64,
                 catalog_content_hash: hash_of(AUDIO_BYTES),
@@ -1458,6 +1509,7 @@ mod tests {
             root: Mutex::new(ApprovedExecutionRoot {
                 root_id: RootId::new("root-session-1").unwrap(),
                 device_fingerprint: fingerprint(),
+                canonical_directory_hash: "d".repeat(64),
                 observed_revision: 9,
                 canonical_path: root.canonicalize().unwrap(),
                 write_enabled: true,
@@ -1968,7 +2020,9 @@ mod tests {
         let prepared = executor
             .prepare(&plan, &MemoryProjectReferenceCodec, &authority_for(&root))
             .unwrap();
-        let journals = executor.rename_journals_for_root(&fingerprint()).unwrap();
+        let journals = executor
+            .rename_journals_for_logical_root(&fingerprint(), &plan.canonical_directory_hash, false)
+            .unwrap();
         assert_eq!(journals.len(), 1);
         assert_eq!(journals[0].operation_id, prepared.operation_id.as_str());
         assert_eq!(journals[0].status, RenameJournalStatus::Prepared);

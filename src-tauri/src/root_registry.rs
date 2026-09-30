@@ -140,6 +140,21 @@ impl DeviceObservation {
     }
 }
 
+pub fn canonical_directory_hash(canonical_path: &Path) -> Result<String, RootRegistryError> {
+    let text = canonical_path
+        .to_str()
+        .filter(|text| !text.is_empty())
+        .ok_or(RootRegistryError::InvalidPath)?;
+    let mut hasher = Sha256::new();
+    hasher.update(b"rootloc:v1\0");
+    hasher.update(text.as_bytes());
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
 fn encode_required_string(hasher: &mut Sha256, field_tag: u8, value: &str) {
     hasher.update([field_tag]);
     hasher.update((value.len() as u64).to_be_bytes());
@@ -294,6 +309,8 @@ pub struct RootSession {
     pub root_id: RootId,
     pub display_name: String,
     pub device_fingerprint: String,
+    /// SHA-256 locator of the canonical directory. Not an absolute path.
+    pub canonical_directory_hash: String,
     pub observed_revision: u64,
     pub expires_in_seconds: u64,
     pub write_grant_expires_in_seconds: Option<u64>,
@@ -362,6 +379,21 @@ impl RootRegistry {
         }
     }
 
+    pub fn registered_session_count_for_device_fingerprint(&self, fingerprint: &str) -> usize {
+        let Ok(state) = self.state.lock() else {
+            return 0;
+        };
+        state
+            .roots
+            .values()
+            .filter(|entry| entry.session.device_fingerprint == fingerprint)
+            .count()
+    }
+
+    pub fn allow_legacy_unscoped_journals_for_fingerprint(&self, fingerprint: &str) -> bool {
+        self.registered_session_count_for_device_fingerprint(fingerprint) <= 1
+    }
+
     pub fn register(&self, raw_path: &str) -> Result<RootSession, RootRegistryError> {
         let candidate = Path::new(raw_path);
         if raw_path.trim().is_empty() || !candidate.is_absolute() {
@@ -389,13 +421,9 @@ impl RootRegistry {
             state.roots.remove(&root_id);
         }
 
-        if state.roots.values().any(|entry| {
-            entry.canonical_path != canonical_path
-                && entry.session.device_fingerprint == fingerprint
-        }) {
-            return Err(RootRegistryError::AmbiguousIdentity);
-        }
-
+        // Distinct directories on one device are distinct logical roots.
+        // Catalog rows are separated by canonical_directory_hash.
+        let directory_hash = canonical_directory_hash(&canonical_path)?;
         let existing_root_id = state
             .roots
             .iter()
@@ -435,6 +463,7 @@ impl RootRegistry {
             root_id: root_id.clone(),
             display_name,
             device_fingerprint: fingerprint,
+            canonical_directory_hash: directory_hash,
             observed_revision: 1,
             expires_in_seconds: self.ttl.as_secs(),
             write_grant_expires_in_seconds: None,
@@ -549,11 +578,13 @@ impl RootRegistry {
 
         let _ = (baseline_manifest_binding, expected_entry_count);
         let root_id = self.new_root_id(&canonical_path)?;
+        let directory_hash = canonical_directory_hash(&canonical_path)?;
         let display_name = format!("Managed Clone ({managed_token})");
         let session = RootSession {
             root_id: root_id.clone(),
             display_name,
             device_fingerprint: fingerprint,
+            canonical_directory_hash: directory_hash,
             observed_revision: 1,
             expires_in_seconds: self.ttl.as_secs(),
             write_grant_expires_in_seconds: None,
@@ -1302,7 +1333,7 @@ mod tests {
     }
 
     #[test]
-    fn different_roots_with_the_same_persistent_identity_are_rejected() {
+    fn different_directories_with_the_same_device_fingerprint_are_distinct_roots() {
         let first_root = TempDir::new().unwrap();
         let second_root = TempDir::new().unwrap();
         let registry = RootRegistry::new(
@@ -1312,13 +1343,27 @@ mod tests {
         let first = registry
             .register(first_root.path().to_str().unwrap())
             .unwrap();
-
-        let error = registry
+        let second = registry
             .register(second_root.path().to_str().unwrap())
-            .unwrap_err();
+            .unwrap();
 
-        assert_eq!(error, RootRegistryError::AmbiguousIdentity);
+        assert_ne!(first.root_id, second.root_id);
+        assert_eq!(first.device_fingerprint, second.device_fingerprint);
+        assert_ne!(
+            first.canonical_directory_hash,
+            second.canonical_directory_hash
+        );
         assert!(registry.resolve(&first.root_id).is_ok());
+        assert!(registry.resolve(&second.root_id).is_ok());
+
+        let reopened = registry
+            .register(first_root.path().to_str().unwrap())
+            .unwrap();
+        assert_eq!(reopened.root_id, first.root_id);
+        assert_eq!(
+            reopened.canonical_directory_hash,
+            first.canonical_directory_hash
+        );
     }
 
     #[test]

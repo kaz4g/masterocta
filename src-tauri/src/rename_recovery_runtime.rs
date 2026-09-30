@@ -387,6 +387,7 @@ mod tests {
             session: RootSession {
                 root_id: RootId::new("root:v1:current").unwrap(),
                 device_fingerprint: "rootfp:v1:current".into(),
+                canonical_directory_hash: "ab".repeat(32),
                 display_name: "clone".into(),
                 observed_revision: 2,
                 expires_in_seconds: 3600,

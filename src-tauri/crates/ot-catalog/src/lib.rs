@@ -23,7 +23,7 @@ use rusqlite::{
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
-const LATEST_SCHEMA_VERSION: u64 = 13;
+const LATEST_SCHEMA_VERSION: u64 = 15;
 const PROJECTION_REPAIR_META_KEY: &str = "observational_projection_repair_applied";
 const MIGRATION_REQUIRES_FOREIGN_KEYS_OFF: u64 = 8;
 const MIGRATIONS: &[(u64, &str)] = &[
@@ -67,6 +67,14 @@ const MIGRATIONS: &[(u64, &str)] = &[
     (
         13,
         include_str!("../migrations/0013_mac_derived_storage_scope.sql"),
+    ),
+    (
+        14,
+        include_str!("../migrations/0014_root_directory_identity.sql"),
+    ),
+    (
+        15,
+        include_str!("../migrations/0015_root_and_draft_logical_scope.sql"),
     ),
 ];
 
@@ -181,14 +189,36 @@ impl SqliteCatalog {
     }
 
     fn root_row_id(&self, identity: &CatalogRootIdentity) -> Result<Option<i64>, CatalogError> {
-        self.connection
-            .query_row(
-                "SELECT id FROM roots WHERE fingerprint = ?1",
-                params![identity.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(unavailable)
+        if let Some(directory_hash) = identity.directory_hash() {
+            let row: Option<i64> = self
+                .connection
+                .query_row(
+                    "SELECT id FROM roots \
+                     WHERE canonical_path_hash = ?1 AND fingerprint = ?2",
+                    params![directory_hash, identity.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(unavailable)?;
+            return Ok(row);
+        }
+
+        let mut statement = self
+            .connection
+            .prepare("SELECT id FROM roots WHERE fingerprint = ?1 ORDER BY id")
+            .map_err(unavailable)?;
+        let ids = statement
+            .query_map(params![identity.as_str()], |row| row.get::<_, i64>(0))
+            .map_err(unavailable)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(unavailable)?;
+        match ids.as_slice() {
+            [] => Ok(None),
+            [id] => Ok(Some(*id)),
+            _ => Err(CatalogError::Integrity {
+                message: "device fingerprint matches more than one catalog root".into(),
+            }),
+        }
     }
 
     fn begin_scan(&self, root_row_id: i64) -> Result<CatalogScan, CatalogError> {
@@ -404,28 +434,100 @@ impl SqliteCatalog {
 
 impl LibraryCatalog for SqliteCatalog {
     fn observe_root(&mut self, observation: &CatalogRootObservation) -> Result<(), CatalogError> {
-        self.connection
+        let Some(directory_hash) = observation.identity.directory_hash() else {
+            return Err(CatalogError::InvalidRootIdentity);
+        };
+        let observed_revision =
+            i64::try_from(observation.observed_revision).map_err(|_| CatalogError::Integrity {
+                message: "observed revision exceeds SQLite INTEGER range".into(),
+            })?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(unavailable)?;
+        let existing: Option<i64> = transaction
+            .query_row(
+                "SELECT id FROM roots \
+                 WHERE canonical_path_hash = ?1 AND fingerprint = ?2",
+                params![directory_hash, observation.identity.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(unavailable)?;
+        if let Some(id) = existing {
+            transaction
+                .execute(
+                    "UPDATE roots \
+                     SET identity_is_stable = ?1, \
+                         display_name = ?2, \
+                         last_observed_revision = ?3, \
+                         last_observed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+                     WHERE id = ?4",
+                    params![
+                        observation.identity_is_stable,
+                        observation.display_name,
+                        observed_revision,
+                        id,
+                    ],
+                )
+                .map_err(unavailable)?;
+            transaction.commit().map_err(unavailable)?;
+            return Ok(());
+        }
+
+        let legacy_root: Option<i64> = transaction
+            .query_row(
+                "SELECT id FROM roots \
+                 WHERE fingerprint = ?1 AND canonical_path_hash IS NULL",
+                params![observation.identity.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(unavailable)?;
+        if let Some(legacy_id) = legacy_root {
+            let bound = transaction
+                .execute(
+                    "UPDATE roots \
+                     SET canonical_path_hash = ?1, \
+                         identity_is_stable = ?2, \
+                         display_name = ?3, \
+                         last_observed_revision = ?4, \
+                         last_observed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') \
+                     WHERE id = ?5 AND canonical_path_hash IS NULL",
+                    params![
+                        directory_hash,
+                        observation.identity_is_stable,
+                        observation.display_name,
+                        observed_revision,
+                        legacy_id,
+                    ],
+                )
+                .map_err(unavailable)?;
+            if bound != 1 {
+                return Err(CatalogError::Integrity {
+                    message: "legacy catalog root could not be bound to directory identity".into(),
+                });
+            }
+            transaction.commit().map_err(unavailable)?;
+            return Ok(());
+        }
+
+        transaction
             .execute(
                 "INSERT INTO roots \
-                 (fingerprint, identity_is_stable, display_name, last_observed_revision, last_observed_at) \
-                 VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) \
-                 ON CONFLICT(fingerprint) DO UPDATE SET \
-                     identity_is_stable = excluded.identity_is_stable, \
-                     display_name = excluded.display_name, \
-                     last_observed_revision = excluded.last_observed_revision, \
-                     last_observed_at = excluded.last_observed_at",
+                 (fingerprint, canonical_path_hash, identity_is_stable, display_name, \
+                  last_observed_revision, last_observed_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 params![
                     observation.identity.as_str(),
+                    directory_hash,
                     observation.identity_is_stable,
                     observation.display_name,
-                    i64::try_from(observation.observed_revision).map_err(|_| {
-                        CatalogError::Integrity {
-                            message: "observed revision exceeds SQLite INTEGER range".into(),
-                        }
-                    })?,
+                    observed_revision,
                 ],
             )
             .map_err(unavailable)?;
+        transaction.commit().map_err(unavailable)?;
         Ok(())
     }
 
@@ -460,17 +562,18 @@ impl LibraryCatalog for SqliteCatalog {
         &self,
         identity: &CatalogRootIdentity,
     ) -> Result<Option<LibrarySnapshot>, CatalogError> {
-        let latest: Option<(i64, Option<i64>)> = self
+        let Some(root_row_id) = self.root_row_id(identity)? else {
+            return Ok(None);
+        };
+        let revision: Option<i64> = self
             .connection
             .query_row(
-                "SELECT id, latest_completed_scan_revision \
-                 FROM roots WHERE fingerprint = ?1",
-                params![identity.as_str()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                "SELECT latest_completed_scan_revision FROM roots WHERE id = ?1",
+                params![root_row_id],
+                |row| row.get(0),
             )
-            .optional()
             .map_err(unavailable)?;
-        let Some((root_row_id, Some(revision))) = latest else {
+        let Some(revision) = revision else {
             return Ok(None);
         };
         let scan_id: i64 = self
@@ -507,15 +610,17 @@ impl LibraryCatalog for SqliteCatalog {
         &self,
         identity: &CatalogRootIdentity,
     ) -> Result<Option<CatalogScan>, CatalogError> {
+        let Some(root_row_id) = self.root_row_id(identity)? else {
+            return Ok(None);
+        };
         self.connection
             .query_row(
                 "SELECT scan_sessions.id, scan_sessions.revision, scan_sessions.status, \
                         scan_sessions.failure_code \
                  FROM scan_sessions \
-                 JOIN roots ON roots.id = scan_sessions.root_id \
-                 WHERE roots.fingerprint = ?1 \
+                 WHERE scan_sessions.root_id = ?1 \
                  ORDER BY scan_sessions.revision DESC LIMIT 1",
-                params![identity.as_str()],
+                params![root_row_id],
                 |row| {
                     let id: i64 = row.get(0)?;
                     let revision: i64 = row.get(1)?;
@@ -2304,7 +2409,10 @@ fn apply_migration(
     version: u64,
     sql: &str,
 ) -> Result<(), CatalogError> {
-    let foreign_keys_off = version == MIGRATION_REQUIRES_FOREIGN_KEYS_OFF || version == 13;
+    let foreign_keys_off = version == MIGRATION_REQUIRES_FOREIGN_KEYS_OFF
+        || version == 13
+        || version == 14
+        || version == 15;
     let previous_foreign_keys = if foreign_keys_off {
         Some(set_foreign_keys(connection, false)?)
     } else {
@@ -2469,10 +2577,31 @@ mod tests {
         CatalogRootIdentity::new(format!("rootfp:v1:{}", hex_digit.to_string().repeat(64))).unwrap()
     }
 
+    fn directory_hash_for(hex_digit: char) -> String {
+        format!("{:064x}", u64::from(hex_digit as u32) + 1)
+    }
+
     fn observation(hex_digit: char, name: &str) -> CatalogRootObservation {
         CatalogRootObservation {
-            identity: identity(hex_digit),
+            identity: CatalogRootIdentity::with_directory(
+                format!("rootfp:v1:{}", hex_digit.to_string().repeat(64)),
+                directory_hash_for(hex_digit),
+            )
+            .unwrap(),
             identity_is_stable: true,
+            display_name: name.into(),
+            observed_revision: 1,
+        }
+    }
+
+    fn observation_at(hex_digit: char, directory_mark: u64, name: &str) -> CatalogRootObservation {
+        CatalogRootObservation {
+            identity: CatalogRootIdentity::with_directory(
+                format!("rootfp:v1:{}", hex_digit.to_string().repeat(64)),
+                format!("{directory_mark:064x}"),
+            )
+            .unwrap(),
+            identity_is_stable: false,
             display_name: name.into(),
             observed_revision: 1,
         }
@@ -3002,6 +3131,13 @@ mod tests {
             .observational_projection_untrusted(&identity('f'))
             .unwrap());
         catalog
+            .connection
+            .execute(
+                "UPDATE roots SET canonical_path_hash = ?1 WHERE fingerprint = ?2",
+                params![directory_hash_for('f'), identity('f').as_str()],
+            )
+            .unwrap();
+        catalog
             .store_snapshot(&observation('f', "Rescanned"), &populated_snapshot())
             .unwrap();
         assert!(!catalog
@@ -3048,6 +3184,13 @@ mod tests {
         assert!(catalog
             .observational_projection_untrusted(&identity('b'))
             .unwrap());
+        catalog
+            .connection
+            .execute(
+                "UPDATE roots SET canonical_path_hash = ?1 WHERE fingerprint = ?2",
+                params![directory_hash_for('a'), identity('a').as_str()],
+            )
+            .unwrap();
         catalog
             .store_snapshot(&observation('a', "Root A"), &populated_snapshot())
             .unwrap();
@@ -4331,6 +4474,411 @@ INSERT INTO slot_assignments (
                 .unwrap(),
             ManualAssetMetadata::default()
         );
+    }
+
+    #[test]
+    fn same_device_directories_stay_distinct_logical_roots() {
+        let (_directory, _path, mut catalog) = open_temp_catalog();
+        let mono = observation_at('a', 1001, "mono");
+        let stereo = observation_at('a', 1002, "stereo");
+        let mono_snapshot = snapshot_with_files(vec![file_instance(
+            "SET/AUDIO/RANGE.wav",
+            'b',
+            11,
+            Some(1),
+            SampleStorageScope::SetAudioPool,
+        )]);
+        let stereo_snapshot = snapshot_with_files(vec![file_instance(
+            "SET/AUDIO/STEREO_RANGE.wav",
+            'c',
+            22,
+            Some(2),
+            SampleStorageScope::SetAudioPool,
+        )]);
+
+        catalog.store_snapshot(&mono, &mono_snapshot).unwrap();
+        let mono_root_id: i64 = catalog
+            .connection
+            .query_row(
+                "SELECT id FROM roots WHERE canonical_path_hash = ?1",
+                params![mono.identity.directory_hash().unwrap()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        catalog
+            .connection
+            .execute(
+                "INSERT INTO slice_drafts \
+                 (root_fingerprint, relative_path, source_hash, sample_rate, frame_count, \
+                  region_start, region_end, revision) \
+                 VALUES (?1, 'SET/AUDIO/RANGE.wav', ?2, 44100, '264600', '0', '264600', 1)",
+                params![mono.identity.as_str(), content_hash('b').as_str()],
+            )
+            .unwrap();
+        let draft_before: (i64, String, String, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT id, root_fingerprint, relative_path, revision FROM slice_drafts",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+
+        catalog.store_snapshot(&stereo, &stereo_snapshot).unwrap();
+
+        let roots: Vec<(i64, String, String)> = {
+            let mut statement = catalog
+                .connection
+                .prepare(
+                    "SELECT id, display_name, canonical_path_hash FROM roots \
+                     WHERE fingerprint = ?1 ORDER BY id",
+                )
+                .unwrap();
+            statement
+                .query_map(params![mono.identity.as_str()], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .unwrap()
+                .map(|row| row.unwrap())
+                .collect()
+        };
+        assert_eq!(roots.len(), 2);
+        assert_eq!(roots[0].0, mono_root_id);
+        assert_eq!(roots[0].1, "mono");
+        assert_eq!(roots[1].1, "stereo");
+        assert_ne!(roots[0].2, roots[1].2);
+
+        let mono_files: Vec<String> = file_paths(&catalog, mono_root_id);
+        assert_eq!(mono_files, vec!["SET/AUDIO/RANGE.wav".to_owned()]);
+        let stereo_files: Vec<String> = file_paths(&catalog, roots[1].0);
+        assert_eq!(stereo_files, vec!["SET/AUDIO/STEREO_RANGE.wav".to_owned()]);
+        let draft_after: (i64, String, String, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT id, root_fingerprint, relative_path, revision FROM slice_drafts",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(draft_after, draft_before);
+
+        let mut reopened = mono.clone();
+        reopened.display_name = "mono-again".into();
+        catalog.store_snapshot(&reopened, &mono_snapshot).unwrap();
+        let after_reopen: Vec<(i64, String)> = {
+            let mut statement = catalog
+                .connection
+                .prepare("SELECT id, display_name FROM roots WHERE fingerprint = ?1 ORDER BY id")
+                .unwrap();
+            statement
+                .query_map(params![mono.identity.as_str()], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })
+                .unwrap()
+                .map(|row| row.unwrap())
+                .collect()
+        };
+        assert_eq!(
+            after_reopen,
+            vec![
+                (mono_root_id, "mono-again".to_owned()),
+                (roots[1].0, "stereo".to_owned()),
+            ]
+        );
+        assert_eq!(file_paths(&catalog, roots[1].0), stereo_files);
+        assert_eq!(file_paths(&catalog, mono_root_id), mono_files);
+        let root_count: i64 = catalog
+            .connection
+            .query_row("SELECT COUNT(*) FROM roots", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(root_count, 2);
+        let draft_final: (i64, String, String, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT id, root_fingerprint, relative_path, revision FROM slice_drafts",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(draft_final, draft_before);
+    }
+
+    #[test]
+    fn same_canonical_directory_reuses_one_logical_root() {
+        let (_directory, _path, mut catalog) = open_temp_catalog();
+        let first = observation_at('d', 2001, "first-open");
+        let snapshot = snapshot_with_files(vec![file_instance(
+            "SET/AUDIO/RANGE.wav",
+            'd',
+            4,
+            Some(1),
+            SampleStorageScope::SetAudioPool,
+        )]);
+        catalog.store_snapshot(&first, &snapshot).unwrap();
+        let mut second = first.clone();
+        second.display_name = "second-open".into();
+        catalog.store_snapshot(&second, &snapshot).unwrap();
+
+        let rows: Vec<(i64, String)> = {
+            let mut statement = catalog
+                .connection
+                .prepare("SELECT id, display_name FROM roots ORDER BY id")
+                .unwrap();
+            statement
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap()
+                .map(|row| row.unwrap())
+                .collect()
+        };
+        assert_eq!(rows, vec![(1, "second-open".to_owned())]);
+    }
+
+    #[test]
+    fn legacy_root_binds_directory_identity_on_first_observation() {
+        let (_directory, _path, mut catalog) = open_temp_catalog();
+        let fingerprint = format!("rootfp:v1:{}", "9".repeat(64));
+        catalog
+            .connection
+            .execute(
+                "INSERT INTO roots \
+                 (fingerprint, identity_is_stable, display_name, last_observed_revision, last_observed_at) \
+                 VALUES (?1, 0, 'legacy-mono', 1, '2020-01-01T00:00:00.000Z')",
+                params![fingerprint],
+            )
+            .unwrap();
+        catalog
+            .connection
+            .execute(
+                "INSERT INTO scan_sessions \
+                 (root_id, revision, status, started_at, completed_at) \
+                 VALUES (1, 1, 'completed', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                [],
+            )
+            .unwrap();
+        let attempt = observation_at('9', 3001, "bound-root");
+        let snapshot = snapshot_with_files(vec![file_instance(
+            "SET/AUDIO/RANGE.wav",
+            'e',
+            4,
+            Some(1),
+            SampleStorageScope::SetAudioPool,
+        )]);
+
+        catalog.observe_root(&attempt).unwrap();
+        catalog.store_snapshot(&attempt, &snapshot).unwrap();
+
+        let bound: (String, String, i64, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT display_name, canonical_path_hash, \
+                        (SELECT COUNT(*) FROM roots), \
+                        (SELECT COUNT(*) FROM scan_sessions WHERE root_id = 1) \
+                 FROM roots WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(bound.0, "bound-root");
+        assert_eq!(
+            bound.1,
+            attempt.identity.directory_hash().unwrap().to_owned()
+        );
+        assert_eq!(bound.2, 1);
+        assert_eq!(bound.3, 2);
+    }
+
+    #[test]
+    fn migration_14_keeps_existing_root_references() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "catalog.sqlite3");
+        let fingerprint = format!("rootfp:v1:{}", "a".repeat(64));
+        let source_hash = format!("sha256:{}", "b".repeat(64));
+        let output_hash = format!("sha256:{}", "c".repeat(64));
+        {
+            let mut connection = Connection::open(&path).unwrap();
+            configure_connection(&connection).unwrap();
+            test_apply_migrations_through_version(&mut connection, 13);
+            connection
+                .execute(
+                    "INSERT INTO roots \
+                     (fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                      last_observed_at, latest_completed_scan_revision, \
+                      observational_projection_untrusted) \
+                     VALUES (?1, 0, 'mono', 1, '2020-01-01T00:00:00.000Z', 1, 0)",
+                    params![fingerprint],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO scan_sessions \
+                     (root_id, revision, status, started_at, completed_at) \
+                     VALUES (1, 1, 'completed', '2020-01-01T00:00:00.000Z', \
+                             '2020-01-01T00:00:00.000Z')",
+                    [],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO audio_assets (content_hash, byte_size) VALUES (?1, 10), (?2, 20)",
+                    params![source_hash, output_hash],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO file_instances \
+                     (root_id, scan_session_id, relative_path, audio_asset_id, byte_size, \
+                      storage_scope, hash_freshness) \
+                     VALUES (1, 1, 'SET/AUDIO/RANGE.wav', 1, 10, 'set_audio_pool', \
+                             'computed_this_scan')",
+                    [],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO slice_drafts \
+                     (root_fingerprint, relative_path, source_hash, sample_rate, frame_count, \
+                      region_start, region_end, revision) \
+                     VALUES (?1, 'SET/AUDIO/RANGE.wav', ?2, 44100, '264600', '0', '264600', 1)",
+                    params![fingerprint, source_hash],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO asset_derivations \
+                     (output_audio_asset_id, source_audio_asset_id, kind, processor_name, \
+                      processor_revision, parameters_envelope, source_hash_evidence, created_at) \
+                     VALUES (2, 1, 'SLICE_EXPORT', 'masterocta-trim', 'pcm-wav-v1', \
+                             'v1|kind=slice_export|start=1|end=2', ?1, '2020-01-01T00:00:00.000Z')",
+                    params![source_hash],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO roots \
+                     (fingerprint, identity_is_stable, display_name, last_observed_revision, \
+                      last_observed_at, observational_projection_untrusted) \
+                     VALUES (?1, 1, 'Mac derived audio', 1, '2020-01-01T00:00:00.000Z', 0)",
+                    params![ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT],
+                )
+                .unwrap();
+        }
+
+        let catalog = SqliteCatalog::open(&path).unwrap();
+        let version: i64 = catalog
+            .connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(version, 15);
+        let user: (i64, Option<String>, String) = catalog
+            .connection
+            .query_row(
+                "SELECT id, canonical_path_hash, display_name FROM roots WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(user, (1, None, "mono".into()));
+        let derived: (i64, String, String) = catalog
+            .connection
+            .query_row(
+                "SELECT id, fingerprint, canonical_path_hash FROM roots WHERE id = 2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            derived,
+            (
+                2,
+                ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT.to_owned(),
+                ot_domain::MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR.to_owned(),
+            )
+        );
+        let file: (i64, i64, i64, String) = catalog
+            .connection
+            .query_row(
+                "SELECT id, root_id, scan_session_id, relative_path FROM file_instances",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(file, (1, 1, 1, "SET/AUDIO/RANGE.wav".into()));
+        let draft: (i64, String, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT id, root_fingerprint, revision FROM slice_drafts",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(draft, (1, fingerprint, 1));
+        let derivation: (i64, i64, i64) = catalog
+            .connection
+            .query_row(
+                "SELECT id, source_audio_asset_id, output_audio_asset_id FROM asset_derivations",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(derivation, (1, 1, 2));
+        let scan_root: i64 = catalog
+            .connection
+            .query_row("SELECT root_id FROM scan_sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(scan_root, 1);
+    }
+
+    #[test]
+    fn migration_14_allows_same_fingerprint_for_distinct_directory_locators() {
+        let directory = TempDir::new().unwrap();
+        let path = database_path(&directory, "catalog.sqlite3");
+        let mut connection = Connection::open(&path).unwrap();
+        configure_connection(&connection).unwrap();
+        test_apply_migrations_through_version(&mut connection, 14);
+
+        let fingerprint = format!("rootfp:v1:{}", "f".repeat(64));
+        connection
+            .execute(
+                "INSERT INTO roots \
+                 (fingerprint, canonical_path_hash, identity_is_stable, display_name, \
+                  last_observed_revision, last_observed_at) \
+                 VALUES (?1, ?2, 1, 'mono', 1, '2020-01-01T00:00:00.000Z')",
+                params![fingerprint, "1".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO roots \
+                 (fingerprint, canonical_path_hash, identity_is_stable, display_name, \
+                  last_observed_revision, last_observed_at) \
+                 VALUES (?1, ?2, 1, 'stereo', 1, '2020-01-01T00:00:00.000Z')",
+                params![fingerprint, "2".repeat(64)],
+            )
+            .unwrap();
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM roots WHERE fingerprint = ?1",
+                params![fingerprint],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    fn file_paths(catalog: &SqliteCatalog, root_id: i64) -> Vec<String> {
+        let mut statement = catalog
+            .connection
+            .prepare(
+                "SELECT relative_path FROM file_instances WHERE root_id = ?1 ORDER BY relative_path",
+            )
+            .unwrap();
+        statement
+            .query_map(params![root_id], |row| row.get(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect()
     }
 
     fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
