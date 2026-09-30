@@ -68,8 +68,11 @@ impl SqliteCatalog {
 
 impl DerivedAudioCatalog for SqliteCatalog {
     fn ensure_derived_root(&mut self) -> Result<CatalogRootIdentity, CatalogError> {
-        let identity = CatalogRootIdentity::new(ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT)
-            .map_err(|_| CatalogError::InvalidRootIdentity)?;
+        let identity = CatalogRootIdentity::with_directory(
+            ot_domain::MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+            ot_domain::MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR,
+        )
+        .map_err(|_| CatalogError::InvalidRootIdentity)?;
         let observation = CatalogRootObservation {
             identity: identity.clone(),
             identity_is_stable: true,

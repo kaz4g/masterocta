@@ -1521,6 +1521,7 @@ mod tests {
                 root_id: root_id.clone(),
                 display_name: "fixture".to_owned(),
                 device_fingerprint: fingerprint,
+                canonical_directory_hash: "ab".repeat(32),
                 observed_revision: 1,
                 expires_in_seconds: 300,
                 write_grant_expires_in_seconds: Some(300),

@@ -583,8 +583,7 @@ fn prepare_clone_fixture() -> PreparedClone {
     )
     .expect("register and baseline scan");
     let baseline_revision =
-        gate_c_latest_completed_scan_revision(&catalog, &session.device_fingerprint)
-            .expect("baseline revision");
+        gate_c_latest_completed_scan_revision(&catalog, &session).expect("baseline revision");
 
     let facts = planning_facts_from_snapshot(
         &clone,
@@ -672,11 +671,8 @@ fn gate_c_rename_apply_then_fresh_rescan_has_zero_missing_references() {
         &fixture.session.root_id,
     )
     .expect("fresh rescan");
-    let post_revision = gate_c_latest_completed_scan_revision(
-        &fixture.catalog,
-        &fixture.session.device_fingerprint,
-    )
-    .expect("post revision");
+    let post_revision = gate_c_latest_completed_scan_revision(&fixture.catalog, &fixture.session)
+        .expect("post revision");
     assert!(post_revision > fixture.baseline_revision);
     assert_post_apply_snapshot(&post_snapshot, &fixture.source_hash);
 }

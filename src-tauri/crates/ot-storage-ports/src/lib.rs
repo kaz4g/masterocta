@@ -20,26 +20,72 @@ pub trait ReadOnlyLibrary {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct CatalogRootIdentity(String);
+pub struct CatalogRootIdentity {
+    fingerprint: String,
+    directory_hash: Option<String>,
+}
 
 impl CatalogRootIdentity {
     pub fn new(value: impl Into<String>) -> Result<Self, CatalogError> {
-        let value = value.into();
-        let digest = value
-            .strip_prefix("rootfp:v1:")
-            .ok_or(CatalogError::InvalidRootIdentity)?;
-        if digest.len() != 64
-            || !digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        {
-            return Err(CatalogError::InvalidRootIdentity);
-        }
-        Ok(Self(value))
+        let fingerprint = value.into();
+        validate_fingerprint(&fingerprint)?;
+        Ok(Self {
+            fingerprint,
+            directory_hash: None,
+        })
+    }
+
+    /// Device fingerprint plus the canonical directory locator.
+    ///
+    /// `as_str` stays the device fingerprint so existing draft and derivation
+    /// references keep their stored value. Catalog root rows are resolved with
+    /// `directory_hash` when it is present.
+    pub fn with_directory(
+        fingerprint: impl Into<String>,
+        directory_hash: impl Into<String>,
+    ) -> Result<Self, CatalogError> {
+        let fingerprint = fingerprint.into();
+        validate_fingerprint(&fingerprint)?;
+        let directory_hash = directory_hash.into();
+        validate_directory_hash(&directory_hash)?;
+        Ok(Self {
+            fingerprint,
+            directory_hash: Some(directory_hash),
+        })
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.fingerprint
+    }
+
+    pub fn directory_hash(&self) -> Option<&str> {
+        self.directory_hash.as_deref()
+    }
+}
+
+fn validate_fingerprint(value: &str) -> Result<(), CatalogError> {
+    let digest = value
+        .strip_prefix("rootfp:v1:")
+        .ok_or(CatalogError::InvalidRootIdentity)?;
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(CatalogError::InvalidRootIdentity);
+    }
+    Ok(())
+}
+
+fn validate_directory_hash(value: &str) -> Result<(), CatalogError> {
+    if value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        Ok(())
+    } else {
+        Err(CatalogError::InvalidRootIdentity)
     }
 }
 
@@ -177,12 +223,26 @@ pub enum CatalogError {
     InvalidScanRevision,
     AssetNotFound,
     DuplicateRelativePath(RootRelativePath),
-    InvalidStoredData { field: &'static str },
-    UnsupportedSchema { found: u64, supported: u64 },
-    Migration { version: u64, message: String },
-    Integrity { message: String },
+    InvalidStoredData {
+        field: &'static str,
+    },
+    UnsupportedSchema {
+        found: u64,
+        supported: u64,
+    },
+    Migration {
+        version: u64,
+        message: String,
+    },
+    Integrity {
+        message: String,
+    },
+    /// A pre-locator catalog row shares this device fingerprint. No row was written.
+    LegacyRootDirectoryUnbound,
     Derivation(ot_domain::InvalidDerivation),
-    Unavailable { message: String },
+    Unavailable {
+        message: String,
+    },
 }
 
 impl fmt::Display for CatalogError {
@@ -210,6 +270,9 @@ impl fmt::Display for CatalogError {
                 write!(formatter, "catalog migration {version} failed: {message}")
             }
             Self::Integrity { message } => write!(formatter, "catalog integrity error: {message}"),
+            Self::LegacyRootDirectoryUnbound => {
+                formatter.write_str("catalog root has no directory identity and was left unchanged")
+            }
             Self::Derivation(error) => write!(formatter, "catalog derivation error: {error}"),
             Self::Unavailable { message } => write!(formatter, "catalog unavailable: {message}"),
         }

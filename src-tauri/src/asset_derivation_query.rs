@@ -8,7 +8,7 @@ use crate::v2_api::{
 use ot_application::{ListDerivedChildren, LoadAssetDerivation, LoadLibrarySnapshot};
 use ot_domain::{
     AssetDerivation, ContentHash, DerivationParameters, LibrarySnapshot, RootId,
-    MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+    MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR, MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
 };
 use ot_storage_ports::CatalogRootIdentity;
 use serde::Serialize;
@@ -114,8 +114,11 @@ fn resolve_catalog_content_hash(
     crate::v2_api::validate_asset_id(asset_id)?;
     let resolved = registry.resolve(root_id)?;
     let ot_identity = catalog_identity(&resolved.session)?;
-    let derived_identity =
-        CatalogRootIdentity::new(MAC_DERIVED_AUDIO_ROOT_FINGERPRINT).map_err(catalog_error)?;
+    let derived_identity = CatalogRootIdentity::with_directory(
+        MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
+        MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR,
+    )
+    .map_err(catalog_error)?;
     first_present_content_hash(
         || content_hash_from_root_snapshot(catalog, &ot_identity, asset_id),
         || content_hash_from_root_snapshot(catalog, &derived_identity, asset_id),

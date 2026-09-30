@@ -18,8 +18,9 @@ pub use derivation::{
 pub use derived_slice_export::SliceExportIntent;
 pub use derived_trim::{
     standard_trim_processor, ExpectedTrimOutput, TrimIntent, TrimPlan,
-    DERIVED_AUDIO_PUBLISHED_PREFIX, MAC_DERIVED_AUDIO_ROOT_FINGERPRINT,
-    MAC_DERIVED_AUDIO_ROOT_LABEL, TRIM_PROCESSOR_NAME, TRIM_PROCESSOR_REVISION,
+    DERIVED_AUDIO_PUBLISHED_PREFIX, MAC_DERIVED_AUDIO_DIRECTORY_LOCATOR,
+    MAC_DERIVED_AUDIO_ROOT_FINGERPRINT, MAC_DERIVED_AUDIO_ROOT_LABEL, TRIM_PROCESSOR_NAME,
+    TRIM_PROCESSOR_REVISION,
 };
 
 pub use reference_identity::{
