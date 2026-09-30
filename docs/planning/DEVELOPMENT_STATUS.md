@@ -199,6 +199,7 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 **Proposed product track (not a Work ID, not next on `main`):** [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) (`MO-PSE-DESIGN-1`). Octatrack Project structure viewer and, later, Bank/Pattern/Part/Scene operations. First slice stops at a read-only viewer plus Bank ChangePlans. No Apply. Separate worktree from M7. Does not allocate an M5–M11 number.
 
 - `MO-PSE-READ-MODEL-1` (B1, first unit): read-only `ot_domain::project_structure` plus a backend adapter reading `bankNN.work` / `bankNN.strd` as separate entries (Pattern→Part, Part→Track machine→slot). Fixture tests only; no Tauri command, DTO, UI, catalog migration, or write path. Scene / Arranger / Recorder are listed as unmodeled dependencies. Arranger references to Banks are the main unknown for later Bank Move/Swap plans.
+- `MO-PSE-READ-MODEL-2`: `v2_project_structure_read(root_id, project_relative_path)` maps the B1 model to a DTO through RootRegistry. No absolute paths, UI, ChangePlan, Arranger parser, or write. Arranger rows, `project.work` `[STATES]`, and whether a Bank file stores its own index remain unmodeled.
 
 ---
 
