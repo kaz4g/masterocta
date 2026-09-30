@@ -265,4 +265,17 @@ mod tests {
         assert_eq!(users, vec![1, 2]);
         assert_eq!(bank.patterns_using_part(part(1)).count(), 0);
     }
+
+    #[test]
+    fn unmodeled_dependencies_are_explicit() {
+        assert_eq!(BANK_UNMODELED_DEPENDENCIES.len(), 3);
+        assert_eq!(
+            BANK_UNMODELED_DEPENDENCIES,
+            [
+                UnmodeledDependency::Scenes,
+                UnmodeledDependency::Arrangements,
+                UnmodeledDependency::RecorderSetup,
+            ]
+        );
+    }
 }
