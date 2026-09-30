@@ -215,6 +215,7 @@ const expectedV2Commands = [
   "v2_clone_verification_status",
   "v2_clone_verify_external",
   "v2_library_list",
+  "v2_project_structure_read",
   "v2_rename_apply",
   "v2_rename_authorize",
   "v2_rename_continuation_status",
@@ -259,6 +260,15 @@ for (const [, commandName, parameters] of v2Commands) {
     ) {
       failures.push("v2_root_register must be the only raw path boundary");
     }
+  } else if (commandName === "v2_project_structure_read") {
+    if (
+      pathParameters.length !== 1 ||
+      !pathParameters[0].startsWith("project_relative_path")
+    ) {
+      failures.push(
+        "v2_project_structure_read may accept only one explicitly named root-relative project path",
+      );
+    }
   } else if (commandName === "v2_change_plan" || commandName === "v2_rename_plan") {
     if (
       pathParameters.length !== 1 ||
@@ -282,6 +292,11 @@ if (
 ) {
   failures.push(
     "v2_change_plan and v2_rename_plan destination must cross the RootRelativePath validation boundary",
+  );
+}
+if (!v2ApiSource.includes("RootRelativePath::parse(project_relative_path)")) {
+  failures.push(
+    "v2_project_structure_read project path must cross the RootRelativePath validation boundary",
   );
 }
 
