@@ -6,6 +6,7 @@ pub mod derivation;
 pub mod derived_slice_export;
 pub mod derived_trim;
 pub mod onsets;
+pub mod project_structure;
 pub mod reference_identity;
 pub mod slice_draft;
 pub mod slicing;
