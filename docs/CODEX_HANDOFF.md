@@ -39,6 +39,11 @@ Masta-Octaは既存OSSのOctatrack Managerを素体に、macOSでマウントし
 
 **ADR 一覧:** `docs/planning/ADR_INDEX.md`。
 
+**Project Structure Control Plane（提案、未着手）:**
+`docs/planning/PROJECT_STRUCTURE_CONTROL_PLANE.md`（`MO-PSE-DESIGN-1`）。
+M5–M11 の番号は変えない。最初の実装範囲は read-only viewer と Bank の
+ChangePlan までで、Apply は承認しない。M7 の worktree とは分ける。
+
 GitHub `main` 基準（product）: `04725cb3a1942716e11f1b90a6387733f9302da4`（PR #170; #166 Home、#165、#164、#161 等を含む）。
 Native session 3 実行 baseline は product `main` **`04725cb3`**。session 2 `eb40ffb` / `af4097a` の PASS は session 3 に混ぜない。
 M7 完了判定の正本: [`docs/planning/M7_EXIT_AUDIT.md`](planning/M7_EXIT_AUDIT.md)。

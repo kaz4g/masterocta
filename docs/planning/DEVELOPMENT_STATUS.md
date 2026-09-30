@@ -196,6 +196,8 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 
 **Secondary (not next):** Auto Slice 100-clip quality; WFM2 dedicated Native; stem adapter spike; Canvas renderer. See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §15–17.
 
+**Proposed product track (not a Work ID, not next on `main`):** [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) (`MO-PSE-DESIGN-1`). Octatrack Project structure viewer and, later, Bank/Pattern/Part/Scene operations. First slice stops at a read-only viewer plus Bank ChangePlans. No Apply. Separate worktree from M7. Does not allocate an M5–M11 number.
+
 ---
 
 ## M7-05 native acceptance re-audit (2026-09-20)
@@ -237,3 +239,4 @@ Do not rewrite historical **NOT_RUN** matrices to PASS.
 | M7 exit audit | [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | ADR list | [`ADR_INDEX.md`](./ADR_INDEX.md) |
 | v0.1 verbatim | [`sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md`](./sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md) |
+| Project structure proposal | [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) (**PROPOSED**, design only) |

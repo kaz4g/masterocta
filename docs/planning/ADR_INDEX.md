@@ -1,7 +1,7 @@
 # Architecture decision record index
 
 - Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
-- Updated: 2026-09-21
+- Updated: 2026-09-30
 
 This index lists **accepted** decisions already recorded in the repository and
 **proposed** items from the ingested v0.1 plan. This docs pass does **not**
@@ -48,6 +48,20 @@ From v0.1 §21 (risks / ADR candidates) and §14–§15 — **do not implement a
 | ADR-015 (descriptor-relative cache / APFS identity) | [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) §13.2 | **Draft reference only**; Performance System doc not on `main` |
 
 When an ADR moves to Accepted, add a dedicated `docs/planning/adr/ADR-0xx-*.md` or extend NEXT_GEN §15 in a focused PR — not via silent edits to v0.1 source.
+
+### Project Structure Control Plane (2026-09-30, not accepted)
+
+Source: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) §12.
+Design note only. Do not implement these as decided.
+
+| Topic | Notes |
+| --- | --- |
+| Bank swap physical unit | Filename exchange vs document-byte exchange. Unknown bytes must survive |
+| Which state role a future Apply may touch | Working and SavedCheckpoint stay independent |
+| Project Snapshot identity / retention / restore | Mac-side restore point. Not Octatrack `.strd`, not the M4/M5 journal |
+| Structure viewer source of truth | Catalog projection vs fresh parse. Write plans re-verify live files |
+| Scene / Recorder model | No Scene symbol in `src-tauri` yet. Evidence before a read model |
+| Cross-project slot reassignment | Deferred to PSE-6. Unresolved AudioAsset fails closed |
 
 ## Related
 
