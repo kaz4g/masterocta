@@ -1110,13 +1110,7 @@ fn parse_bank_state(source_file: &Path) -> (StateDocumentParseStatus, ParserProv
     match BankFile::from_data_file(source_file) {
         Ok(bank) => {
             let source_version = Some(format!("bank:{}", bank.datatype_version));
-            let status = match crate::bank_validation::validate_bank_file(&bank) {
-                Ok(()) => StateDocumentParseStatus::Parsed,
-                Err(crate::bank_validation::BankValidationError::UnsupportedVersion) => {
-                    StateDocumentParseStatus::UnsupportedVersion
-                }
-                Err(_) => StateDocumentParseStatus::Malformed,
-            };
+            let status = crate::bank_validation::bank_parse_status(&bank);
             (status, bank_validation_provenance(source_version))
         }
         Err(_) => (
@@ -1213,12 +1207,18 @@ fn append_usage_edges(
     }
 }
 
-fn join_relative(parent: &RootRelativePath, child: &str) -> Result<RootRelativePath, StorageError> {
+pub(crate) fn join_relative(
+    parent: &RootRelativePath,
+    child: &str,
+) -> Result<RootRelativePath, StorageError> {
     RootRelativePath::from_components(parent.as_str().split('/').chain([child]))
         .map_err(|error| StorageError::new(format!("PATH_ESCAPE: {error}")))
 }
 
-fn is_regular_source_file(canonical_root: &Path, path: &Path) -> Result<bool, StorageError> {
+pub(crate) fn is_regular_source_file(
+    canonical_root: &Path,
+    path: &Path,
+) -> Result<bool, StorageError> {
     let metadata = match fs::symlink_metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),

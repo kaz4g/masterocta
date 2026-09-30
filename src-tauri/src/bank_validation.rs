@@ -2,6 +2,7 @@
 //! `Parsed`. This does not re-encode Banks or enforce checksums without fixture
 //! evidence for the specific document role (`.work` vs `.strd`).
 
+use ot_domain::StateDocumentParseStatus;
 use ot_tools_io::banks::{BankFile, BANK_FILE_VERSION, BANK_HEADER};
 
 pub(crate) const BANK_VALIDATOR_NAME: &str = "masterocta/bank-validation";
@@ -47,6 +48,16 @@ pub(crate) fn validate_bank_file(bank: &BankFile) -> Result<(), BankValidationEr
         }
     }
     Ok(())
+}
+
+pub(crate) fn bank_parse_status(bank: &BankFile) -> StateDocumentParseStatus {
+    match validate_bank_file(bank) {
+        Ok(()) => StateDocumentParseStatus::Parsed,
+        Err(BankValidationError::UnsupportedVersion) => {
+            StateDocumentParseStatus::UnsupportedVersion
+        }
+        Err(_) => StateDocumentParseStatus::Malformed,
+    }
 }
 
 /// Static=0, Flex=1, Thru=2, Neighbor=3, Pickup=4 per pinned ot-tools-io.
