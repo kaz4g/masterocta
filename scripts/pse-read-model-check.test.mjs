@@ -47,6 +47,13 @@ describe("pse read-model inventory", () => {
       "test-seams",
     ]);
     assert.ok(!cargoArgsForSuite(domain, ["--list"]).includes("--workspace"));
+    for (const suite of inventory.suites) {
+      assert.equal(
+        suite.filter.includes("|"),
+        false,
+        `${suite.id} must use a cargo substring filter, not a regex alternation`,
+      );
+    }
   });
 });
 

@@ -17,10 +17,10 @@
       ]
     },
     {
-      "id": "masterocta-project-structure-and-bank-validation",
+      "id": "masterocta-project-structure-reader",
       "package": "masterocta",
       "features": ["test-seams"],
-      "filter": "project_structure_reader::|bank_validation::",
+      "filter": "project_structure_reader::",
       "required_tests": [
         "working_and_saved_bank_documents_stay_separate_entries",
         "working_only_bank_does_not_invent_a_saved_checkpoint",
@@ -37,7 +37,15 @@
         "project_path_escaping_the_root_is_rejected",
         "missing_project_rejection_leaves_fixture_bytes_unchanged",
         "symlinked_bank_is_treated_as_absent",
-        "machine_slot_raw_values_map_without_guessing",
+        "machine_slot_raw_values_map_without_guessing"
+      ]
+    },
+    {
+      "id": "masterocta-bank-validation",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "bank_validation::",
+      "required_tests": [
         "tracked_real_device_bank_passes_header_and_version_validation",
         "header_mismatch_is_rejected",
         "flex_recorder_range_is_observable_but_not_regular_usage",
