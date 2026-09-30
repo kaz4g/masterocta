@@ -130,6 +130,11 @@ occurred. Combine it with:
 
 mtime / atime are not used as correctness.
 
+The product reader requires a **canonical** registered root (`resolve_relative_for_read`
+uses `canonicalize()` then `starts_with(root)`). On macOS, `/var` → `/private/var`.
+The CI harness therefore `realpath`s / `canonicalize`s the temporary copy before
+the read. That is a path-contract check, not a weakening of containment.
+
 ## 6. Workflow behavior
 
 | Topic | Behavior |

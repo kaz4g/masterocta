@@ -12,6 +12,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -280,8 +281,9 @@ function compareScenario(label, tree, evidenceDir, expect) {
   const prePath = path.join(evidenceDir, `${label}-pre.json`);
   const postPath = path.join(evidenceDir, `${label}-post.json`);
   const reportPath = path.join(evidenceDir, `${label}-compare.json`);
-  captureToFile(tree, prePath);
-  runHarness(tree, expect);
+  const canonicalRoot = realpathSync(tree);
+  captureToFile(canonicalRoot, prePath);
+  runHarness(canonicalRoot, expect);
   captureToFile(tree, postPath);
   const report = compareManifests(
     loadManifestFile(prePath, `${label} pre`),

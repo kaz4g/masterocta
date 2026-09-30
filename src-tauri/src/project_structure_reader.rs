@@ -545,6 +545,11 @@ mod tests {
         let Ok(root) = std::env::var("PSE_READ_MODEL_ROOT") else {
             return;
         };
+        // Registered roots are canonical. macOS /var -> /private/var must not
+        // be treated as PATH_ESCAPE when the copied tree itself did not move.
+        let root = PathBuf::from(root)
+            .canonicalize()
+            .expect("copied fixture root");
         let project = RootRelativePath::parse(
             std::env::var("PSE_READ_MODEL_PROJECT")
                 .as_deref()

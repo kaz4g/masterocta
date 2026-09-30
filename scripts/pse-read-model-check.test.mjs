@@ -108,4 +108,13 @@ describe("pse read-model package wiring", () => {
       "node --test scripts/pse-fixture-manifest.test.mjs scripts/pse-read-model-check.test.mjs scripts/pse-ci-scope.test.mjs scripts/pse-ci-aggregate.test.mjs scripts/pse-ci-workflow.test.mjs",
     );
   });
+
+  it("canonicalizes the copied tree before invoking the reader", () => {
+    const source = readFileSync(
+      path.join(repositoryRoot, "scripts/pse-read-model-check.mjs"),
+      "utf8",
+    );
+    assert.match(source, /realpathSync\(tree\)/);
+    assert.match(source, /canonicalRoot/);
+  });
 });
