@@ -4253,6 +4253,39 @@ pub async fn v2_root_close(
     Ok(())
 }
 
+pub(crate) fn parse_project_relative_path(
+    project_relative_path: String,
+) -> Result<RootRelativePath, ApiError> {
+    RootRelativePath::parse(project_relative_path).map_err(|_| {
+        ApiError::new(
+            "INVALID_PROJECT_PATH",
+            "the project path must be a root-relative path inside the registered root",
+            true,
+        )
+    })
+}
+
+#[tauri::command]
+pub async fn v2_project_structure_read(
+    root_id: String,
+    project_relative_path: String,
+    registry: State<'_, Arc<RootRegistry>>,
+) -> Result<crate::project_structure_command::ProjectStructureDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let project_relative_path = parse_project_relative_path(project_relative_path)?;
+    let registry = Arc::clone(registry.inner());
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::project_structure_command::read_project_structure_dto(
+            &registry,
+            &root_id,
+            &project_relative_path,
+        )
+        .map_err(|error| ApiError::new(error.code(), error.message(), true))
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
 #[tauri::command]
 pub async fn v2_library_list(
     root_id: String,
@@ -5398,7 +5431,7 @@ mod tests {
     use crate::write_runtime::open_shared_write_runtime;
     use ot_executor::{JournalFileIdentity, JournalStatus, OperationJournal};
     use ot_plan::derive_additive_copy_plan_id;
-    use ot_tools_io::{types::SlotMarkers, OctatrackFileIO, SampleSettingsFile};
+    use ot_tools_io::{types::SlotMarkers, HasChecksumField, OctatrackFileIO, SampleSettingsFile};
     use std::collections::BTreeMap;
     use std::fs;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -11021,5 +11054,235 @@ mod tests {
             project_local.is_empty(),
             "ACCEPT_PROJ location should list zero audio files for empty-project acceptance"
         );
+    }
+
+    fn copy_structure_fixture(root: &std::path::Path) -> std::path::PathBuf {
+        let project = root.join("SET/PROJECT");
+        fs::create_dir_all(root.join("SET/AUDIO")).unwrap();
+        fs::create_dir_all(&project).unwrap();
+        let fixture =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/real_device");
+        for name in [
+            "project.work",
+            "bank01.work",
+            "bank01.strd",
+            "markers.work",
+            "arr01.work",
+        ] {
+            fs::copy(fixture.join(name), project.join(name)).unwrap();
+        }
+        project
+    }
+
+    fn structure_tree_digest(
+        root: &std::path::Path,
+    ) -> std::collections::BTreeMap<std::path::PathBuf, String> {
+        walkdir::WalkDir::new(root)
+            .into_iter()
+            .map(Result::unwrap)
+            .filter(|entry| entry.file_type().is_file())
+            .map(|entry| {
+                let bytes = fs::read(entry.path()).unwrap();
+                (
+                    entry.path().strip_prefix(root).unwrap().to_path_buf(),
+                    format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes)),
+                )
+            })
+            .collect()
+    }
+
+    fn registered_structure_root() -> (TempDir, RootRegistry, RootId) {
+        let root = TempDir::new().unwrap();
+        copy_structure_fixture(root.path());
+        let registry = registry();
+        let session = registry.register(root.path().to_str().unwrap()).unwrap();
+        (root, registry, session.root_id)
+    }
+
+    #[test]
+    fn project_path_rejects_absolute_and_traversal() {
+        let absolute = parse_project_relative_path("/tmp/project".to_owned()).unwrap_err();
+        assert_eq!(absolute.code, "INVALID_PROJECT_PATH");
+        let drive = parse_project_relative_path("C:/project".to_owned()).unwrap_err();
+        assert_eq!(drive.code, "INVALID_PROJECT_PATH");
+        let traversal = parse_project_relative_path("../outside".to_owned()).unwrap_err();
+        assert_eq!(traversal.code, "INVALID_PROJECT_PATH");
+        let nested = parse_project_relative_path("SET/../../outside".to_owned()).unwrap_err();
+        assert_eq!(nested.code, "INVALID_PROJECT_PATH");
+    }
+
+    #[test]
+    fn unknown_root_is_rejected() {
+        let (_root, registry, _registered) = registered_structure_root();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry,
+            &RootId::new("missing-root").unwrap(),
+            &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "ROOT_NOT_APPROVED");
+    }
+
+    #[test]
+    fn registered_root_returns_separate_roles_and_root_relative_paths_only() {
+        let (root, registry, root_id) = registered_structure_root();
+        let canonical = root.path().canonicalize().unwrap();
+        let before = structure_tree_digest(&canonical);
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap();
+        assert_eq!(structure_tree_digest(&canonical), before);
+
+        assert_eq!(dto.project_relative_path, "SET/PROJECT");
+        assert_eq!(dto.banks.len(), 2);
+        assert_eq!(dto.banks[0].role, "working");
+        assert_eq!(dto.banks[1].role, "savedCheckpoint");
+        assert_eq!(dto.banks[0].letter, "A");
+        assert_eq!(dto.banks[0].source_relative_path, "SET/PROJECT/bank01.work");
+        assert_eq!(dto.banks[1].source_relative_path, "SET/PROJECT/bank01.strd");
+        assert_eq!(dto.banks[0].parse_status, "parsed");
+        assert_eq!(
+            dto.banks[0].unmodeled_dependencies,
+            vec!["scenes", "arrangements", "recorderSetup"]
+        );
+        assert_eq!(dto.banks[0].patterns.len(), 16);
+        assert_eq!(dto.banks[0].parts.len(), 4);
+        assert_eq!(dto.banks[0].parts[0].tracks.len(), 8);
+
+        let json = serde_json::to_string(&dto).unwrap();
+        assert!(!json.contains(canonical.to_str().unwrap()));
+        assert!(!json.contains("contentHash"));
+        assert!(!json.contains("fileInstance"));
+    }
+
+    #[test]
+    fn command_dto_keeps_pattern_part_and_track_slot() {
+        let (root, registry, root_id) = registered_structure_root();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap();
+        let canonical = root.path().canonicalize().unwrap();
+        let domain =
+            crate::project_structure_reader::read_project_structure(&canonical, &project).unwrap();
+        let domain_bank = domain
+            .bank(
+                ot_domain::project_structure::BankIndex::new(0).unwrap(),
+                StateDocumentRole::Working,
+            )
+            .unwrap();
+        let dto_bank = &dto.banks[0];
+        for pattern in &domain_bank.patterns {
+            let dto_pattern = dto_bank
+                .patterns
+                .iter()
+                .find(|candidate| candidate.index == pattern.index.get())
+                .unwrap();
+            assert_eq!(dto_pattern.part_index, pattern.part.get());
+            assert_eq!(dto_pattern.master_length, pattern.master_length);
+        }
+        let domain_track = &domain_bank.parts[0].tracks[0];
+        let dto_track = &dto_bank.parts[0].tracks[0];
+        assert_eq!(dto_track.index, domain_track.index.get());
+        match (&domain_track.slot, &dto_track.slot) {
+            (
+                ot_domain::project_structure::TrackSlotReference::Slot(slot),
+                crate::project_structure_command::TrackSlotReferenceDto::Slot { slot_kind, number },
+            ) => {
+                assert_eq!(*number, slot.number());
+                assert_eq!(
+                    slot_kind,
+                    match slot.kind() {
+                        SampleSlotKind::Static => "static",
+                        SampleSlotKind::Flex => "flex",
+                    }
+                );
+            }
+            (
+                ot_domain::project_structure::TrackSlotReference::NoSampleMachine,
+                crate::project_structure_command::TrackSlotReferenceDto::NoSampleMachine,
+            ) => {}
+            (other, _) => panic!("unexpected track slot mapping: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn malformed_and_unsupported_banks_expose_no_partial_structure() {
+        let (root, registry, root_id) = registered_structure_root();
+        let project_dir = root.path().join("SET/PROJECT");
+        fs::write(project_dir.join("bank02.work"), b"not a bank").unwrap();
+        let mut unsupported =
+            ot_tools_io::BankFile::from_data_file(&project_dir.join("bank01.strd")).unwrap();
+        unsupported.datatype_version = 0;
+        unsupported
+            .to_data_file(&project_dir.join("bank03.strd"))
+            .unwrap();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap();
+        let malformed = dto.banks.iter().find(|bank| bank.index == 1).unwrap();
+        assert_eq!(malformed.parse_status, "malformed");
+        assert!(malformed.patterns.is_empty());
+        assert!(malformed.parts.is_empty());
+        let unsupported = dto.banks.iter().find(|bank| bank.index == 2).unwrap();
+        assert_eq!(unsupported.parse_status, "unsupportedVersion");
+        assert!(unsupported.patterns.is_empty());
+        assert!(unsupported.parts.is_empty());
+        assert_eq!(dto.banks[0].parse_status, "parsed");
+    }
+
+    #[test]
+    fn recorder_buffer_slot_reaches_the_dto() {
+        let (root, registry, root_id) = registered_structure_root();
+        let bank_path = root.path().join("SET/PROJECT/bank01.work");
+        let mut bank = ot_tools_io::BankFile::from_data_file(&bank_path).unwrap();
+        bank.parts.unsaved.0[0].audio_track_machine_types[0] = 1;
+        bank.parts.unsaved.0[0].audio_track_machine_slots[0].flex_slot_id = 129;
+        bank.checksum = bank.calculate_checksum().unwrap();
+        bank.to_data_file(&bank_path).unwrap();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap();
+        assert_eq!(
+            dto.banks[0].parts[0].tracks[0].slot,
+            crate::project_structure_command::TrackSlotReferenceDto::RecorderBuffer {
+                buffer_number: 1
+            }
+        );
+    }
+
+    #[test]
+    fn project_file_path_is_not_a_project_directory() {
+        let (_root, registry, root_id) = registered_structure_root();
+        let project = parse_project_relative_path("SET/PROJECT/project.work".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "INVALID_PROJECT_PATH");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_bank_is_absent_through_the_command_boundary() {
+        let (root, registry, root_id) = registered_structure_root();
+        let outside = TempDir::new().unwrap();
+        let target = outside.path().join("bank02.work");
+        fs::copy(root.path().join("SET/PROJECT/bank01.work"), &target).unwrap();
+        std::os::unix::fs::symlink(&target, root.path().join("SET/PROJECT/bank02.work")).unwrap();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap();
+        assert!(dto.banks.iter().all(|bank| bank.index != 1));
     }
 }
