@@ -71,7 +71,16 @@ Native A12 remains **NOT_RUN**; Rust command test is layer B only per amendment 
 
 ## Operator handoff (resume — historical)
 
-Same order as [`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) §5 on a **new** isolated HOME if retrying. For **A12**, follow exit audit §15.A.1 Native layer A (review invalidation), not a deliberate stale export send.
+This **`585eb4af`** session STOP record is **not** a valid amendment-1 **A12 PASS** target (see session 3 amendment note: layer A and layer B on **one** reviewed SHA ≥ **`2af35a8f`**, recorded in a **new** acceptance document).
+
+If the operator starts again with a **new** isolated HOME (required when abandoning the stopped session’s HOME):
+
+1. Treat it as a **new** Native session — **do not** reuse **A01** / **B01** PASS from this document or from session 3 @ **`04725cb3`**.
+2. Re-run preflight: fresh isolated HOME, **A01** catalog binding (`lsof`), regenerate or re-verify mono/stereo fixture PRE manifests, **B01** stereo PRE integrity on **this** session’s fixtures.
+3. Then proceed **A02–A15** / **B02–B03** on the **same** execution SHA and HOME (matrix order as session 3 §5, but starting at **A01**, not **A02**).
+4. For **A12**, follow exit audit §15.A.1 (Native review invalidation + layer B test on that **same** SHA). Do not mix SHA or stitch rows across sessions.
+
+Do **not** follow session 3 §5 “resume at A02” when the isolated HOME is new.
 
 ## Evidence index (repository)
 

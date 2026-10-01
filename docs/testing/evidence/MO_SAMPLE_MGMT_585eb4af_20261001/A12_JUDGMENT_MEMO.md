@@ -54,4 +54,4 @@ Does **not** prove: Native AX, operator gestures, or integrated session **A12 PA
 
 ## Gate for full Native session
 
-Complete integrated Native per session 3 (or a newer current-main acceptance record) using exit audit §15.A.1 **Stale (A12)**. Do not treat Rust or jsdom alone as **PASS**.
+**A12 PASS** requires Native layer A and Rust layer B on **one** reviewed `main` SHA (≥ **`2af35a8f`** where the layer B test exists). Do not complete layer B on `ad4953c7` while running Native layer A on **`585eb4af`** or session 3 **`04725cb3`**. A **new** isolated HOME retry must restart at **A01**, re-verify fixtures, and **B01** — do not resume session 3 §5 at **A02** with carried-forward **A01**/**B01** rows. Do not treat Rust or jsdom alone as **PASS**.

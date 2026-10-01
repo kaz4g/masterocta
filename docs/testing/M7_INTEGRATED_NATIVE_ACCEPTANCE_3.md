@@ -8,7 +8,9 @@
 Canonical execution record for product **`04725cb3a1942716e11f1b90a6387733f9302da4`** (PR #170 merge).
 Session 2 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)) remains historical; do not backfill its matrix to PASS.
 
-**A12 PASS criteria (normative):** [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 **Stale (A12)** as amended 2026-10-01 (`MO-M7-A12-CANONICAL-CRITERION-AMENDMENT-1`). This session’s matrix rows and **NOT_RUN** results are unchanged; the §4 A12 “Required observation” cell below references that norm. Current product `main` for new layer-B runs: **`ad4953c7f2c6d559e24f0b28e2037606691df1e6`** (newer than this session’s execution SHA).
+**A12 PASS criteria (normative):** [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 **Stale (A12)** as amended 2026-10-01 (`MO-M7-A12-CANONICAL-CRITERION-AMENDMENT-1`). Layer A (Native) and layer B (Rust test) must be recorded on the **same** reviewed product `main` SHA; mixing this session’s **`04725cb3`** Native work with layer B on a newer `main` does **not** satisfy A12.
+
+**Amendment 1 vs this session:** This document is a **frozen** STOP record @ **`04725cb3`**. The layer B test `slice_export_ipc_rejects_stale_revision_after_draft_advance_without_writes` is **not present** on that SHA (introduced on `main` in **`2af35a8f`**, PR #173). Therefore completing §5 below on the `04725cb3` worktree/isolated HOME cannot produce amendment-1 **A12 PASS**, even if Native layer A is observed. §4 **NOT_RUN** / **STOP** rows here are **not** updated. For **A12 PASS**, open a **new** integrated Native acceptance on a single reviewed `main` SHA ≥ **`2af35a8f`** (record execution SHA, isolated HOME, and both layers in that document — for example a post–#176 current-main session, not a split across baselines).
 
 ## 1. Product baseline
 
@@ -102,7 +104,7 @@ A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: is
 | A09 | Persisted lineage in Inspector Info | **NOT_RUN** | — |
 | A10 | UI identity boundary | **NOT_RUN** | — |
 | A11 | Idempotent retry | **NOT_RUN** | — |
-| A12 | Stale draft fail-closed (no-write) per [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 Stale (A12) — Native layer A + Rust layer B | **NOT_RUN** | No Native layer A on this session SHA; see amendment 1 note in exit audit |
+| A12 | Stale draft fail-closed (no-write) per [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 Stale (A12) — Native layer A + Rust layer B on **one** SHA | **NOT_RUN** | Baseline **`04725cb3`** lacks layer B test; cannot PASS A12 on this session — use new acceptance @ ≥ **`2af35a8f`** |
 | A13 | Post-quit `slice_drafts` persistence | **NOT_RUN** | — |
 | A14 | Relaunch + restore after re-register | **NOT_RUN** | — |
 | A15 | Final mono fixture manifest vs PRE | **NOT_RUN** | PRE full-root manifest on file |
@@ -113,6 +115,8 @@ A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: is
 **Group A:** **NOT_RUN** (A01 **PASS**; A02–A15 **NOT_RUN**). **Group B:** **NOT_RUN** (B01 **PASS**; B02–B03 **NOT_RUN**).
 
 ## 5. Operator handoff (next steps)
+
+**Scope:** Historical resume for the **`04725cb3`** session only (non–A12 rows if ever continued on the **same** isolated HOME and worktree). **Do not** use this §5 to close amendment-1 **A12**; see the amendment-1 note above (single SHA ≥ **`2af35a8f`**, new acceptance record).
 
 Use the **same** isolated HOME and execution worktree. If the Native window is not open, re-run the launch command in §3.
 
