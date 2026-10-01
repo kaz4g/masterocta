@@ -13,6 +13,14 @@ import { pathToFileURL } from "node:url";
 export const SCOPE_SCHEMA = "masterocta-pse-ci-scope:v1";
 
 const IN_SCOPE_PREFIXES = [
+  "src/api/projectStructure",
+  "src/features/project-structure/",
+  "e2e/project-structure-viewer.spec.ts",
+  "src/features/roots/RootRegistryPanel.tsx",
+  "src/features/library/CatalogWorkspaceViews.tsx",
+  "src/features/library/CatalogLibraryBrowser.tsx",
+  "src-tauri/src/project_structure_command.rs",
+  "src-tauri/src/v2_api.rs",
   "src-tauri/src/project_structure_reader.rs",
   "src-tauri/src/bank_validation.rs",
   "src-tauri/src/legacy_read_adapter.rs",

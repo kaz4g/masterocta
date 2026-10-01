@@ -55,7 +55,20 @@ export type MessageParams = {
   'slicing.exportDerivedSuccessId': { derivedAssetId: string }
   'slicing.error.genericDetail': { detail: string },
   'inspector.derivationRangeFrames': { start: string; end: string },
-  'inspector.derivationRangeTime': { start: string; end: string }
+  'inspector.derivationRangeTime': { start: string; end: string },
+  'pse.recorder': { number: number },
+  'pse.unknownRaw': { raw: number },
+  'pse.unreadRaw': { raw: number },
+  'pse.lengthScale': { length: string; scale: string },
+  'pse.slotStatic': { number: number },
+  'pse.slotFlex': { number: number },
+  'pse.patternChoice': { id: string; part: number },
+  'pse.patternSummary': { id: string; part: number; mode: string; length: string },
+  'pse.stateBank': { bank: string },
+  'pse.statePattern': { pattern: string },
+  'pse.arrangementUnmappedRaw': { raw: number },
+  'pse.catalogEvidence': { usage: string; slot: string; status: string },
+  'pse.catalogEvidenceStep': { usage: string; slot: string; step: number; status: string },
 }
 
 export type MessageKeyWithParams = keyof MessageParams

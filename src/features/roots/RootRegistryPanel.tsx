@@ -797,6 +797,8 @@ export function RootRegistryPanel({
               data-testid="catalog-workspace-main-host"
             >
               <CatalogWorkspaceMain
+                rootId={session?.rootId}
+                usageEdges={library.usageEdges}
                 totalFiles={library.audioFiles.length}
                 catalogRefreshing={catalogRefreshing}
                 catalogError={catalogError}

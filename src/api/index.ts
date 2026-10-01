@@ -80,3 +80,6 @@ export type {
   SampleUsageEdge,
   SampleUsageKind,
 } from "./roots";
+
+export { createProjectStructureApi, projectStructureApi } from './projectStructure';
+export type { ProjectStructureApi, ProjectStructure, StructureBank, StructureTrack } from './projectStructure';

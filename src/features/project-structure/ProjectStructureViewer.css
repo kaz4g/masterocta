@@ -1,0 +1,10 @@
+.pse-viewer { padding: 1rem; border: 1px solid var(--mo-border); border-radius: .5rem; min-width: 0; }
+.pse-viewer header { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.pse-viewer h4 { margin: 0; }
+.pse-viewer label { display: inline-flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.pse-viewer select { max-width: 100%; }
+.pse-viewer__table { overflow-x: auto; }
+.pse-viewer table { width: 100%; border-collapse: collapse; text-align: left; }
+.pse-viewer th, .pse-viewer td { padding: .5rem; border-bottom: 1px solid var(--mo-border); vertical-align: top; }
+.pse-viewer code { overflow-wrap: anywhere; }
+.pse-viewer ul { padding-left: 1rem; margin: 0; }
