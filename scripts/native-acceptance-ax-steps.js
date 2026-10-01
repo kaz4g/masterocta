@@ -1,17 +1,56 @@
-// Staged JXA steps for native-acceptance-ax-full-v3.sh.
-// usage: osascript -l JavaScript ax-choose-root-stages.js <step> <pid> [arg]
+// Staged JXA steps for macOS Native acceptance automation.
+// usage: osascript -l JavaScript scripts/native-acceptance-ax-steps.js <step> <pid> [arg]
 // steps: diagnose | choose-root | goto-visible | goto-go <path> | open <basename>
 //        | select-row <relpath> | play-stop
-//        | paste-range <fieldName> <value> | export-lock | focus-timeout-smoke
+//        | paste-range <fieldName> <value> | export-lock
 // Range fields are filled by clipboard paste. Go to Folder waits until its
-// path field is focused, then pastes. Neither path assigns AXValue.
+// path field is focused, then pastes (legacy Go button and modern Return).
+// Neither path assigns AXValue.
 // Every stage logs to stderr as [AX-NN] / [<STEP>-NN]. Errors exit 1 with the
 // failing stage, exception and element fields. No retries.
 //
 // System Events has no "performAction" command; calling element.performAction("AXPress")
 // fails with -1700. The dictionary command is perform(action):
 // element.actions.byName("AXPress").perform().
-ObjC.import("stdlib");
+if (typeof ObjC !== "undefined") {
+  ObjC.import("stdlib");
+}
+
+const runtime = {
+  now: null,
+  delay: null,
+  exit: null,
+  log: null,
+  attach: null,
+  Application: null,
+};
+
+function setRuntime(overrides) {
+  if (!overrides) return;
+  const keys = Object.keys(overrides);
+  for (let i = 0; i < keys.length; i++) runtime[keys[i]] = overrides[keys[i]];
+}
+
+function resetRuntime() {
+  runtime.now = null;
+  runtime.delay = null;
+  runtime.exit = null;
+  runtime.log = null;
+  runtime.attach = null;
+  runtime.Application = null;
+}
+
+function nowMs() {
+  return typeof runtime.now === "function" ? runtime.now() : Date.now();
+}
+
+function sleepSec(seconds) {
+  if (typeof runtime.delay === "function") {
+    runtime.delay(seconds);
+    return;
+  }
+  delay(seconds);
+}
 
 const NAMES = {
   chooseRoot: ["ルートを選択…", "Choose root..."],
@@ -35,6 +74,10 @@ const EXPORT_LOCK_POLL_MS = 30;
 const EXPORT_LOCK_TIMEOUT_MS = 8000;
 
 function log(line) {
+  if (typeof runtime.log === "function") {
+    runtime.log(line);
+    return;
+  }
   console.log(line);
 }
 
@@ -83,7 +126,15 @@ function describe(el, index) {
 
 function fail(stage, err, extra) {
   log("[" + stage + "][ERROR] " + errFields(err) + (extra ? " " + extra : ""));
-  $.exit(1);
+  if (typeof runtime.exit === "function") {
+    runtime.exit(1);
+    return;
+  }
+  if (typeof $ !== "undefined") {
+    $.exit(1);
+    return;
+  }
+  throw new Error("AX_EXIT_1");
 }
 
 function stage(id, fn, extraOnError) {
@@ -95,6 +146,7 @@ function stage(id, fn, extraOnError) {
 }
 
 function attach(pid) {
+  if (typeof runtime.attach === "function") return runtime.attach(pid);
   const se = stage("AX-01", () => {
     const app = Application("System Events");
     log("[AX-01] System Events connected");
@@ -118,7 +170,7 @@ function attach(pid) {
     log("[AX-03] name=" + show(safeScalar(() => proc.name())) +
       " frontmost_before=" + show(safeScalar(() => proc.frontmost())));
     proc.frontmost = true;
-    delay(0.6);
+    sleepSec(0.6);
     const fm = safeScalar(() => proc.frontmost());
     log("[AX-03] frontmost=" + show(fm));
     if (fm.value !== true) throw new Error("process is not frontmost");
@@ -191,14 +243,14 @@ function press(id, b) {
 }
 
 function waitUntil(id, timeoutMs, intervalMs, probe) {
-  const started = Date.now();
+  const started = nowMs();
   log("[" + id + "] START");
   let announced = false;
-  while (Date.now() - started <= timeoutMs) {
+  while (nowMs() - started <= timeoutMs) {
     let hit = false;
     try { hit = probe() === true; } catch (err) { hit = false; }
     if (hit) {
-      const elapsed = Date.now() - started;
+      const elapsed = nowMs() - started;
       log("[" + id + "] PASS elapsed_ms=" + elapsed);
       return elapsed;
     }
@@ -206,16 +258,18 @@ function waitUntil(id, timeoutMs, intervalMs, probe) {
       log("[" + id + "] WAIT");
       announced = true;
     }
-    const remain = timeoutMs - (Date.now() - started);
+    const remain = timeoutMs - (nowMs() - started);
     if (remain <= 0) break;
-    delay(Math.min(intervalMs, remain) / 1000);
+    sleepSec(Math.min(intervalMs, remain) / 1000);
   }
-  log("[" + id + "] FAIL elapsed_ms=" + (Date.now() - started));
+  log("[" + id + "] FAIL elapsed_ms=" + (nowMs() - started));
   return null;
 }
 
 function clipboardToken(value) {
-  const app = Application.currentApplication();
+  const app = typeof runtime.Application === "function"
+    ? runtime.Application()
+    : Application.currentApplication();
   app.includeStandardAdditions = true;
   let saved = null;
   let had = false;
@@ -239,11 +293,11 @@ function pasteIntoFocused(ax, pid, element, value, logTag) {
   log(logTag + " clipboard_value=" + JSON.stringify(String(value)));
   const token = clipboardToken(value);
   try {
-    delay(0.15);
+    sleepSec(0.15);
     ax.se.keystroke("a", { using: ["command down"] });
-    delay(0.15);
+    sleepSec(0.15);
     ax.se.keystroke("v", { using: ["command down"] });
-    delay(0.25);
+    sleepSec(0.25);
   } catch (err) {
     restoreClipboard(token);
     throw err;
@@ -267,35 +321,45 @@ function gotoContainerList(ax) {
   return out;
 }
 
+function isGotoPathRole(role, el) {
+  if (role !== "AXTextField" && role !== "AXComboBox") return false;
+  return str(() => el.subrole()) !== "AXSearchField";
+}
+
+function pickGotoField(ui) {
+  let field = null;
+  for (let i = 0; i < ui.length; i++) {
+    const role = str(() => ui[i].role());
+    if (!isGotoPathRole(role, ui[i])) continue;
+    const focused = safeScalar(() => ui[i].focused()).value === true;
+    if (focused || field === null) field = { el: ui[i], index: i, name: null };
+  }
+  return field;
+}
+
 function locateGotoField(ax) {
   const containers = gotoContainerList(ax);
   for (let c = 0; c < containers.length; c++) {
     let ui = null;
     try { ui = containers[c].el.entireContents(); } catch (err) { continue; }
     let header = false;
-    let field = null;
     for (let i = 0; i < ui.length; i++) {
       const role = str(() => ui[i].role());
       if (role === "AXStaticText" && NAMES.gotoHeader.indexOf(str(() => ui[i].value())) >= 0) header = true;
-      if (role !== "AXTextField" || str(() => ui[i].subrole()) === "AXSearchField") continue;
-      const desc = str(() => ui[i].description());
-      const focused = safeScalar(() => ui[i].focused()).value === true;
-      if (focused || field === null && (desc === "text field" || desc === null)) {
-        field = { el: ui[i], index: i, name: null };
-      }
     }
+    const field = pickGotoField(ui);
     if (header && field !== null) return { container: containers[c], field: field };
   }
   return null;
 }
 
 function waitGotoReady(ax, pid) {
-  const started = Date.now();
+  const started = nowMs();
   log("[GTF_FOCUS] START");
   let located = null;
   let openedLogged = false;
   let announced = false;
-  while (Date.now() - started <= GTF_FOCUS_TIMEOUT_MS) {
+  while (nowMs() - started <= GTF_FOCUS_TIMEOUT_MS) {
     if (located === null) located = locateGotoField(ax);
     if (located !== null) {
       if (!openedLogged) {
@@ -304,7 +368,7 @@ function waitGotoReady(ax, pid) {
         openedLogged = true;
       }
       if (fieldIsKeyInput(ax, pid, located.field.el)) {
-        const elapsed = Date.now() - started;
+        const elapsed = nowMs() - started;
         log("[GTF][FOCUS] PASS");
         log("[GTF_FOCUS] PASS elapsed_ms=" + elapsed);
         return located;
@@ -315,11 +379,11 @@ function waitGotoReady(ax, pid) {
       log("[GTF_FOCUS] WAIT");
       announced = true;
     }
-    const remain = GTF_FOCUS_TIMEOUT_MS - (Date.now() - started);
+    const remain = GTF_FOCUS_TIMEOUT_MS - (nowMs() - started);
     if (remain <= 0) break;
-    delay(Math.min(GTF_FOCUS_POLL_MS, remain) / 1000);
+    sleepSec(Math.min(GTF_FOCUS_POLL_MS, remain) / 1000);
   }
-  log("[GTF_FOCUS] FAIL elapsed_ms=" + (Date.now() - started));
+  log("[GTF_FOCUS] FAIL elapsed_ms=" + (nowMs() - started));
   fail("GTF_FOCUS", new Error("GO_TO_FOLDER_FOCUS_TIMEOUT"));
 }
 
@@ -333,12 +397,12 @@ function findTextField(ui, name) {
 }
 
 function waitFor(id, seconds, probe) {
-  const deadline = Date.now() + seconds * 1000;
+  const deadline = nowMs() + seconds * 1000;
   let last = null;
-  while (Date.now() < deadline) {
+  while (nowMs() < deadline) {
     last = probe();
     if (last.done) return last;
-    delay(0.5);
+    sleepSec(0.5);
   }
   fail(id, new Error("timeout after " + seconds + "s"), last ? last.detail : "");
 }
@@ -394,16 +458,17 @@ function findGoto(ax) {
     const buttons = scanButtons("GOTO-02", ui, false);
     const go = findByName(buttons, NAMES.go);
     if (go !== null) {
+      const field = pickGotoField(ui);
       log("[GOTO-02] go_button container=" + c.label + " " + describe(go.el, go.index));
-      return { container: c, ui: ui, go: go, field: null };
+      if (field !== null) log("[GOTO-02] path_field index=" + field.index);
+      return { container: c, ui: ui, go: go, field: field };
     }
     let header = false;
     let field = null;
     for (let i = 0; i < ui.length; i++) {
       const role = str(() => ui[i].role());
       if (role === "AXStaticText" && NAMES.gotoHeader.indexOf(str(() => ui[i].value())) >= 0) header = true;
-      if (role === "AXTextField" && str(() => ui[i].subrole()) !== "AXSearchField" &&
-        safeScalar(() => ui[i].focused()).value === true) {
+      if (isGotoPathRole(role, ui[i]) && safeScalar(() => ui[i].focused()).value === true) {
         field = { el: ui[i], index: i, name: null };
       }
     }
@@ -434,23 +499,6 @@ function confirmGotoFieldValue(element, path) {
 function stepGotoGo(pid, path) {
   const ax = attach(pid);
   const found = findGoto(ax);
-  if (found !== null && found.go !== null && found.field === null) {
-    stage("GOTO-03", () => {
-      const values = [];
-      for (let i = 0; i < found.ui.length; i++) {
-        const role = str(() => found.ui[i].role());
-        if (role !== "AXTextField" && role !== "AXComboBox") continue;
-        const value = str(() => found.ui[i].value());
-        values.push(value);
-        log("[GOTO-03] field index=" + i + " role=" + role + " value=" + JSON.stringify(value));
-      }
-      if (values.indexOf(path) < 0) throw new Error("no Go to Folder field equals the fixture path");
-      log("[GOTO-03] path field PASS");
-    });
-    if (!readEnabled("GOTO-04", found.go)) fail("GOTO-04", new Error("goto-go disabled"));
-    press("GOTO-05", found.go);
-    return "goto-go-pressed";
-  }
   let ready = null;
   if (found !== null && found.field !== null && fieldIsKeyInput(ax, pid, found.field.el)) {
     ready = { container: found.container, field: found.field };
@@ -471,6 +519,11 @@ function stepGotoGo(pid, path) {
       restoreClipboard(token);
     }
   });
+  if (found !== null && found.go !== null) {
+    if (!readEnabled("GOTO-04", found.go)) fail("GOTO-04", new Error("goto-go disabled"));
+    press("GOTO-05", found.go);
+    return "goto-go-pressed";
+  }
   // AXConfirm on this field returns without navigating (observed on macOS 26.6),
   // so Return is sent only after the selected suggestion equals the fixture path
   // and the panel's Open button is disabled.
@@ -632,7 +685,7 @@ function stepPlayStop(pid) {
     return { done: playing, detail: "play=" + s.playName + " play_enabled=" + s.playEnabled + " stop_enabled=" + s.stopEnabled };
   });
   log("[PLAY-05] playing PASS (play disabled, stop enabled)");
-  delay(1.0);
+  sleepSec(1.0);
   stage("PLAY-06", () => {
     const s = state();
     log("[PLAY-06] still playing play_enabled=" + s.playEnabled + " stop_enabled=" + s.stopEnabled);
@@ -674,7 +727,7 @@ function stepPasteRange(pid, name, value) {
     fail("RANGE_CLIPBOARD", new Error("RANGE_FOCUS_TIMEOUT"));
   }
   log("[RANGE][FOCUS] PASS");
-  const started = Date.now();
+  const started = nowMs();
   const token = stage("RANGE-04", () => {
     log("[RANGE][PASTE] START");
     const held = pasteIntoFocused(ax, pid, field.el, value, "[RANGE][PASTE]");
@@ -693,12 +746,20 @@ function stepPasteRange(pid, name, value) {
   }
   log("[RANGE][VERIFY] actual=" + JSON.stringify(actual));
   if (verified === null || actual !== String(value)) {
-    log("[RANGE_CLIPBOARD] FAIL elapsed_ms=" + (Date.now() - started));
+    log("[RANGE_CLIPBOARD] FAIL elapsed_ms=" + (nowMs() - started));
     fail("RANGE_CLIPBOARD", new Error("range value did not match after paste"));
   }
   log("[RANGE][RESULT] PASS");
-  log("[RANGE_CLIPBOARD] PASS value=" + value + " elapsed_ms=" + (Date.now() - started));
+  log("[RANGE_CLIPBOARD] PASS value=" + value + " elapsed_ms=" + (nowMs() - started));
   return "range-pasted";
+}
+
+function previouslyEnabledAre(before, now, expected) {
+  if (!before || !now || before.length !== now.length) return false;
+  for (let i = 0; i < before.length; i++) {
+    if (before[i] === true && now[i] !== expected) return false;
+  }
+  return true;
 }
 
 function stepExportLock(pid) {
@@ -721,25 +782,25 @@ function stepExportLock(pid) {
   log("[EXPORT_MARKER_LOCK] START");
   log("[EXPORT_LOCK][START]");
   press("EXPORT-02", confirm);
-  const started = Date.now();
+  const started = nowMs();
   log("[EXPORT_MARKER_LOCK] WAIT");
   let disabledAt = null;
   let postEnabled = false;
-  while (Date.now() - started <= EXPORT_LOCK_TIMEOUT_MS) {
+  while (nowMs() - started <= EXPORT_LOCK_TIMEOUT_MS) {
     const now = selects.map((b) => safeScalar(() => b.el.enabled()).value);
-    if (disabledAt === null && now.some((v, i) => before[i] === true && v === false)) {
-      disabledAt = Date.now() - started;
+    if (disabledAt === null && previouslyEnabledAre(before, now, false)) {
+      disabledAt = nowMs() - started;
       log("[EXPORT_LOCK][POLL] disabled detected after " + disabledAt + "ms");
     }
-    if (disabledAt !== null && now.every((v, i) => before[i] !== true || v === true)) {
+    if (disabledAt !== null && previouslyEnabledAre(before, now, true)) {
       postEnabled = true;
       break;
     }
-    const remain = EXPORT_LOCK_TIMEOUT_MS - (Date.now() - started);
+    const remain = EXPORT_LOCK_TIMEOUT_MS - (nowMs() - started);
     if (remain <= 0) break;
-    delay(Math.min(EXPORT_LOCK_POLL_MS, remain) / 1000);
+    sleepSec(Math.min(EXPORT_LOCK_POLL_MS, remain) / 1000);
   }
-  const elapsed = Date.now() - started;
+  const elapsed = nowMs() - started;
   if (disabledAt === null) {
     log("[EXPORT_MARKER_LOCK] FAIL disabled_seen=false elapsed_ms=" + elapsed);
     fail("EXPORT_MARKER_LOCK", new Error("EXPORT_MARKER_LOCK_NOT_OBSERVED"));
@@ -753,17 +814,8 @@ function stepExportLock(pid) {
   return "export-lock-observed";
 }
 
-function stepFocusTimeoutSmoke() {
-  log("[GTF][OPEN] PASS");
-  log("[GTF][FIELD] FOUND");
-  const hit = waitUntil("GTF_FOCUS", 400, GTF_FOCUS_POLL_MS, () => false);
-  if (hit !== null) fail("GTF_FOCUS", new Error("focus timeout smoke observed a focus"));
-  fail("GTF_FOCUS", new Error("GO_TO_FOLDER_FOCUS_TIMEOUT"));
-}
-
 function run(argv) {
   const step = String(argv[0] || "");
-  if (step === "focus-timeout-smoke") return stepFocusTimeoutSmoke();
   const pid = Number(argv[1]);
   const arg = argv.length > 2 ? String(argv[2]) : "";
   const arg2 = argv.length > 3 ? String(argv[3]) : "";
@@ -781,4 +833,18 @@ function run(argv) {
     case "export-lock": return stepExportLock(pid);
     default: fail("AX-00", new Error("unknown step " + step));
   }
+}
+
+if (typeof ObjC === "undefined" && typeof globalThis !== "undefined") {
+  globalThis.NativeAcceptanceAxSteps = {
+    setRuntime: setRuntime,
+    resetRuntime: resetRuntime,
+    stepGotoGo: stepGotoGo,
+    waitGotoReady: waitGotoReady,
+    stepExportLock: stepExportLock,
+    previouslyEnabledAre: previouslyEnabledAre,
+    NAMES: NAMES,
+    GTF_FOCUS_TIMEOUT_MS: GTF_FOCUS_TIMEOUT_MS,
+    EXPORT_LOCK_TIMEOUT_MS: EXPORT_LOCK_TIMEOUT_MS,
+  };
 }
