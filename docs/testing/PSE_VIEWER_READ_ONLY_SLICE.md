@@ -20,8 +20,15 @@ Sample Slot Reference. Display coordinates add one to zero-based indices;
 Static/Flex slot and recorder numbers retain their backend numbering.
 
 Normal/per-track scale, finite master length and INF remain distinct. A Master
-Track has no sample machine or slot. Malformed and unsupported documents show
+Track has no sample machine or slot. When `projectState.masterTrack` is null
+(absent project state, or a bank-only / malformed / unsupported `project.work`),
+Track 8 is marked unknown. The read model's audio fallback is not shown as an
+observed machine or slot. Malformed and unsupported documents show
 status and source only, even if a response contains partial structure.
+
+Viewer chrome, machine and slot kinds, scale modes, parse statuses, and catalog
+reference statuses use matching `pse.*` keys in `en.ts` and `ja.ts`. Locale
+changes re-render labels only; they do not re-read structure.
 
 Project state is a read-only observation, separate from browsing selection.
 Arrangement stays `Unmapped(raw)`; absent values remain unknown. Scene says

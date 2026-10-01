@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { projectStructureApi, type ProjectStructureApi, type ProjectStructure, type PatternScale, type PlaybackScale, type SlotReference } from '../../api/projectStructure';
+import { projectStructureApi, type ProjectStructureApi, type ProjectStructure, type PatternScale, type PlaybackScale, type SlotReference, type Machine, type ParseStatus } from '../../api/projectStructure';
 import type { SampleUsageEdge } from '../../api';
-import { useTranslate } from '../../i18n';
+import { useTranslate, type TranslateFn } from '../../i18n';
 import './ProjectStructureViewer.css';
 
 interface Props {
@@ -11,24 +11,65 @@ interface Props {
   client?: ProjectStructureApi;
 }
 const scaleNames: Record<string, string> = { times2: '2×', times3Over2: '3/2×', times1: '1×', times3Over4: '3/4×', times1Over2: '1/2×', times1Over4: '1/4×', times1Over8: '1/8×' };
-function playbackScale(scale: PlaybackScale): string {
-  return scale.kind === 'unrecognized' ? `Unknown (${scale.raw})` : scaleNames[scale.kind];
+function playbackScale(scale: PlaybackScale, t: TranslateFn): string {
+  return scale.kind === 'unrecognized' ? t('pse.unknownRaw', { raw: scale.raw }) : scaleNames[scale.kind] ?? t('pse.unknown');
 }
-function patternLength(scale: PatternScale): string {
-  if (scale.kind === 'unrecognized') return `Unknown (${scale.raw})`;
+function lengthScale(length: string | number, scale: string, t: TranslateFn): string {
+  return t('pse.lengthScale', { length: String(length), scale });
+}
+function patternLength(scale: PatternScale, t: TranslateFn): string {
+  if (scale.kind === 'unrecognized') return t('pse.unknownRaw', { raw: scale.raw });
   const length = scale.kind === 'normal' ? scale.masterLength
     : scale.masterLength.kind === 'finite' ? scale.masterLength.steps
-    : scale.masterLength.kind === 'infinite' ? 'INF' : 'Unknown';
-  return `${length} · ${playbackScale(scale.masterScale)}`;
+    : scale.masterLength.kind === 'infinite' ? t('pse.infinite') : t('pse.unknown');
+  return lengthScale(length, playbackScale(scale.masterScale, t), t);
 }
-function slotLabel(slot: SlotReference, unread: string, unassigned: string, noSample: string): string {
+function slotLabel(slot: SlotReference, t: TranslateFn): string {
   switch (slot.kind) {
-    case 'slot': return `${slot.slotKind === 'static' ? 'Static' : 'Flex'} ${slot.number}`;
-    case 'recorderBuffer': return `Recorder ${slot.bufferNumber}`;
-    case 'unassigned': return unassigned;
-    case 'noSampleMachine': return noSample;
-    case 'unrecognized': return `${unread} (${slot.raw})`;
+    case 'slot': return t(slot.slotKind === 'static' ? 'pse.slotStatic' : 'pse.slotFlex', { number: slot.number });
+    case 'recorderBuffer': return t('pse.recorder', { number: slot.bufferNumber });
+    case 'unassigned': return t('pse.unassigned');
+    case 'noSampleMachine': return t('pse.noSampleMachine');
+    case 'unrecognized': return t('pse.unreadRaw', { raw: slot.raw });
   }
+}
+function machineLabel(machine: Machine, t: TranslateFn): string {
+  switch (machine.kind) {
+    case 'unknown': return t('pse.unreadRaw', { raw: machine.raw });
+    case 'static': return t('pse.machineKind.static');
+    case 'flex': return t('pse.machineKind.flex');
+    case 'thru': return t('pse.machineKind.thru');
+    case 'neighbor': return t('pse.machineKind.neighbor');
+    case 'pickup': return t('pse.machineKind.pickup');
+  }
+}
+function parseStatusLabel(status: ParseStatus, t: TranslateFn): string {
+  switch (status) {
+    case 'parsed': return t('pse.parseStatus.parsed');
+    case 'unsupportedVersion': return t('pse.parseStatus.unsupportedVersion');
+    case 'malformed': return t('pse.parseStatus.malformed');
+  }
+}
+function scaleKindLabel(kind: PatternScale['kind'], t: TranslateFn): string {
+  switch (kind) {
+    case 'normal': return t('pse.scaleKind.normal');
+    case 'perTrack': return t('pse.scaleKind.perTrack');
+    case 'unrecognized': return t('pse.scaleKind.unrecognized');
+  }
+}
+function patternId(letter: string, index: number): string {
+  return `${letter}${String(index + 1).padStart(2, '0')}`;
+}
+function evidenceLabel(edge: SampleUsageEdge, t: TranslateFn): string {
+  const usage = edge.usageKind === 'machine' ? t('pse.usage.machine') : t('pse.usage.sampleLock');
+  const slot = t(edge.slotKind === 'static' ? 'pse.slotStatic' : 'pse.slotFlex', { number: edge.slotNumber });
+  const status = edge.referenceStatus === 'resolved' ? t('pse.reference.resolved')
+    : edge.referenceStatus === 'missing' ? t('pse.reference.missing')
+    : edge.referenceStatus === 'invalid_path' ? t('pse.reference.invalidPath')
+    : t('pse.reference.unassignedSlot');
+  return edge.stepIndex === null
+    ? t('pse.catalogEvidence', { usage, slot, status })
+    : t('pse.catalogEvidenceStep', { usage, slot, step: edge.stepIndex + 1, status });
 }
 
 /** Remount on root/project change so old structure is never rendered for a new target. */
@@ -59,42 +100,43 @@ function ViewerSession({ rootId, projectRelativePath, usageEdges = [], client = 
   const pattern = parsed ? bank.patterns.find(p => p.index === patternIndex) ?? bank.patterns[0] : undefined;
   const part = parsed && pattern ? bank.parts.find(p => p.index === pattern.partIndex) : undefined;
   const projectState = data?.projectState;
+  const trackEightRoleUnknown = projectState?.masterTrack == null;
   return <section className="pse-viewer" aria-label={t('pse.title')}>
     <header><h4>{t('pse.title')}</h4><span>{t('pse.readOnly')}</span>
       <button type="button" onClick={() => setReload(n => n + 1)}>{t('pse.reload')}</button></header>
     <p>{t('pse.deferred')}</p>
     {error ? <p role="alert">{t('pse.error')}</p> : data === null ? <p role="status">{t('pse.loading')}</p> : <>
-      <p>{t('pse.projectState')}: {projectState?.parseStatus ?? t('pse.unread')}
+      <p>{t('pse.projectState')}: {projectState ? parseStatusLabel(projectState.parseStatus, t) : t('pse.unread')}
         {projectState?.parseStatus === 'parsed' && <>
-          {' · Bank '}{projectState.bank?.kind === 'selected' ? String.fromCharCode(65 + projectState.bank.index) : t('pse.unread')}
-          {' · Pattern '}{projectState.pattern?.kind === 'selected' ? projectState.pattern.index + 1 : t('pse.unread')}
-          {' · Arrangement: Unmapped'}
-          {projectState.arrangement?.kind === 'unmapped' ? ` (${projectState.arrangement.raw})` : ''}
+          {' · '}{t('pse.stateBank', { bank: projectState.bank?.kind === 'selected' ? String.fromCharCode(65 + projectState.bank.index) : t('pse.unread') })}
+          {' · '}{t('pse.statePattern', { pattern: projectState.pattern?.kind === 'selected' ? String(projectState.pattern.index + 1) : t('pse.unread') })}
+          {' · '}{projectState.arrangement?.kind === 'unmapped' ? t('pse.arrangementUnmappedRaw', { raw: projectState.arrangement.raw }) : t('pse.arrangementUnmapped')}
         </>}
       </p>
       {bank === undefined ? <p>{t('pse.noBanks')}</p> : <>
-        <label>Bank <select aria-label="Bank" value={bank.sourceRelativePath} onChange={e => { setBankKey(e.target.value); setPatternIndex(0); }}>
-          {data.banks.map(b => <option key={b.sourceRelativePath} value={b.sourceRelativePath}>{b.letter} · {t(b.role === 'working' ? 'pse.working' : 'pse.saved')} · {b.parseStatus}</option>)}
+        <label>{t('pse.bank')} <select aria-label={t('pse.bank')} value={bank.sourceRelativePath} onChange={e => { setBankKey(e.target.value); setPatternIndex(0); }}>
+          {data.banks.map(b => <option key={b.sourceRelativePath} value={b.sourceRelativePath}>{b.letter} · {t(b.role === 'working' ? 'pse.working' : 'pse.saved')} · {parseStatusLabel(b.parseStatus, t)}</option>)}
         </select></label>
-        <p><code>{bank.sourceRelativePath}</code> · {bank.parseStatus}</p>
+        <p><code>{bank.sourceRelativePath}</code> · {parseStatusLabel(bank.parseStatus, t)}</p>
         {!parsed ? <p>{t('pse.unavailable')}</p> : pattern === undefined ? <p>{t('pse.noPatterns')}</p> : <>
-          <label>Pattern <select aria-label="Pattern" value={pattern.index} onChange={e => setPatternIndex(Number(e.target.value))}>
-            {bank.patterns.map(p => <option key={p.index} value={p.index}>{bank.letter}{String(p.index + 1).padStart(2, '0')} → Part {p.partIndex + 1}</option>)}
+          <label>{t('pse.pattern')} <select aria-label={t('pse.pattern')} value={pattern.index} onChange={e => setPatternIndex(Number(e.target.value))}>
+            {bank.patterns.map(p => <option key={p.index} value={p.index}>{t('pse.patternChoice', { id: patternId(bank.letter, p.index), part: p.partIndex + 1 })}</option>)}
           </select></label>
-          <p>Pattern {bank.letter}{String(pattern.index + 1).padStart(2, '0')} → Part {pattern.partIndex + 1} · {pattern.scale.kind} · {patternLength(pattern.scale)}</p>
+          <p>{t('pse.patternSummary', { id: patternId(bank.letter, pattern.index), part: pattern.partIndex + 1, mode: scaleKindLabel(pattern.scale.kind, t), length: patternLength(pattern.scale, t) })}</p>
           {part === undefined ? <p>{t('pse.unavailable')}</p> : <div className="pse-viewer__table"><table>
-            <thead><tr><th>Track</th><th>{t('pse.machine')}</th><th>Sample Slot Reference</th><th>{t('pse.scale')}</th><th>{t('pse.references')}</th></tr></thead>
+            <thead><tr><th>{t('pse.track')}</th><th>{t('pse.machine')}</th><th>{t('pse.slotReference')}</th><th>{t('pse.scale')}</th><th>{t('pse.references')}</th></tr></thead>
             <tbody>{part.tracks.map(track => {
-              const audio = track.playback.kind === 'audio' ? track.playback : null;
+              const roleUnknown = track.index === 7 && trackEightRoleUnknown;
+              const audio = roleUnknown || track.playback.kind !== 'audio' ? null : track.playback;
               const scale = pattern.scale.kind === 'perTrack' ? pattern.scale.tracks.find(s => s.track === track.index) : null;
               // Catalog evidence is a separate snapshot: retain source/role and usage coordinates.
               const edges = audio === null ? [] : usageEdges.filter(edge => edge.bankDocumentRelativePath === bank.sourceRelativePath && edge.trackIndex === track.index &&
                 ((edge.usageKind === 'machine' && edge.partIndex === part.index) || (edge.usageKind === 'sample_lock' && edge.patternIndex === pattern.index)));
               return <tr key={track.index}><th scope="row">{track.index + 1}</th>
-                <td>{audio === null ? 'Master' : audio.machine.kind === 'unknown' ? `${t('pse.unread')} (${audio.machine.raw})` : audio.machine.kind}</td>
-                <td>{audio === null ? '—' : slotLabel(audio.slot, t('pse.unread'), t('pse.unassigned'), t('pse.noSampleMachine'))}</td>
-                <td>{scale ? `${scale.length} · ${playbackScale(scale.scale)}` : pattern.scale.kind === 'normal' ? patternLength(pattern.scale) : t('pse.unread')}</td>
-                <td>{edges.length === 0 ? t('pse.noCatalogEvidence') : <ul>{edges.map((edge, i) => <li key={i}>{edge.usageKind} · {edge.slotKind} {edge.slotNumber}{edge.stepIndex === null ? '' : ` · Step ${edge.stepIndex + 1}`} · {edge.referenceStatus}{edge.referencedFileRelativePath ? <> · <code>{edge.referencedFileRelativePath}</code></> : null}</li>)}</ul>}</td>
+                <td>{roleUnknown ? t('pse.trackEightUnknown') : audio === null ? t('pse.master') : machineLabel(audio.machine, t)}</td>
+                <td>{roleUnknown ? t('pse.trackEightUnknown') : audio === null ? '—' : slotLabel(audio.slot, t)}</td>
+                <td>{scale ? lengthScale(scale.length, playbackScale(scale.scale, t), t) : pattern.scale.kind === 'normal' ? patternLength(pattern.scale, t) : t('pse.unread')}</td>
+                <td>{edges.length === 0 ? t('pse.noCatalogEvidence') : <ul>{edges.map((edge, i) => <li key={i}>{evidenceLabel(edge, t)}{edge.referencedFileRelativePath ? <> · <code>{edge.referencedFileRelativePath}</code></> : null}</li>)}</ul>}</td>
               </tr>;
             })}</tbody></table></div>}
         </>}

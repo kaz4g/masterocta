@@ -50,7 +50,7 @@ describe('Project Structure Viewer', () => {
     view(undefined, [edge, { ...edge, bankDocumentRelativePath: bank('savedCheckpoint').sourceRelativePath, referencedFileRelativePath: 'SAVED_ONLY.wav' }, { ...edge, usageKind: 'sample_lock', partIndex: null, patternIndex: 0, stepIndex: 2, referencedFileRelativePath: 'LOCK.wav' }, { ...edge, partIndex: 1, referencedFileRelativePath: 'OTHER_PART.wav' }]);
     await screen.findByRole('table');
     expect(screen.getByText('SET/AUDIO/missing.wav')).toBeInTheDocument();
-    expect(screen.getByText(/sample_lock.*Step 3.*missing/)).toBeInTheDocument();
+    expect(screen.getByText(/Sample lock.*Step 3.*Missing/)).toBeInTheDocument();
     expect(screen.queryByText('SAVED_ONLY.wav')).toBeNull();
     expect(screen.queryByText('OTHER_PART.wav')).toBeNull();
   });
@@ -78,10 +78,58 @@ describe('Project Structure Viewer', () => {
     await act(async () => { resolveOld(data); });
     expect(screen.queryByRole('table')).toBeNull();
   });
-  it('renders Japanese labels', async () => {
+  it('renders Japanese labels and state names', async () => {
     render(<LocaleProvider initialLocaleId="ja"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read: vi.fn().mockResolvedValue(data) }} /></LocaleProvider>);
     await screen.findByRole('table');
     expect(screen.getByText('Scene：未読取 · Arranger：対象外')).toBeInTheDocument();
     expect(screen.getByText('読み取り専用')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'トラック' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'サンプルスロット参照' })).toBeInTheDocument();
+    expect(screen.getByLabelText('バンク')).toBeInTheDocument();
+    expect(screen.getByLabelText('パターン')).toBeInTheDocument();
+    expect(screen.getByText('マスター')).toBeInTheDocument();
+    expect(screen.getByText('レコーダー 2')).toBeInTheDocument();
+    expect(screen.getByText('スタティック 3')).toBeInTheDocument();
+    expect(screen.getByText(/パターン A01 → パート 1 · トラックごと/)).toBeInTheDocument();
+    expect(screen.getByText(/アレンジメント: 未マッピング \(7\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/解析済み/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Sample Slot Reference')).toBeNull();
+    expect(screen.queryByText('Master')).toBeNull();
+    expect(screen.queryByText('Recorder 2')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Track' })).toBeNull();
+  });
+  it('withholds Track 8 when project state cannot establish the master track', async () => {
+    const fallback = structuredClone(data);
+    fallback.projectState = { ...data.projectState!, masterTrack: null };
+    fallback.banks[0].parts[0].tracks = fallback.banks[0].parts[0].tracks.map(track => track.index === 7
+      ? { index: 7, playback: { kind: 'audio', machine: { kind: 'pickup' }, slot: { kind: 'slot', slotKind: 'flex', number: 99 } } }
+      : track);
+    const rendered = view(vi.fn().mockResolvedValue(fallback));
+    await screen.findByRole('table');
+    const row = screen.getByRole('rowheader', { name: '8' }).closest('tr')!;
+    expect(within(row).getAllByText('Unknown (project state unavailable)')).toHaveLength(2);
+    expect(within(row).queryByText('Pickup')).toBeNull();
+    expect(within(row).queryByText('Flex 99')).toBeNull();
+    expect(within(row).queryByText('Master')).toBeNull();
+    rendered.unmount();
+    const absent = structuredClone(data);
+    absent.projectState = null;
+    view(vi.fn().mockResolvedValue(absent));
+    await screen.findByRole('table');
+    const absentRow = screen.getByRole('rowheader', { name: '8' }).closest('tr')!;
+    expect(within(absentRow).queryByText('Master')).toBeNull();
+    expect(within(absentRow).getAllByText('Unknown (project state unavailable)').length).toBeGreaterThan(0);
+  });
+  it('shows Track 8 audio only when the project state says it is not the master track', async () => {
+    const off = structuredClone(data);
+    off.projectState = { ...data.projectState!, masterTrack: false };
+    off.banks[0].parts[0].tracks = off.banks[0].parts[0].tracks.map(track => track.index === 7
+      ? { index: 7, playback: { kind: 'audio', machine: { kind: 'pickup' }, slot: { kind: 'slot', slotKind: 'flex', number: 99 } } }
+      : track);
+    view(vi.fn().mockResolvedValue(off));
+    await screen.findByRole('table');
+    const row = screen.getByRole('rowheader', { name: '8' }).closest('tr')!;
+    expect(within(row).getByText('Pickup')).toBeInTheDocument();
+    expect(within(row).getByText('Flex 99')).toBeInTheDocument();
   });
 });
