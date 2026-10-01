@@ -475,8 +475,14 @@ function SliceSession({
           if (!active || epoch !== generation.current) return;
           inflightId.current = null;
           setInflight(null);
-          // The lookup failure belongs to the in-flight job, not the retained session.
-          noteCommandError(e, { session: false });
+          const normalized = normalizeSliceError(e);
+          // ANALYSIS_NOT_FOUND means this in-flight job disappeared before it
+          // could report its own error; the retained session is unchanged.
+          // ANALYSIS_EXPIRED means the TTL elapsed, so the older retained job
+          // is expired too and must be invalidated.
+          noteCommandError(e, {
+            session: normalized.code !== "ANALYSIS_NOT_FOUND",
+          });
         },
       );
     }, 300);

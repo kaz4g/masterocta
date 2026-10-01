@@ -1126,6 +1126,37 @@ describe("attack slicing workbench", () => {
     expect(screen.getByRole("button", { name: tJa("slicing.insertBoundary") })).toBeEnabled();
   });
 
+  it("invalidates the retained session when the pending re-analysis job has expired", async () => {
+    const api = client();
+    const reading: SliceJob = {
+      ...ready,
+      jobId: "job-2",
+      phase: "reading",
+      region: null,
+    };
+    vi.mocked(api.start)
+      .mockResolvedValueOnce(ready)
+      .mockResolvedValueOnce(reading);
+    vi.mocked(api.status).mockRejectedValue({
+      code: "ANALYSIS_EXPIRED",
+      message: "the analysis session has expired",
+    });
+    mount(api, {
+      librarySelectionRange: { startFrame: "5000", endFrameExclusive: "10000" },
+    });
+    await detect();
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.applyCandidates") }));
+    await waitFor(() => expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956"));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.copyLibrarySelectionToPending") }));
+    fireEvent.click(screen.getByRole("button", { name: tJa("slicing.reanalyzePendingRange") }));
+    await waitFor(() => expect(api.status).toHaveBeenCalledWith("root-1", "job-2"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(tJa("slicing.error.ANALYSIS_EXPIRED"));
+    expect(screen.getByText(tJa("slicing.reanalyzeRequired"))).toBeInTheDocument();
+    expect(screen.getByLabelText(tJa("slicing.startFrameAria", { frame: "956" }))).toHaveValue("956");
+    expect(screen.getByRole("button", { name: tJa("slicing.insertBoundary") })).toBeDisabled();
+    expect(screen.getByRole("button", { name: tJa("slicing.applyCandidates") })).toBeDisabled();
+  });
+
   it("does not mutate the draft when the analysis session is expired", async () => {
     const api = client();
     mount(api, {
