@@ -387,32 +387,34 @@ impl SliceWorkbench {
                 }
                 Err(_) => CommitOutcome::Failed(internal()),
             };
-            match &outcome {
-                CommitOutcome::Ready(_) => workbench.promote_pending(&job),
-                CommitOutcome::Cancelled | CommitOutcome::Failed(_) => {
-                    workbench.clear_pending(&job.id);
-                }
-            }
-            if let Ok(mut state) = job.state.lock() {
-                match outcome {
-                    CommitOutcome::Cancelled => {
-                        state.phase = "cancelled";
-                        state.ready = None;
-                    }
-                    CommitOutcome::Ready(ready) => {
-                        state.phase = "ready";
-                        state.ready = Some(ready);
-                    }
-                    CommitOutcome::Failed(error) => {
-                        state.phase = "failed";
-                        state.error = Some(error);
-                        state.ready = None;
-                    }
-                }
-            }
+            workbench.finish_job(&job, outcome);
             workbench.busy.store(false, Ordering::Release);
         });
         Ok(response)
+    }
+    /// A failed or cancelled job stays in `pending` so `status` can report its
+    /// terminal phase and error; the next `install_pending` replaces it.
+    fn finish_job(&self, job: &Arc<Job>, outcome: CommitOutcome) {
+        if matches!(outcome, CommitOutcome::Ready(_)) {
+            self.promote_pending(job);
+        }
+        if let Ok(mut state) = job.state.lock() {
+            match outcome {
+                CommitOutcome::Cancelled => {
+                    state.phase = "cancelled";
+                    state.ready = None;
+                }
+                CommitOutcome::Ready(ready) => {
+                    state.phase = "ready";
+                    state.ready = Some(ready);
+                }
+                CommitOutcome::Failed(error) => {
+                    state.phase = "failed";
+                    state.error = Some(error);
+                    state.ready = None;
+                }
+            }
+        }
     }
     pub fn status(&self, root: &RootId, window: &str, id: &str) -> Result<SliceJobDto, ApiError> {
         let job = self.job(root, window, id)?;
@@ -424,6 +426,7 @@ impl SliceWorkbench {
         let blocks = |old: &Job| {
             old.window != job.window
                 && !old.cancelled.load(Ordering::Relaxed)
+                && !is_terminal(old)
                 && old.created.elapsed() <= self.job_ttl()
         };
         if current.as_ref().is_some_and(|old| blocks(old))
@@ -459,15 +462,6 @@ impl SliceWorkbench {
             if old.id != job.id {
                 old.cancelled.store(true, Ordering::Relaxed);
             }
-        }
-    }
-    fn clear_pending(&self, id: &str) {
-        let mut pending = match self.pending.lock() {
-            Ok(value) => value,
-            Err(_) => return,
-        };
-        if pending.as_ref().is_some_and(|job| job.id == id) {
-            *pending = None;
         }
     }
     pub fn cancel(&self, root: &RootId, window: &str, id: &str) -> Result<(), ApiError> {
@@ -946,6 +940,11 @@ fn same_file(a: &std::fs::Metadata, b: &std::fs::Metadata) -> bool {
         }
     }
     a.is_file() && b.is_file() && a.len() == b.len() && a.modified().ok() == b.modified().ok()
+}
+fn is_terminal(job: &Job) -> bool {
+    job.state
+        .lock()
+        .is_ok_and(|state| matches!(state.phase, "failed" | "cancelled"))
 }
 fn status(job: &Job) -> Result<SliceJobDto, ApiError> {
     let state = job.state.lock().map_err(|_| internal())?;
@@ -1818,6 +1817,78 @@ mod tests {
             .unwrap()
             .expect("catalog draft after job replace");
         assert_eq!(stored.revision, 1);
+    }
+
+    fn pending_job(workbench: &SliceWorkbench, source: &Job, window: &str) -> Arc<Job> {
+        Arc::new(Job {
+            id: workbench.token("analysis"),
+            root: source.root.clone(),
+            window: window.into(),
+            created: Instant::now(),
+            cancelled: AtomicBool::new(false),
+            proposal_generation: AtomicU64::new(0),
+            state: Mutex::new(JobState {
+                phase: "reading",
+                error: None,
+                ready: None,
+                proposal: None,
+            }),
+            previews: Mutex::new(HashMap::new()),
+            history: Mutex::new(History::default()),
+            replace_saved_revision: None,
+        })
+    }
+
+    #[test]
+    fn failed_pending_reanalysis_reports_its_error_and_keeps_the_current_session() {
+        let (workbench, job, catalog, _directory) = fixture();
+        let saved = accept_first_proposal(&workbench, &catalog, &job);
+        let failing = pending_job(&workbench, &job, "main");
+        workbench.install_pending(Arc::clone(&failing)).unwrap();
+        workbench.finish_job(&failing, CommitOutcome::Failed(region_mismatch()));
+
+        let failed = workbench.status(&job.root, "main", &failing.id).unwrap();
+        assert_eq!(failed.phase, "failed");
+        assert_eq!(
+            failed.error.as_ref().map(error_code).as_deref(),
+            Some("ANALYSIS_REGION_MISMATCH")
+        );
+        assert_eq!(
+            workbench.status(&job.root, "main", &job.id).unwrap().phase,
+            "ready"
+        );
+        let draft = workbench
+            .draft(&catalog, &job.root, "main", &job.id)
+            .unwrap();
+        assert_eq!(draft.revision, saved.revision);
+        assert_eq!(draft.markers.len(), saved.markers.len());
+
+        workbench.cancel(&job.root, "main", &job.id).unwrap();
+        let other_window = pending_job(&workbench, &job, "other");
+        workbench.install_pending(other_window).unwrap();
+        assert_eq!(
+            error_code(
+                &workbench
+                    .status(&job.root, "main", &failing.id)
+                    .unwrap_err()
+            ),
+            "ANALYSIS_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn cancelled_pending_reanalysis_reports_cancelled_status() {
+        let (workbench, job, _catalog, _directory) = fixture();
+        let cancelled = pending_job(&workbench, &job, "main");
+        workbench.install_pending(Arc::clone(&cancelled)).unwrap();
+        workbench.finish_job(&cancelled, CommitOutcome::Cancelled);
+        let status = workbench.status(&job.root, "main", &cancelled.id).unwrap();
+        assert_eq!(status.phase, "cancelled");
+        assert!(status.error.is_none());
+        assert_eq!(
+            workbench.status(&job.root, "main", &job.id).unwrap().phase,
+            "ready"
+        );
     }
 
     #[test]

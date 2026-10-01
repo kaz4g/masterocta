@@ -475,7 +475,8 @@ function SliceSession({
           if (!active || epoch !== generation.current) return;
           inflightId.current = null;
           setInflight(null);
-          noteCommandError(e);
+          // The lookup failure belongs to the in-flight job, not the retained session.
+          noteCommandError(e, { session: false });
         },
       );
     }, 300);
