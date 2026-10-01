@@ -18,7 +18,10 @@
         "project_pattern_selection_reuses_pattern_index",
         "project_bank_selection_keeps_out_of_range_raw",
         "project_pattern_selection_keeps_out_of_range_raw",
-        "arrangement_raw_stays_unmapped_for_every_stored_value"
+        "arrangement_raw_stays_unmapped_for_every_stored_value",
+        "playback_scale_keeps_unrecognized_raw",
+        "per_track_master_length_keeps_inf_distinct_from_finite",
+        "per_track_master_length_rejects_undocumented_multiplier"
       ]
     },
     {
@@ -55,7 +58,15 @@
         "unreadable_project_work_is_a_storage_error",
         "verified_os_1_40_project_work_keeps_active_selection",
         "fifo_project_work_is_absent_without_blocking",
-        "oversized_project_work_is_rejected_before_parsing"
+        "oversized_project_work_is_rejected_before_parsing",
+        "real_device_track_eight_is_master_without_a_slot",
+        "master_track_off_keeps_track_eight_as_audio",
+        "master_track_values_other_than_one_stay_audio",
+        "missing_project_work_leaves_track_eight_as_audio",
+        "tracked_patterns_keep_scale_mode_and_lengths",
+        "per_track_scale_round_trip_keeps_each_track",
+        "per_track_inf_master_length_is_not_finite",
+        "unrecognized_scale_mode_and_scale_stay_raw"
       ]
     },
     {

@@ -11179,7 +11179,7 @@ mod tests {
         );
 
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v2");
+        assert_eq!(json["schema"], "masterocta.project-structure:v3");
         let json = json.to_string();
         assert!(!json.contains(canonical.to_str().unwrap()));
         assert!(!json.contains("contentHash"));
@@ -11211,12 +11211,24 @@ mod tests {
                 .find(|candidate| candidate.index == pattern.index.get())
                 .unwrap();
             assert_eq!(dto_pattern.part_index, pattern.part.get());
-            assert_eq!(dto_pattern.master_length, pattern.master_length);
+            assert_eq!(
+                dto_pattern.scale,
+                crate::project_structure_command::scale_dto(&pattern.scale)
+            );
         }
         let domain_track = &domain_bank.parts[0].tracks[0];
         let dto_track = &dto_bank.parts[0].tracks[0];
         assert_eq!(dto_track.index, domain_track.index.get());
-        match (&domain_track.slot, &dto_track.slot) {
+        let (
+            ot_domain::project_structure::TrackPlayback::Audio {
+                slot: domain_slot, ..
+            },
+            crate::project_structure_command::TrackPlaybackDto::Audio { slot: dto_slot, .. },
+        ) = (&domain_track.playback, &dto_track.playback)
+        else {
+            panic!("track 0 must stay an audio track");
+        };
+        match (domain_slot, dto_slot) {
             (
                 ot_domain::project_structure::TrackSlotReference::Slot(slot),
                 crate::project_structure_command::TrackSlotReferenceDto::Slot { slot_kind, number },
@@ -11280,9 +11292,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            dto.banks[0].parts[0].tracks[0].slot,
-            crate::project_structure_command::TrackSlotReferenceDto::RecorderBuffer {
-                buffer_number: 1
+            dto.banks[0].parts[0].tracks[0].playback,
+            crate::project_structure_command::TrackPlaybackDto::Audio {
+                machine: crate::project_structure_command::MachineKindDto::Flex,
+                slot: crate::project_structure_command::TrackSlotReferenceDto::RecorderBuffer {
+                    buffer_number: 1
+                },
             }
         );
     }
@@ -11325,7 +11340,7 @@ mod tests {
             &project,
         )
         .unwrap();
-        assert_eq!(dto.schema, "masterocta.project-structure:v2");
+        assert_eq!(dto.schema, "masterocta.project-structure:v3");
         assert!(dto.project_state.is_some());
         let state = dto.project_state.as_ref().unwrap();
         assert_eq!(state.parse_status, "malformed");
