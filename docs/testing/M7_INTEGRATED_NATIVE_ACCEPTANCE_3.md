@@ -8,6 +8,10 @@
 Canonical execution record for product **`04725cb3a1942716e11f1b90a6387733f9302da4`** (PR #170 merge).
 Session 2 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)) remains historical; do not backfill its matrix to PASS.
 
+**A12 PASS criteria (normative):** [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 **Stale (A12)** as amended 2026-10-01 (`MO-M7-A12-CANONICAL-CRITERION-AMENDMENT-1`). Layer A (Native) and layer B (Rust test) must be recorded on the **same** reviewed product `main` SHA; mixing this session’s **`04725cb3`** Native work with layer B on a newer `main` does **not** satisfy A12.
+
+**Amendment 1 vs this session:** This document is a **frozen** STOP record @ **`04725cb3`**. The layer B test `slice_export_ipc_rejects_stale_revision_after_draft_advance_without_writes` is **not present** on that SHA (introduced on `main` in **`2af35a8f`**, PR #173). Therefore completing §5 below on the `04725cb3` worktree/isolated HOME cannot produce amendment-1 **A12 PASS**, even if Native layer A is observed. §4 **NOT_RUN** / **STOP** rows here are **not** updated. For **A12 PASS**, open a **new** integrated Native acceptance on a single reviewed `main` SHA ≥ **`2af35a8f`** (record execution SHA, isolated HOME, and both layers in that document — for example a post–#176 current-main session, not a split across baselines).
+
 ## 1. Product baseline
 
 | Item | Value |
@@ -100,7 +104,7 @@ A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: is
 | A09 | Persisted lineage in Inspector Info | **NOT_RUN** | — |
 | A10 | UI identity boundary | **NOT_RUN** | — |
 | A11 | Idempotent retry | **NOT_RUN** | — |
-| A12 | Stale draft fail-closed (no-write) | **NOT_RUN** | — |
+| A12 | Stale draft fail-closed (no-write) per [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 Stale (A12) — Native layer A + Rust layer B on **one** SHA | **NOT_RUN** | Baseline **`04725cb3`** lacks layer B test; cannot PASS A12 on this session — use new acceptance @ ≥ **`2af35a8f`** |
 | A13 | Post-quit `slice_drafts` persistence | **NOT_RUN** | — |
 | A14 | Relaunch + restore after re-register | **NOT_RUN** | — |
 | A15 | Final mono fixture manifest vs PRE | **NOT_RUN** | PRE full-root manifest on file |
@@ -112,12 +116,14 @@ A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: is
 
 ## 5. Operator handoff (next steps)
 
+**Scope:** Historical resume for the **`04725cb3`** session only (non–A12 rows if ever continued on the **same** isolated HOME and worktree). **Do not** use this §5 to close amendment-1 **A12**; see the amendment-1 note above (single SHA ≥ **`2af35a8f`**, new acceptance record).
+
 Use the **same** isolated HOME and execution worktree. If the Native window is not open, re-run the launch command in §3.
 
 1. **A02:** 「ワークスペースを開く」→ register **mono** `fixtureRoot` (read-only) → SET → オーディオプール → `RANGE.wav`. Confirm Inspector, Preview, Home / RootRegistry (#166).
 2. **A03–A05:** Slice workspace on `RANGE.wav` per matrix; record export marker interval and opaque child asset id for A06.
 3. **Agent checkpoint:** notify when A05 export succeeds → agent collects A06–A08 filesystem evidence.
-4. **A09–A12:** lineage UI, retry, stale export; agent verifies inventory/lineage counts for A11–A12.
+4. **A09–A12:** lineage UI, retry, **A12 stale (Native layer A):** open export review, advance draft revision via supported edit, confirm review is discarded and no stale confirm/IPC is sent; agent verifies inventory/lineage counts for A11–A12. *(Historical handoff text “stale export” meant sending a stale request; superseded by amendment 1 — observe UI invalidation, not a deliberate stale send.)*
 5. **A13–A14:** quit fully; agent reads `slice_drafts` read-only; relaunch same isolated HOME; re-register mono root, rescan, reselect `RANGE.wav`.
 6. **A15:** agent POST mono full-root manifest vs PRE.
 7. **B02–B03:** register **stereo** `fixtureRoot` (separate root); select `SET/AUDIO/STEREO_RANGE.wav`; zoom/pan/range; agent POST stereo manifest.
