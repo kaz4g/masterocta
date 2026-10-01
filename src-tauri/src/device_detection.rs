@@ -148,7 +148,10 @@ fn project_file_flags(path: &Path) -> (bool, bool, bool) {
 }
 
 /// Checks if a directory is an Octatrack Project.
-fn is_octatrack_project(path: &Path) -> bool {
+///
+/// A real directory containing `project.work`, `project.strd`, or a
+/// `bankNN.work` / `bankNN.strd` file. Symlinks do not count.
+pub(crate) fn is_octatrack_project(path: &Path) -> bool {
     if !is_real_directory(path) {
         return false;
     }

@@ -11136,6 +11136,10 @@ mod tests {
         .unwrap();
         assert_eq!(structure_tree_digest(&canonical), before);
 
+        assert_eq!(
+            dto.schema,
+            crate::project_structure_command::PROJECT_STRUCTURE_SCHEMA
+        );
         assert_eq!(dto.project_relative_path, "SET/PROJECT");
         assert_eq!(dto.banks.len(), 2);
         assert_eq!(dto.banks[0].role, "working");
@@ -11152,7 +11156,9 @@ mod tests {
         assert_eq!(dto.banks[0].parts.len(), 4);
         assert_eq!(dto.banks[0].parts[0].tracks.len(), 8);
 
-        let json = serde_json::to_string(&dto).unwrap();
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["schema"], "masterocta.project-structure:v1");
+        let json = json.to_string();
         assert!(!json.contains(canonical.to_str().unwrap()));
         assert!(!json.contains("contentHash"));
         assert!(!json.contains("fileInstance"));
@@ -11257,6 +11263,86 @@ mod tests {
                 buffer_number: 1
             }
         );
+    }
+
+    #[test]
+    fn missing_project_path_is_not_a_removed_root() {
+        let (_root, registry, root_id) = registered_structure_root();
+        let project = parse_project_relative_path("SET/MISSING".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "INVALID_PROJECT_PATH");
+        assert!(error.recoverable());
+    }
+
+    #[test]
+    fn non_project_directory_is_rejected() {
+        let (_root, registry, root_id) = registered_structure_root();
+        let project = parse_project_relative_path("SET/AUDIO".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "INVALID_PROJECT_PATH");
+        assert!(error.recoverable());
+    }
+
+    #[test]
+    fn project_marker_without_banks_returns_an_empty_structure() {
+        let root = TempDir::new().unwrap();
+        fs::create_dir_all(root.path().join("SET/ONLY")).unwrap();
+        fs::write(root.path().join("SET/ONLY/project.work"), b"marker").unwrap();
+        let registry = registry();
+        let session = registry.register(root.path().to_str().unwrap()).unwrap();
+        let project = parse_project_relative_path("SET/ONLY".to_owned()).unwrap();
+        let dto = crate::project_structure_command::read_project_structure_dto(
+            &registry,
+            &session.root_id,
+            &project,
+        )
+        .unwrap();
+        assert_eq!(dto.schema, "masterocta.project-structure:v1");
+        assert_eq!(dto.project_relative_path, "SET/ONLY");
+        assert!(dto.banks.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_bank_is_unavailable_through_the_command() {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, registry, root_id) = registered_structure_root();
+        let bank = root.path().join("SET/PROJECT/bank02.work");
+        fs::copy(root.path().join("SET/PROJECT/bank01.work"), &bank).unwrap();
+        let mut permissions = fs::metadata(&bank).unwrap().permissions();
+        permissions.set_mode(0o0);
+        fs::set_permissions(&bank, permissions.clone()).unwrap();
+        let project = parse_project_relative_path("SET/PROJECT".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "PROJECT_STRUCTURE_UNAVAILABLE");
+        assert!(error.recoverable());
+        permissions.set_mode(0o644);
+        fs::set_permissions(&bank, permissions).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_project_directory_stays_a_symlink_escape() {
+        let (root, registry, root_id) = registered_structure_root();
+        let outside = TempDir::new().unwrap();
+        fs::create_dir(outside.path().join("PROJECT")).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("PROJECT"), root.path().join("SET/LINK"))
+            .unwrap();
+        let project = parse_project_relative_path("SET/LINK".to_owned()).unwrap();
+        let error = crate::project_structure_command::read_project_structure_dto(
+            &registry, &root_id, &project,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "SYMLINK_ESCAPE");
     }
 
     #[test]

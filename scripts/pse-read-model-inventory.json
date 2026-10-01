@@ -36,6 +36,8 @@
         "repeated_reads_return_equal_structure",
         "project_path_escaping_the_root_is_rejected",
         "missing_project_rejection_leaves_fixture_bytes_unchanged",
+        "unreadable_bank_file_is_a_storage_error",
+        "directory_named_as_bank_file_is_absent",
         "symlinked_bank_is_treated_as_absent",
         "machine_slot_raw_values_map_without_guessing"
       ]

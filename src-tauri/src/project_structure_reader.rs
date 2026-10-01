@@ -1,17 +1,18 @@
 //! Read-only Project structure adapter (`MO-PSE-READ-MODEL-1`).
 //!
 //! Reads `bankNN.work` and `bankNN.strd` as independent documents inside an
-//! already-registered canonical root. Symlinked or non-regular Bank files are
-//! treated as absent, matching the catalog state inventory. This module exposes
+//! already-registered canonical root. Each Bank file is opened once with a
+//! non-following descriptor, and that descriptor is checked against the
+//! registered root before its bytes are decoded. Symlinked or non-regular
+//! Bank files are absent. Filesystem I/O failures propagate; decode failures
+//! stay malformed and expose no Pattern or Part values. This module exposes
 //! no write path.
 
-// Wired to a v2 command in a later unit; exercised by tests until then.
+// Wired to `v2_project_structure_read`; exercised by tests until then.
 #![cfg_attr(not(test), allow(dead_code))]
 
 use crate::bank_validation::{bank_machine_slot_to_usage_index, bank_parse_status};
-use crate::legacy_read_adapter::{
-    is_regular_source_file, join_relative, resolve_relative_for_read,
-};
+use crate::legacy_read_adapter::{join_relative, resolve_relative_for_read};
 use ot_domain::project_structure::{
     state_role_rank, BankIndex, BankStructure, MachineKind, PartIndex, PartStructure, PatternIndex,
     PatternStructure, ProjectStructure, TrackIndex, TrackSlotReference, TrackStructure,
@@ -23,7 +24,9 @@ use ot_domain::{
 };
 use ot_storage_ports::StorageError;
 use ot_tools_io::{BankFile, OctatrackFileIO};
-use std::path::Path;
+use std::fs::File;
+use std::io::{ErrorKind, Read};
+use std::path::{Path, PathBuf};
 
 const BANK_UNASSIGNED_SLOT: u8 = 255;
 
@@ -32,6 +35,16 @@ pub(crate) fn read_project_structure(
     project_relative_path: &RootRelativePath,
 ) -> Result<ProjectStructure, StorageError> {
     let project_directory = resolve_relative_for_read(canonical_root, project_relative_path)?;
+    read_banks_in_directory(canonical_root, &project_directory, project_relative_path)
+}
+
+#[cfg(unix)]
+fn read_banks_in_directory(
+    canonical_root: &Path,
+    project_directory: &Path,
+    project_relative_path: &RootRelativePath,
+) -> Result<ProjectStructure, StorageError> {
+    let project_dir = open_contained_directory(canonical_root, project_directory)?;
     let mut banks = Vec::new();
     for bank in BankIndex::all() {
         for (role, extension) in [
@@ -39,17 +52,12 @@ pub(crate) fn read_project_structure(
             (StateDocumentRole::SavedCheckpoint, "strd"),
         ] {
             let file_name = format!("bank{:02}.{extension}", bank.file_number());
-            let bank_file = project_directory.join(&file_name);
-            if !is_regular_source_file(canonical_root, &bank_file)? {
+            let Some(bytes) = read_contained_bank_bytes(canonical_root, &project_dir, &file_name)?
+            else {
                 continue;
-            }
+            };
             let source_relative_path = join_relative(project_relative_path, &file_name)?;
-            banks.push(read_bank_document(
-                bank,
-                role,
-                source_relative_path,
-                &bank_file,
-            ));
+            banks.push(read_bank_document(bank, role, source_relative_path, &bytes));
         }
     }
     banks.sort_by_key(|entry| (entry.bank, state_role_rank(entry.role)));
@@ -59,11 +67,23 @@ pub(crate) fn read_project_structure(
     })
 }
 
+#[cfg(not(unix))]
+fn read_banks_in_directory(
+    canonical_root: &Path,
+    project_directory: &Path,
+    project_relative_path: &RootRelativePath,
+) -> Result<ProjectStructure, StorageError> {
+    let _ = (canonical_root, project_directory, project_relative_path);
+    Err(StorageError::new(
+        "LIBRARY_SCAN_FAILED: contained bank reads require a non-following descriptor",
+    ))
+}
+
 fn read_bank_document(
     bank: BankIndex,
     role: StateDocumentRole,
     source_relative_path: RootRelativePath,
-    bank_file: &Path,
+    bytes: &[u8],
 ) -> BankStructure {
     let mut structure = BankStructure {
         bank,
@@ -74,7 +94,9 @@ fn read_bank_document(
         parts: Vec::new(),
         unmodeled: BANK_UNMODELED_DEPENDENCIES.to_vec(),
     };
-    let Ok(decoded) = BankFile::from_data_file(bank_file) else {
+    // Bytes were already read from a contained descriptor. A decode failure is
+    // format damage, not a filesystem error.
+    let Ok(decoded) = BankFile::from_bytes(bytes) else {
         return structure;
     };
     structure.parse_status = bank_parse_status(&decoded);
@@ -154,6 +176,158 @@ fn machine_slot_reference(kind: SampleSlotKind, raw: u8) -> TrackSlotReference {
         }
     }
     TrackSlotReference::Unrecognized(raw)
+}
+
+#[cfg(unix)]
+fn open_contained_directory(canonical_root: &Path, directory: &Path) -> Result<File, StorageError> {
+    let file = open_nofollow_read(directory).map_err(map_directory_open_error)?;
+    let metadata = file.metadata().map_err(io_unavailable)?;
+    if !metadata.is_dir() {
+        return Err(StorageError::new(
+            "ROOT_REMOVED: project path is not a directory",
+        ));
+    }
+    ensure_descriptor_inside_root(canonical_root, &file)?;
+    Ok(file)
+}
+
+#[cfg(unix)]
+fn read_contained_bank_bytes(
+    canonical_root: &Path,
+    project_dir: &File,
+    file_name: &str,
+) -> Result<Option<Vec<u8>>, StorageError> {
+    let Some(mut file) = open_bank_nofollow(project_dir, file_name)? else {
+        return Ok(None);
+    };
+    let metadata = file.metadata().map_err(io_unavailable)?;
+    if !metadata.file_type().is_file() {
+        return Ok(None);
+    }
+    ensure_descriptor_inside_root(canonical_root, &file)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).map_err(io_unavailable)?;
+    Ok(Some(bytes))
+}
+
+#[cfg(unix)]
+fn open_nofollow_read(path: &Path) -> Result<File, std::io::Error> {
+    use std::os::unix::fs::OpenOptionsExt;
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)
+}
+
+#[cfg(unix)]
+fn open_bank_nofollow(project_dir: &File, file_name: &str) -> Result<Option<File>, StorageError> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    let name = std::ffi::CString::new(file_name).map_err(|_| {
+        StorageError::new("PATH_ESCAPE: bank file name is not a single path component")
+    })?;
+    // SAFETY: `project_dir` owns an open directory descriptor. `name` is a
+    // NUL-terminated single component. A non-negative result is a new fd
+    // transferred to `File` below.
+    let fd = unsafe {
+        libc::openat(
+            project_dir.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        let error = std::io::Error::last_os_error();
+        if error.kind() == ErrorKind::NotFound || is_symlink_open_error(&error) {
+            return Ok(None);
+        }
+        return Err(io_unavailable(error));
+    }
+    // SAFETY: `fd` was just created by `openat` and is not owned elsewhere.
+    Ok(Some(unsafe { File::from_raw_fd(fd) }))
+}
+
+#[cfg(unix)]
+fn ensure_descriptor_inside_root(canonical_root: &Path, file: &File) -> Result<(), StorageError> {
+    let opened = opened_file_path(file).map_err(io_unavailable)?;
+    if opened.starts_with(canonical_root) {
+        Ok(())
+    } else {
+        Err(StorageError::new(
+            "PATH_ESCAPE: opened descriptor left its registered root",
+        ))
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn opened_file_path(file: &File) -> Result<PathBuf, std::io::Error> {
+    use std::os::fd::AsRawFd;
+    let link = format!("/proc/self/fd/{}", file.as_raw_fd());
+    let path = std::fs::read_link(link)?;
+    Ok(strip_proc_deleted(path))
+}
+
+#[cfg(target_os = "macos")]
+fn opened_file_path(file: &File) -> Result<PathBuf, std::io::Error> {
+    use std::ffi::CStr;
+    use std::os::fd::AsRawFd;
+    let mut buf = vec![0u8; libc::PATH_MAX as usize];
+    // SAFETY: `file` is an open descriptor and `buf` is at least PATH_MAX bytes,
+    // which is what F_GETPATH writes a NUL-terminated path into.
+    let rc = unsafe {
+        libc::fcntl(
+            file.as_raw_fd(),
+            libc::F_GETPATH,
+            buf.as_mut_ptr().cast::<libc::c_char>(),
+        )
+    };
+    if rc == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let bytes = buf.split(|byte| *byte == 0).next().unwrap_or(&[]);
+    let text = std::str::from_utf8(bytes)
+        .map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))?;
+    Ok(PathBuf::from(text))
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn opened_file_path(file: &File) -> Result<PathBuf, std::io::Error> {
+    let _ = file;
+    Err(std::io::Error::new(
+        ErrorKind::Unsupported,
+        "opened descriptor path is unavailable",
+    ))
+}
+
+#[cfg(target_os = "linux")]
+fn strip_proc_deleted(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    match text.strip_suffix(" (deleted)") {
+        Some(stripped) => PathBuf::from(stripped),
+        None => path,
+    }
+}
+
+#[cfg(unix)]
+fn map_directory_open_error(error: std::io::Error) -> StorageError {
+    if error.kind() == ErrorKind::NotFound {
+        StorageError::new(format!("ROOT_REMOVED: {error}"))
+    } else if is_symlink_open_error(&error) {
+        StorageError::new("SYMLINK_ESCAPE: symlinks are not valid read targets")
+    } else {
+        io_unavailable(error)
+    }
+}
+
+#[cfg(unix)]
+fn is_symlink_open_error(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(libc::ELOOP)
+}
+
+#[cfg(unix)]
+fn io_unavailable(error: std::io::Error) -> StorageError {
+    StorageError::new(format!("LIBRARY_SCAN_FAILED: {error}"))
 }
 
 #[cfg(test)]
@@ -495,6 +669,49 @@ mod tests {
         let missing = RootRelativePath::parse("SET/MISSING").unwrap();
         assert!(read_project_structure(&root, &missing).is_err());
         assert_eq!(tree_digest(&root), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_bank_file_is_a_storage_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let bank = root.join(PROJECT).join("bank02.work");
+        fs::copy(root.join(PROJECT).join("bank01.work"), &bank).unwrap();
+        let before = tree_digest(&root);
+        let mut permissions = fs::metadata(&bank).unwrap().permissions();
+        permissions.set_mode(0o0);
+        fs::set_permissions(&bank, permissions.clone()).unwrap();
+        assert!(
+            fs::File::open(&bank).is_err(),
+            "mode 000 must deny this user from reading the bank"
+        );
+        let error = read_project_structure(&root, &project_path()).unwrap_err();
+        assert!(
+            error.message().starts_with("LIBRARY_SCAN_FAILED"),
+            "{}",
+            error.message()
+        );
+        permissions.set_mode(0o644);
+        fs::set_permissions(&bank, permissions).unwrap();
+        assert_eq!(tree_digest(&root), before);
+    }
+
+    #[test]
+    fn directory_named_as_bank_file_is_absent() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        fs::create_dir(root.join(PROJECT).join("bank02.work")).unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert!(structure
+            .bank(BankIndex::new(1).unwrap(), StateDocumentRole::Working)
+            .is_none());
+        assert_eq!(
+            structure
+                .bank(bank_a(), StateDocumentRole::Working)
+                .unwrap()
+                .parse_status,
+            StateDocumentParseStatus::Parsed
+        );
     }
 
     #[cfg(unix)]
