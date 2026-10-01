@@ -7,6 +7,7 @@ import type {
 import { audioApi, metadataApi } from "../../api";
 import { useTranslate } from "../../i18n";
 import { InspectorTabbedAssetPanel } from "../inspector";
+import { ProjectStructureViewer } from "../project-structure/ProjectStructureViewer";
 import { ProjectWorkspace } from "../project-workspace";
 import { useLibraryGeometrySelection } from "../waveform/libraryGeometrySelection";
 import { AudioLibrary } from "./AudioLibrary";
@@ -170,6 +171,7 @@ export function CatalogLibraryBrowser({
         project={browse.selectedLocation.project}
         localSampleCount={browse.locationFiles.length}
       >
+        <ProjectStructureViewer rootId={rootId} projectRelativePath={browse.selectedLocation.project.relativePath} usageEdges={snapshot.usageEdges} />
         {detail}
       </ProjectWorkspace>
     );

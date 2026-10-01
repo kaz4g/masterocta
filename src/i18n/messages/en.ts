@@ -1,5 +1,25 @@
 /** English UI catalog. Keys must stay in sync with `ja.ts`. */
 export const enMessages = {
+  'pse.unassigned': 'Unassigned',
+  'pse.noSampleMachine': 'No sample machine',
+  'pse.title': 'Project Structure',
+  'pse.readOnly': 'Read only',
+  'pse.reload': 'Reload structure',
+  'pse.deferred': 'Scene: not read · Arranger: out of scope',
+  'pse.error': 'Structure could not be read. Reconnect the root or retry.',
+  'pse.loading': 'Reading structure…',
+  'pse.unread': 'Unread / unknown',
+  'pse.projectState': 'Project state',
+  'pse.noBanks': 'No Bank documents found.',
+  'pse.working': 'Working',
+  'pse.saved': 'SavedCheckpoint',
+  'pse.unavailable': 'Structure withheld: unavailable or unparsed document.',
+  'pse.noPatterns': 'No Patterns found.',
+  'pse.machine': 'Machine',
+  'pse.scale': 'Length / scale',
+  'pse.references': 'Catalog reference evidence (snapshot)',
+  'pse.noCatalogEvidence': 'Not available in catalog snapshot',
+
   'app.workspaceAria': 'Masta-Octa workspace',
 
   'home.workspaceSectionTitle': 'Open workspace',

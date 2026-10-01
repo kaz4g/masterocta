@@ -193,6 +193,9 @@ jobs:
       - name: TypeScript type check
         run: pnpm run typecheck
 
+      - name: Verify Project Structure Viewer contracts
+        run: pnpm exec vitest run src/api/projectStructure.test.ts src/features/project-structure/ProjectStructureViewer.test.tsx
+
       - name: Run frontend unit tests
         run: pnpm run test:frontend
 

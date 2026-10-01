@@ -1,3 +1,5 @@
+import type { SampleUsageEdge } from "../../api";
+import { ProjectStructureViewer } from "../project-structure/ProjectStructureViewer";
 import type { ReactNode } from "react";
 import { useTranslate } from "../../i18n";
 import {
@@ -39,12 +41,16 @@ export function CatalogWorkspaceNav({ footer }: { footer?: ReactNode }) {
 }
 
 export interface CatalogWorkspaceMainProps {
+  rootId?: string;
+  usageEdges?: SampleUsageEdge[];
   totalFiles: number;
   catalogRefreshing?: boolean;
   catalogError?: string | null;
 }
 
 export function CatalogWorkspaceMain({
+  rootId,
+  usageEdges,
   totalFiles,
   catalogRefreshing = false,
   catalogError = null,
@@ -81,6 +87,7 @@ export function CatalogWorkspaceMain({
         project={browse.selectedLocation.project}
         localSampleCount={browse.locationFiles.length}
       >
+        {rootId && <ProjectStructureViewer rootId={rootId} projectRelativePath={browse.selectedLocation.project.relativePath} usageEdges={usageEdges} />}
         {detail}
       </ProjectWorkspace>
     );

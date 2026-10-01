@@ -2,6 +2,26 @@ import type { MessageKey } from './en'
 
 /** Japanese UI catalog. Keys must match `en.ts` exactly. */
 export const jaMessages: Record<MessageKey, string> = {
+  'pse.unassigned': '未割当',
+  'pse.noSampleMachine': 'サンプルを使わないマシン',
+  'pse.title': 'プロジェクト構造',
+  'pse.readOnly': '読み取り専用',
+  'pse.reload': '構造を再読取',
+  'pse.deferred': 'Scene：未読取 · Arranger：対象外',
+  'pse.error': '構造を読み取れない。ルートを再接続するか、再読取してね。',
+  'pse.loading': '構造を読取中…',
+  'pse.unread': '未読取・不明',
+  'pse.projectState': 'プロジェクト状態',
+  'pse.noBanks': 'Bankファイルが見つからない。',
+  'pse.working': '作業状態',
+  'pse.saved': '保存チェックポイント',
+  'pse.unavailable': '未解析・利用不可のため構造を表示できない。',
+  'pse.noPatterns': 'Patternが見つからない。',
+  'pse.machine': 'マシン',
+  'pse.scale': '長さ・スケール',
+  'pse.references': 'カタログ参照証拠（スナップショット）',
+  'pse.noCatalogEvidence': 'カタログの証拠なし',
+
   'app.workspaceAria': 'Masta-Octa ワークスペース',
 
   'home.workspaceSectionTitle': 'ワークスペースを開く',
