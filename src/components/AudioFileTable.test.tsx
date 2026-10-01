@@ -192,7 +192,10 @@ describe('AudioFileTable', () => {
       ],
     }
     renderTable({ poolRoot: '/AUDIO', usageMap })
-    const badge = screen.getByText('· 1')
+    // Title is unique to the assigned badge. getByText('· 1') can resolve the
+    // wrapping <td> instead, and a click that misses the button never opens
+    // the popover (observed as a CI flake).
+    const badge = screen.getByTitle(/Loaded into 1 slot/)
     await userEvent.click(badge)
     expect(await screen.findByText('PROJ1 · Slot F5')).toBeInTheDocument()
   })
