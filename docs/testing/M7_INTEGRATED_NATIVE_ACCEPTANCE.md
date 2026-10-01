@@ -13,6 +13,11 @@ Canonical criteria: [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §6,
 §13, §15.A and §18; status vocabulary:
 [`DEVELOPMENT_STATUS.md`](../planning/DEVELOPMENT_STATUS.md).
 
+**Historical matrix:** This document records session 1 reconciliation @ `b2c7765`.
+Current **A12 PASS** rules live in exit audit §15.A.1 **Stale (A12)** (amendment 1,
+2026-10-01). Do not rewrite §4 **NOT_RUN** cells here; use the exit audit for new
+acceptance work.
+
 ## 1. Current start gate (not an execution claim)
 
 | Item | Verified repository state / required operator record |
@@ -188,16 +193,20 @@ outside the fixture root. Never delete an unverified directory for cleanup.
 The existing stereo Exit status **PARTIAL** is a baseline audit finding, not a
 Native observation performed in this reconciliation session.
 
-Stale test: use a supported real UI path or existing Native IPC against this
-isolated fixture; never write SQLite directly or add test-only product hooks.
-There must be a demonstrated revision advance. A modal preventing edits alone
-does not prove stale rejection. If no supported reproduction is available,
-record **NOT_RUN/BLOCKED** and the precise missing path instead of PASS.
+Stale test (session 1 handoff prose — **historical**): use a supported real UI path
+or existing Native IPC against this isolated fixture; never write SQLite directly
+or add test-only product hooks. There must be a demonstrated revision advance. A
+modal preventing edits alone does not prove stale rejection. If no supported
+reproduction is available, record **NOT_RUN/BLOCKED** and the precise missing path
+instead of PASS.
 
 The stale test intentionally changes the draft. Capture the **latest** expected
 draft state before quit; compare A13/A14 against that state, not the earlier
-export review revision. If the UI blocks stale confirm after a real revision
-advance, a STALE_DRAFT error is not additionally required; no-write evidence is.
+export review revision. The sentence “If the UI blocks stale confirm after a real
+revision advance, a STALE_DRAFT error is not additionally required” applied to
+pre-amendment-1 criteria only. **Current A12** requires composite evidence in
+[`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 (Native invalidation +
+Rust boundary test on reviewed `main`).
 
 Post-quit SQL: confirm the app process exited; require the catalog already to
 exist, then open it **read-only**. Inspect `.schema slice_drafts` and

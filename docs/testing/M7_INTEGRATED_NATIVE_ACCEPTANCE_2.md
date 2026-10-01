@@ -9,6 +9,10 @@
 
 Supersedes operator intent planning in [`M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE.md) only after an operator records PASS rows here. That document remains **NOT_RUN**; do not rewrite its matrix to PASS.
 
+**A12 criteria:** Session 2 §3 matrix text is historical. Current **A12 PASS** rules:
+[`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 **Stale (A12)** (amendment 1,
+2026-10-01). **NOT_RUN** rows in this file are not updated by that amendment.
+
 ## 1. Product baseline
 
 | Item | Value |

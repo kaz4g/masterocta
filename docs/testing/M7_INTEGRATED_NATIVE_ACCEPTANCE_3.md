@@ -8,6 +8,8 @@
 Canonical execution record for product **`04725cb3a1942716e11f1b90a6387733f9302da4`** (PR #170 merge).
 Session 2 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](./M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md)) remains historical; do not backfill its matrix to PASS.
 
+**A12 PASS criteria (normative):** [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 **Stale (A12)** as amended 2026-10-01 (`MO-M7-A12-CANONICAL-CRITERION-AMENDMENT-1`). This session’s matrix rows and **NOT_RUN** results are unchanged; the §4 A12 “Required observation” cell below references that norm. Current product `main` for new layer-B runs: **`ad4953c7f2c6d559e24f0b28e2037606691df1e6`** (newer than this session’s execution SHA).
+
 ## 1. Product baseline
 
 | Item | Value |
@@ -100,7 +102,7 @@ A01 observation PID **46845** (child `HOME` = isolated HOME above). Evidence: is
 | A09 | Persisted lineage in Inspector Info | **NOT_RUN** | — |
 | A10 | UI identity boundary | **NOT_RUN** | — |
 | A11 | Idempotent retry | **NOT_RUN** | — |
-| A12 | Stale draft fail-closed (no-write) | **NOT_RUN** | — |
+| A12 | Stale draft fail-closed (no-write) per [`M7_EXIT_AUDIT.md`](../planning/M7_EXIT_AUDIT.md) §15.A.1 Stale (A12) — Native layer A + Rust layer B | **NOT_RUN** | No Native layer A on this session SHA; see amendment 1 note in exit audit |
 | A13 | Post-quit `slice_drafts` persistence | **NOT_RUN** | — |
 | A14 | Relaunch + restore after re-register | **NOT_RUN** | — |
 | A15 | Final mono fixture manifest vs PRE | **NOT_RUN** | PRE full-root manifest on file |
@@ -117,7 +119,7 @@ Use the **same** isolated HOME and execution worktree. If the Native window is n
 1. **A02:** 「ワークスペースを開く」→ register **mono** `fixtureRoot` (read-only) → SET → オーディオプール → `RANGE.wav`. Confirm Inspector, Preview, Home / RootRegistry (#166).
 2. **A03–A05:** Slice workspace on `RANGE.wav` per matrix; record export marker interval and opaque child asset id for A06.
 3. **Agent checkpoint:** notify when A05 export succeeds → agent collects A06–A08 filesystem evidence.
-4. **A09–A12:** lineage UI, retry, stale export; agent verifies inventory/lineage counts for A11–A12.
+4. **A09–A12:** lineage UI, retry, **A12 stale (Native layer A):** open export review, advance draft revision via supported edit, confirm review is discarded and no stale confirm/IPC is sent; agent verifies inventory/lineage counts for A11–A12. *(Historical handoff text “stale export” meant sending a stale request; superseded by amendment 1 — observe UI invalidation, not a deliberate stale send.)*
 5. **A13–A14:** quit fully; agent reads `slice_drafts` read-only; relaunch same isolated HOME; re-register mono root, rescan, reselect `RANGE.wav`.
 6. **A15:** agent POST mono full-root manifest vs PRE.
 7. **B02–B03:** register **stereo** `fixtureRoot` (separate root); select `SET/AUDIO/STEREO_RANGE.wav`; zoom/pan/range; agent POST stereo manifest.
