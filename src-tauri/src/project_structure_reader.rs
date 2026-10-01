@@ -14,9 +14,10 @@
 use crate::bank_validation::{bank_machine_slot_to_usage_index, bank_parse_status};
 use crate::legacy_read_adapter::{join_relative, resolve_relative_for_read};
 use ot_domain::project_structure::{
+    project_arrangement_selection, project_bank_selection, project_pattern_selection,
     state_role_rank, BankIndex, BankStructure, MachineKind, PartIndex, PartStructure, PatternIndex,
-    PatternStructure, ProjectStructure, TrackIndex, TrackSlotReference, TrackStructure,
-    BANK_UNMODELED_DEPENDENCIES,
+    PatternStructure, ProjectStateDocument, ProjectStructure, TrackIndex, TrackSlotReference,
+    TrackStructure, BANK_UNMODELED_DEPENDENCIES,
 };
 use ot_domain::{
     RecorderBufferId, RootRelativePath, SampleSlotId, SampleSlotKind, StateDocumentParseStatus,
@@ -45,6 +46,8 @@ fn read_banks_in_directory(
     project_relative_path: &RootRelativePath,
 ) -> Result<ProjectStructure, StorageError> {
     let project_dir = open_contained_directory(canonical_root, project_directory)?;
+    let project_state =
+        read_working_project_state(canonical_root, &project_dir, project_relative_path)?;
     let mut banks = Vec::new();
     for bank in BankIndex::all() {
         for (role, extension) in [
@@ -63,8 +66,54 @@ fn read_banks_in_directory(
     banks.sort_by_key(|entry| (entry.bank, state_role_rank(entry.role)));
     Ok(ProjectStructure {
         project_relative_path: project_relative_path.clone(),
+        project_state,
         banks,
     })
+}
+
+#[cfg(unix)]
+fn read_working_project_state(
+    canonical_root: &Path,
+    project_dir: &File,
+    project_relative_path: &RootRelativePath,
+) -> Result<Option<ProjectStateDocument>, StorageError> {
+    // Working only. `project.strd` is a separate checkpoint and is not a fallback.
+    let Some(bytes) = read_contained_bank_bytes(canonical_root, project_dir, "project.work")?
+    else {
+        return Ok(None);
+    };
+    let source_relative_path = join_relative(project_relative_path, "project.work")?;
+    Ok(Some(project_state_from_bytes(source_relative_path, &bytes)))
+}
+
+#[cfg(unix)]
+fn project_state_from_bytes(
+    source_relative_path: RootRelativePath,
+    bytes: &[u8],
+) -> ProjectStateDocument {
+    let withheld = |parse_status| ProjectStateDocument {
+        role: StateDocumentRole::Working,
+        source_relative_path: source_relative_path.clone(),
+        parse_status,
+        bank: None,
+        pattern: None,
+        arrangement: None,
+    };
+    let Ok(project) = ot_tools_io::ProjectFile::from_bytes(bytes) else {
+        return withheld(StateDocumentParseStatus::Malformed);
+    };
+    match project.check_compatible_os_version() {
+        Ok(true) => ProjectStateDocument {
+            role: StateDocumentRole::Working,
+            source_relative_path,
+            parse_status: StateDocumentParseStatus::Parsed,
+            bank: Some(project_bank_selection(project.states.bank)),
+            pattern: Some(project_pattern_selection(project.states.pattern)),
+            arrangement: Some(project_arrangement_selection(project.states.arrangement)),
+        },
+        Ok(false) => withheld(StateDocumentParseStatus::UnsupportedVersion),
+        Err(_) => withheld(StateDocumentParseStatus::Malformed),
+    }
 }
 
 #[cfg(not(unix))]
@@ -520,6 +569,199 @@ mod tests {
                 )
             );
         }
+    }
+
+    fn assert_working_selection(structure: &ProjectStructure, arrangement_raw: u8) {
+        let state = structure.project_state.as_ref().unwrap();
+        assert_eq!(state.role, StateDocumentRole::Working);
+        assert_eq!(state.parse_status, StateDocumentParseStatus::Parsed);
+        assert_eq!(
+            state.source_relative_path.as_str(),
+            "SET/PROJECT/project.work"
+        );
+        let bank = match state.bank.unwrap() {
+            ot_domain::project_structure::ProjectBankSelection::Selected(index) => index,
+            other => panic!("expected selected bank, got {other:?}"),
+        };
+        let pattern = match state.pattern.unwrap() {
+            ot_domain::project_structure::ProjectPatternSelection::Selected(index) => index,
+            other => panic!("expected selected pattern, got {other:?}"),
+        };
+        assert_eq!(bank, bank_a());
+        assert_eq!(bank.file_number(), 1);
+        assert_eq!(pattern, PatternIndex::new(0).unwrap());
+        assert_eq!(
+            state.arrangement,
+            Some(
+                ot_domain::project_structure::ProjectArrangementSelection::Unmapped(
+                    arrangement_raw
+                )
+            )
+        );
+        let working = structure.bank(bank, StateDocumentRole::Working).unwrap();
+        assert_eq!(working.bank, bank);
+        assert!(working.pattern(pattern).is_some());
+    }
+
+    #[test]
+    fn real_device_project_work_selects_bank_a_and_pattern_zero() {
+        let fixture = fixture_dir("real_device").join("project.work");
+        let tracked_before = fs::read(&fixture).unwrap();
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let before = tree_digest(&root);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert_working_selection(&structure, 0);
+        assert_eq!(tree_digest(&root), before);
+        assert_eq!(fs::read(&fixture).unwrap(), tracked_before);
+    }
+
+    #[test]
+    fn multipart_project_work_selects_the_same_bank_and_pattern_indices() {
+        let (_temp, root) = copied_project("multipart", &["project.work", "bank01.work"]);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert_working_selection(&structure, 0);
+    }
+
+    #[test]
+    fn missing_project_work_does_not_fall_back_to_saved_checkpoint() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let project = root.join(PROJECT);
+        fs::rename(project.join("project.work"), project.join("project.strd")).unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert!(structure.project_state.is_none());
+        assert_eq!(
+            structure
+                .bank(bank_a(), StateDocumentRole::Working)
+                .unwrap()
+                .parse_status,
+            StateDocumentParseStatus::Parsed
+        );
+    }
+
+    #[test]
+    fn malformed_project_work_withholds_selection() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        fs::write(root.join(PROJECT).join("project.work"), b"not a project").unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let state = structure.project_state.as_ref().unwrap();
+        assert_eq!(state.parse_status, StateDocumentParseStatus::Malformed);
+        assert!(state.bank.is_none());
+        assert!(state.pattern.is_none());
+        assert!(state.arrangement.is_none());
+        assert_eq!(
+            structure
+                .bank(bank_a(), StateDocumentRole::Working)
+                .unwrap()
+                .parse_status,
+            StateDocumentParseStatus::Parsed
+        );
+    }
+
+    #[test]
+    fn unsupported_project_os_withholds_selection() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let path = root.join(PROJECT).join("project.work");
+        let mut bytes = fs::read(&path).unwrap();
+        let current = b"OS_VERSION=R0177     1.40B";
+        let start = bytes
+            .windows(current.len())
+            .position(|window| window == current)
+            .unwrap();
+        bytes.splice(
+            start..start + current.len(),
+            b"OS_VERSION=R0177     1.39D".iter().copied(),
+        );
+        fs::write(&path, bytes).unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let state = structure.project_state.as_ref().unwrap();
+        assert_eq!(
+            state.parse_status,
+            StateDocumentParseStatus::UnsupportedVersion
+        );
+        assert!(state.bank.is_none());
+        assert!(state.pattern.is_none());
+        assert!(state.arrangement.is_none());
+    }
+
+    fn replace_states_assignment(root: &Path, key: &str, value: u8) {
+        let path = root.join(PROJECT).join("project.work");
+        let bytes = fs::read(&path).unwrap();
+        let needle = format!("{key}=");
+        let start = bytes
+            .windows(needle.len())
+            .position(|window| window == needle.as_bytes())
+            .unwrap_or_else(|| panic!("missing {key}"));
+        let value_start = start + needle.len();
+        let value_end = bytes[value_start..]
+            .iter()
+            .position(|byte| *byte == b'\r')
+            .unwrap()
+            + value_start;
+        let mut next = bytes[..value_start].to_vec();
+        next.extend(value.to_string().into_bytes());
+        next.extend_from_slice(&bytes[value_end..]);
+        fs::write(&path, next).unwrap();
+    }
+
+    #[test]
+    fn out_of_range_bank_and_pattern_stay_unrecognized() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        replace_states_assignment(&root, "BANK", 16);
+        replace_states_assignment(&root, "PATTERN", 16);
+        replace_states_assignment(&root, "ARRANGEMENT", 8);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let state = structure.project_state.as_ref().unwrap();
+        assert_eq!(state.parse_status, StateDocumentParseStatus::Parsed);
+        assert_eq!(
+            state.bank,
+            Some(ot_domain::project_structure::ProjectBankSelection::Unrecognized(16))
+        );
+        assert_eq!(
+            state.pattern,
+            Some(ot_domain::project_structure::ProjectPatternSelection::Unrecognized(16))
+        );
+        assert_eq!(
+            state.arrangement,
+            Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(8))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_project_work_is_not_followed() {
+        let (temp, root) = copied_project("real_device", &["bank01.work"]);
+        let outside = TempDir::new().unwrap();
+        let target = outside.path().join("project.work");
+        fs::copy(fixture_dir("real_device").join("project.work"), &target).unwrap();
+        std::os::unix::fs::symlink(&target, temp.path().join(PROJECT).join("project.work"))
+            .unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert!(structure.project_state.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_project_work_is_a_storage_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let fixture = fixture_dir("real_device").join("project.work");
+        let tracked_before = fs::read(&fixture).unwrap();
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let project_file = root.join(PROJECT).join("project.work");
+        let before = tree_digest(&root);
+        let mut permissions = fs::metadata(&project_file).unwrap().permissions();
+        permissions.set_mode(0o0);
+        fs::set_permissions(&project_file, permissions.clone()).unwrap();
+        assert!(fs::File::open(&project_file).is_err());
+        let error = read_project_structure(&root, &project_path()).unwrap_err();
+        assert!(
+            error.message().starts_with("LIBRARY_SCAN_FAILED"),
+            "{}",
+            error.message()
+        );
+        permissions.set_mode(0o644);
+        fs::set_permissions(&project_file, permissions).unwrap();
+        assert_eq!(tree_digest(&root), before);
+        assert_eq!(fs::read(&fixture).unwrap(), tracked_before);
     }
 
     #[test]

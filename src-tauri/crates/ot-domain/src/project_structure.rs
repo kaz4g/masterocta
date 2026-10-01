@@ -178,10 +178,74 @@ impl BankStructure {
     }
 }
 
+/// `project.work` `[STATES] BANK` uses the same zero-based index as [`BankIndex`].
+///
+/// Pinned ot-tools-io keeps the ASCII integer as `State.bank`. The legacy
+/// reader names that index with letters `A`..=`P` and opens `bankNN` as
+/// `states.bank + 1`, which is [`BankIndex::file_number`]. A value outside
+/// `0..16` is unrecognized and is not rewritten to Bank A.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectBankSelection {
+    Selected(BankIndex),
+    Unrecognized(u8),
+}
+
+/// `project.work` `[STATES] PATTERN` uses the same zero-based index as
+/// [`PatternIndex`]. The legacy reader indexes `patterns[states.pattern]`.
+/// A value outside `0..16` is unrecognized.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectPatternSelection {
+    Selected(PatternIndex),
+    Unrecognized(u8),
+}
+
+/// `project.work` `[STATES] ARRANGEMENT`, stored raw.
+///
+/// Tracked fixtures only contain `0`. Pinned ot-tools-io calls the field the
+/// current arrangement and does not define a correspondence to `arr01.work`
+/// through `arr08.work`, so this model does not assign a file slot.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectArrangementSelection {
+    Unmapped(u8),
+}
+
+/// Active selection from one project state document. Selections are `None`
+/// unless `parse_status` is `Parsed`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectStateDocument {
+    pub role: StateDocumentRole,
+    pub source_relative_path: RootRelativePath,
+    pub parse_status: StateDocumentParseStatus,
+    pub bank: Option<ProjectBankSelection>,
+    pub pattern: Option<ProjectPatternSelection>,
+    pub arrangement: Option<ProjectArrangementSelection>,
+}
+
+pub fn project_bank_selection(raw: u8) -> ProjectBankSelection {
+    match BankIndex::new(raw) {
+        Ok(index) => ProjectBankSelection::Selected(index),
+        Err(_) => ProjectBankSelection::Unrecognized(raw),
+    }
+}
+
+pub fn project_pattern_selection(raw: u8) -> ProjectPatternSelection {
+    match PatternIndex::new(raw) {
+        Ok(index) => ProjectPatternSelection::Selected(index),
+        Err(_) => ProjectPatternSelection::Unrecognized(raw),
+    }
+}
+
+pub fn project_arrangement_selection(raw: u8) -> ProjectArrangementSelection {
+    ProjectArrangementSelection::Unmapped(raw)
+}
+
 /// Banks are ordered by Bank index, then Working before SavedCheckpoint.
+/// `project_state` is the Working `project.work` selection only. A missing
+/// Working file stays `None` and is not filled from `project.strd`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProjectStructure {
     pub project_relative_path: RootRelativePath,
+    pub project_state: Option<ProjectStateDocument>,
     pub banks: Vec<BankStructure>,
 }
 
@@ -264,6 +328,70 @@ mod tests {
             .collect();
         assert_eq!(users, vec![1, 2]);
         assert_eq!(bank.patterns_using_part(part(1)).count(), 0);
+    }
+
+    #[test]
+    fn project_bank_selection_reuses_bank_index() {
+        let selected = project_bank_selection(0);
+        assert_eq!(
+            selected,
+            ProjectBankSelection::Selected(BankIndex::new(0).unwrap())
+        );
+        let ProjectBankSelection::Selected(index) = selected else {
+            panic!("bank 0 must be a BankIndex");
+        };
+        assert_eq!(index.letter(), 'A');
+        assert_eq!(index.file_number(), 1);
+        assert_eq!(
+            project_bank_selection(15),
+            ProjectBankSelection::Selected(BankIndex::new(15).unwrap())
+        );
+    }
+
+    #[test]
+    fn project_pattern_selection_reuses_pattern_index() {
+        assert_eq!(
+            project_pattern_selection(0),
+            ProjectPatternSelection::Selected(PatternIndex::new(0).unwrap())
+        );
+        assert_eq!(
+            project_pattern_selection(15),
+            ProjectPatternSelection::Selected(PatternIndex::new(15).unwrap())
+        );
+    }
+
+    #[test]
+    fn project_bank_selection_keeps_out_of_range_raw() {
+        assert_eq!(
+            project_bank_selection(16),
+            ProjectBankSelection::Unrecognized(16)
+        );
+        assert_eq!(
+            project_bank_selection(255),
+            ProjectBankSelection::Unrecognized(255)
+        );
+    }
+
+    #[test]
+    fn project_pattern_selection_keeps_out_of_range_raw() {
+        assert_eq!(
+            project_pattern_selection(16),
+            ProjectPatternSelection::Unrecognized(16)
+        );
+        assert_eq!(
+            project_pattern_selection(255),
+            ProjectPatternSelection::Unrecognized(255)
+        );
+    }
+
+    #[test]
+    fn arrangement_raw_stays_unmapped_for_every_stored_value() {
+        for raw in [0_u8, 1, 7, 8, 255] {
+            assert_eq!(
+                project_arrangement_selection(raw),
+                ProjectArrangementSelection::Unmapped(raw)
+            );
+        }
     }
 
     #[test]
