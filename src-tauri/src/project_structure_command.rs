@@ -8,8 +8,9 @@ use crate::device_detection::is_octatrack_project;
 use crate::project_structure_reader::read_project_structure;
 use crate::root_registry::{ResolvedRoot, RootRegistry, RootRegistryError};
 use ot_domain::project_structure::{
-    BankStructure, MachineKind, PartStructure, PatternStructure, ProjectArrangementSelection,
-    ProjectBankSelection, ProjectPatternSelection, ProjectStateDocument, ProjectStructure,
+    BankStructure, MachineKind, PartStructure, PatternMasterLength, PatternPlaybackScale,
+    PatternScale, PatternStructure, ProjectArrangementSelection, ProjectBankSelection,
+    ProjectPatternSelection, ProjectStateDocument, ProjectStructure, TrackPlayback,
     TrackSlotReference, TrackStructure, UnmodeledDependency,
 };
 use ot_domain::{
@@ -18,9 +19,10 @@ use ot_domain::{
 use ot_storage_ports::StorageError;
 use serde::Serialize;
 
-/// Payload discriminator for this DTO. `v2` adds Working `project.work`
-/// `[STATES]` selection. Arranger rows are still absent.
-pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v2";
+/// Payload discriminator for this DTO. `v3` adds Track 8's master role,
+/// pattern scale mode, per-track scale, and finite/infinite master length.
+/// `v2` is not extended in place. Arranger rows are still absent.
+pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v3";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +42,7 @@ pub(crate) struct ProjectStateDto {
     pub(crate) bank: Option<ProjectBankSelectionDto>,
     pub(crate) pattern: Option<ProjectPatternSelectionDto>,
     pub(crate) arrangement: Option<ProjectArrangementSelectionDto>,
+    pub(crate) master_track: Option<bool>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -92,7 +95,65 @@ pub(crate) struct BankStructureDto {
 pub(crate) struct PatternStructureDto {
     pub(crate) index: u8,
     pub(crate) part_index: u8,
-    pub(crate) master_length: u16,
+    pub(crate) scale: PatternScaleDto,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum PatternScaleDto {
+    Normal {
+        master_length: u16,
+        master_scale: PatternPlaybackScaleDto,
+    },
+    PerTrack {
+        master_length: PatternMasterLengthDto,
+        master_scale: PatternPlaybackScaleDto,
+        tracks: Vec<TrackScaleDto>,
+    },
+    Unrecognized {
+        raw: u8,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum PatternMasterLengthDto {
+    Finite { steps: u16 },
+    Infinite,
+    Unrecognized { multiplier: u8, length: u8 },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum PatternPlaybackScaleDto {
+    Times2,
+    Times3Over2,
+    Times1,
+    Times3Over4,
+    Times1Over2,
+    Times1Over4,
+    Times1Over8,
+    Unrecognized { raw: u8 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TrackScaleDto {
+    pub(crate) track: u8,
+    pub(crate) length: u8,
+    pub(crate) scale: PatternPlaybackScaleDto,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -106,8 +167,21 @@ pub(crate) struct PartStructureDto {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TrackStructureDto {
     pub(crate) index: u8,
-    pub(crate) machine: MachineKindDto,
-    pub(crate) slot: TrackSlotReferenceDto,
+    pub(crate) playback: TrackPlaybackDto,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum TrackPlaybackDto {
+    Audio {
+        machine: MachineKindDto,
+        slot: TrackSlotReferenceDto,
+    },
+    Master,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -256,6 +330,7 @@ fn project_state_dto(state: ProjectStateDocument) -> ProjectStateDto {
             .then_some(state.arrangement)
             .flatten()
             .map(arrangement_selection_dto),
+        master_track: parsed.then_some(state.master_track).flatten(),
     }
 }
 
@@ -320,7 +395,59 @@ fn pattern_dto(pattern: PatternStructure) -> PatternStructureDto {
     PatternStructureDto {
         index: pattern.index.get(),
         part_index: pattern.part.get(),
-        master_length: pattern.master_length,
+        scale: scale_dto(&pattern.scale),
+    }
+}
+
+pub(crate) fn scale_dto(scale: &PatternScale) -> PatternScaleDto {
+    match scale {
+        PatternScale::Normal {
+            master_length,
+            master_scale,
+        } => PatternScaleDto::Normal {
+            master_length: *master_length,
+            master_scale: playback_scale_dto(*master_scale),
+        },
+        PatternScale::PerTrack {
+            master_length,
+            master_scale,
+            tracks,
+        } => PatternScaleDto::PerTrack {
+            master_length: master_length_dto(*master_length),
+            master_scale: playback_scale_dto(*master_scale),
+            tracks: tracks
+                .iter()
+                .map(|track| TrackScaleDto {
+                    track: track.track.get(),
+                    length: track.length,
+                    scale: playback_scale_dto(track.scale),
+                })
+                .collect(),
+        },
+        PatternScale::Unrecognized { raw } => PatternScaleDto::Unrecognized { raw: *raw },
+    }
+}
+
+fn master_length_dto(length: PatternMasterLength) -> PatternMasterLengthDto {
+    match length {
+        PatternMasterLength::Finite(steps) => PatternMasterLengthDto::Finite { steps },
+        PatternMasterLength::Infinite => PatternMasterLengthDto::Infinite,
+        PatternMasterLength::Unrecognized { multiplier, length } => {
+            PatternMasterLengthDto::Unrecognized { multiplier, length }
+        }
+    }
+}
+
+fn playback_scale_dto(scale: PatternPlaybackScale) -> PatternPlaybackScaleDto {
+    match scale {
+        PatternPlaybackScale::Times2 => PatternPlaybackScaleDto::Times2,
+        PatternPlaybackScale::Times3Over2 => PatternPlaybackScaleDto::Times3Over2,
+        PatternPlaybackScale::Times1 => PatternPlaybackScaleDto::Times1,
+        PatternPlaybackScale::Times3Over4 => PatternPlaybackScaleDto::Times3Over4,
+        PatternPlaybackScale::Times1Over2 => PatternPlaybackScaleDto::Times1Over2,
+        PatternPlaybackScale::Times1Over4 => PatternPlaybackScaleDto::Times1Over4,
+        PatternPlaybackScale::Times1Over8 => PatternPlaybackScaleDto::Times1Over8,
+        PatternPlaybackScale::Unrecognized(raw) => PatternPlaybackScaleDto::Unrecognized { raw },
     }
 }
 
@@ -332,10 +459,16 @@ fn part_dto(part: PartStructure) -> PartStructureDto {
 }
 
 fn track_dto(track: TrackStructure) -> TrackStructureDto {
+    let playback = match track.playback {
+        TrackPlayback::Audio { machine, slot } => TrackPlaybackDto::Audio {
+            machine: machine_dto(machine),
+            slot: slot_dto(slot),
+        },
+        TrackPlayback::Master => TrackPlaybackDto::Master,
+    };
     TrackStructureDto {
         index: track.index.get(),
-        machine: machine_dto(track.machine),
-        slot: slot_dto(track.slot),
+        playback,
     }
 }
 
@@ -405,7 +538,7 @@ mod tests {
             banks: Vec::new(),
         };
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v2");
+        assert_eq!(json["schema"], "masterocta.project-structure:v3");
         assert_eq!(json["projectRelativePath"], "SET/PROJECT");
         assert!(json["banks"].as_array().unwrap().is_empty());
     }
@@ -427,6 +560,25 @@ mod tests {
         assert_eq!(json["kind"], "recorderBuffer");
         assert_eq!(json["bufferNumber"], 2);
         assert!(json.get("buffer_number").is_none());
+    }
+
+    #[test]
+    fn infinite_master_length_serializes_without_a_step_count() {
+        let finite = PatternMasterLengthDto::Finite { steps: 255 };
+        let infinite = PatternMasterLengthDto::Infinite;
+        let finite_json = serde_json::to_value(&finite).unwrap();
+        let infinite_json = serde_json::to_value(&infinite).unwrap();
+        assert_eq!(finite_json["kind"], "finite");
+        assert_eq!(finite_json["steps"], 255);
+        assert_eq!(infinite_json["kind"], "infinite");
+        assert!(infinite_json.get("steps").is_none());
+        assert_ne!(finite_json, infinite_json);
+
+        let master = TrackPlaybackDto::Master;
+        let json = serde_json::to_value(&master).unwrap();
+        assert_eq!(json["kind"], "master");
+        assert!(json.get("slot").is_none());
+        assert!(json.get("machine").is_none());
 
         let machine = MachineKindDto::Unknown { raw: 9 };
         let json = serde_json::to_value(&machine).unwrap();

@@ -15,10 +15,11 @@ use crate::bank_validation::{bank_machine_slot_to_usage_index, bank_parse_status
 use crate::legacy_read_adapter::{join_relative, resolve_relative_for_read};
 use crate::project_compatibility::{evaluate_project_compatibility, ProjectCompatibility};
 use ot_domain::project_structure::{
-    project_arrangement_selection, project_bank_selection, project_pattern_selection,
-    state_role_rank, BankIndex, BankStructure, MachineKind, PartIndex, PartStructure, PatternIndex,
-    PatternStructure, ProjectStateDocument, ProjectStructure, TrackIndex, TrackSlotReference,
-    TrackStructure, BANK_UNMODELED_DEPENDENCIES,
+    pattern_playback_scale, per_track_master_length, project_arrangement_selection,
+    project_bank_selection, project_pattern_selection, state_role_rank, BankIndex, BankStructure,
+    MachineKind, PartIndex, PartStructure, PatternIndex, PatternScale, PatternStructure,
+    ProjectStateDocument, ProjectStructure, TrackIndex, TrackPlayback, TrackScale,
+    TrackSlotReference, TrackStructure, BANK_UNMODELED_DEPENDENCIES,
 };
 use ot_domain::{
     RecorderBufferId, RootRelativePath, SampleSlotId, SampleSlotKind, StateDocumentParseStatus,
@@ -54,6 +55,8 @@ fn read_banks_in_directory(
     let project_dir = open_contained_directory(canonical_root, project_directory)?;
     let project_state =
         read_working_project_state(canonical_root, &project_dir, project_relative_path)?;
+    let track_eight_is_master =
+        project_state.as_ref().and_then(|state| state.master_track) == Some(true);
     let mut banks = Vec::new();
     for bank in BankIndex::all() {
         for (role, extension) in [
@@ -66,7 +69,13 @@ fn read_banks_in_directory(
                 continue;
             };
             let source_relative_path = join_relative(project_relative_path, &file_name)?;
-            banks.push(read_bank_document(bank, role, source_relative_path, &bytes));
+            banks.push(read_bank_document(
+                bank,
+                role,
+                source_relative_path,
+                &bytes,
+                track_eight_is_master,
+            ));
         }
     }
     banks.sort_by_key(|entry| (entry.bank, state_role_rank(entry.role)));
@@ -103,6 +112,7 @@ fn project_state_from_bytes(
         bank: None,
         pattern: None,
         arrangement: None,
+        master_track: None,
     };
     let Ok(project) = ot_tools_io::ProjectFile::from_bytes(bytes) else {
         return withheld(StateDocumentParseStatus::Malformed);
@@ -117,6 +127,7 @@ fn project_state_from_bytes(
             bank: Some(project_bank_selection(project.states.bank)),
             pattern: Some(project_pattern_selection(project.states.pattern)),
             arrangement: Some(project_arrangement_selection(project.states.arrangement)),
+            master_track: Some(project.settings.control.audio.master_track),
         },
         ProjectCompatibility::UnsupportedVersion => {
             withheld(StateDocumentParseStatus::UnsupportedVersion)
@@ -142,6 +153,7 @@ fn read_bank_document(
     role: StateDocumentRole,
     source_relative_path: RootRelativePath,
     bytes: &[u8],
+    track_eight_is_master: bool,
 ) -> BankStructure {
     let mut structure = BankStructure {
         bank,
@@ -161,7 +173,10 @@ fn read_bank_document(
     if structure.parse_status != StateDocumentParseStatus::Parsed {
         return structure;
     }
-    match (bank_patterns(&decoded), bank_parts(&decoded)) {
+    match (
+        bank_patterns(&decoded),
+        bank_parts(&decoded, track_eight_is_master),
+    ) {
         (Some(patterns), Some(parts)) => {
             structure.patterns = patterns;
             structure.parts = parts;
@@ -178,13 +193,38 @@ fn bank_patterns(bank: &BankFile) -> Option<Vec<PatternStructure>> {
             Some(PatternStructure {
                 index,
                 part: PartIndex::new(pattern.part_assignment).ok()?,
-                master_length: u16::from(pattern.scale.master_len),
+                scale: pattern_scale(pattern),
             })
         })
         .collect()
 }
 
-fn bank_parts(bank: &BankFile) -> Option<Vec<PartStructure>> {
+fn pattern_scale(pattern: &ot_tools_io::patterns::Pattern) -> PatternScale {
+    match pattern.scale.scale_mode {
+        0 => PatternScale::Normal {
+            master_length: u16::from(pattern.scale.master_len),
+            master_scale: pattern_playback_scale(pattern.scale.master_scale),
+        },
+        1 => PatternScale::PerTrack {
+            master_length: per_track_master_length(
+                pattern.scale.master_len_per_track_multiplier,
+                pattern.scale.master_len_per_track,
+            ),
+            master_scale: pattern_playback_scale(pattern.scale.master_scale_per_track),
+            tracks: TrackIndex::all()
+                .zip(pattern.audio_track_trigs.0.iter())
+                .map(|(track, audio)| TrackScale {
+                    track,
+                    length: audio.scale_per_track_mode.per_track_len,
+                    scale: pattern_playback_scale(audio.scale_per_track_mode.per_track_scale),
+                })
+                .collect(),
+        },
+        raw => PatternScale::Unrecognized { raw },
+    }
+}
+
+fn bank_parts(bank: &BankFile, track_eight_is_master: bool) -> Option<Vec<PartStructure>> {
     PartIndex::all()
         .map(|index| {
             let part = bank.parts.unsaved.0.get(usize::from(index.get()))?;
@@ -194,19 +234,23 @@ fn bank_parts(bank: &BankFile) -> Option<Vec<PartStructure>> {
                     let machine =
                         MachineKind::from_raw(*part.audio_track_machine_types.get(position)?);
                     let slots = part.audio_track_machine_slots.get(position)?;
-                    let slot = match machine {
-                        MachineKind::Static => {
-                            machine_slot_reference(SampleSlotKind::Static, slots.static_slot_id)
-                        }
-                        MachineKind::Flex => {
-                            machine_slot_reference(SampleSlotKind::Flex, slots.flex_slot_id)
-                        }
-                        _ => TrackSlotReference::NoSampleMachine,
+                    let playback = if track_eight_is_master && track.get() == 7 {
+                        TrackPlayback::Master
+                    } else {
+                        let slot = match machine {
+                            MachineKind::Static => {
+                                machine_slot_reference(SampleSlotKind::Static, slots.static_slot_id)
+                            }
+                            MachineKind::Flex => {
+                                machine_slot_reference(SampleSlotKind::Flex, slots.flex_slot_id)
+                            }
+                            _ => TrackSlotReference::NoSampleMachine,
+                        };
+                        TrackPlayback::Audio { machine, slot }
                     };
                     Some(TrackStructure {
                         index: track,
-                        machine,
-                        slot,
+                        playback,
                     })
                 })
                 .collect::<Option<Vec<_>>>()?;
@@ -612,7 +656,6 @@ mod tests {
                     legacy_pattern.part_assignment,
                     "{fixture}"
                 );
-                assert_eq!(pattern.master_length, legacy_pattern.length, "{fixture}");
             }
         }
     }
@@ -644,9 +687,10 @@ mod tests {
         }
         for part in 0..4u8 {
             let track = &working.part(PartIndex::new(part).unwrap()).unwrap().tracks[2];
-            assert_eq!(track.machine, MachineKind::Static);
+            let (machine, slot) = audio_playback(track);
+            assert_eq!(machine, MachineKind::Static);
             assert_eq!(
-                track.slot,
+                slot,
                 TrackSlotReference::Slot(
                     SampleSlotId::new(SampleSlotKind::Static, 41 + u16::from(part)).unwrap()
                 )
@@ -673,6 +717,7 @@ mod tests {
         assert_eq!(bank, bank_a());
         assert_eq!(bank.file_number(), 1);
         assert_eq!(pattern, PatternIndex::new(0).unwrap());
+        assert_eq!(state.master_track, Some(true));
         assert_eq!(
             state.arrangement,
             Some(
@@ -879,6 +924,7 @@ mod tests {
             state.arrangement,
             Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(0))
         );
+        assert_eq!(state.master_track, Some(true));
         assert_eq!(tree_digest(&root), before);
         assert_eq!(fs::read(&fixture).unwrap(), tracked_before);
     }
@@ -940,6 +986,432 @@ mod tests {
         assert_eq!(fs::read(&fixture).unwrap(), tracked_before);
     }
 
+    fn audio_playback(track: &TrackStructure) -> (MachineKind, TrackSlotReference) {
+        match track.playback {
+            TrackPlayback::Audio { machine, slot } => (machine, slot),
+            TrackPlayback::Master => panic!("track {} is the master track", track.index.get()),
+        }
+    }
+
+    fn set_master_track_text(root: &Path, value: &str) {
+        let path = root.join(PROJECT).join("project.work");
+        let bytes = fs::read(&path).unwrap();
+        let needle = b"MASTER_TRACK=";
+        let start = bytes
+            .windows(needle.len())
+            .position(|window| window == needle)
+            .unwrap();
+        let value_start = start + needle.len();
+        let value_end = bytes[value_start..]
+            .iter()
+            .position(|byte| *byte == b'\r')
+            .unwrap()
+            + value_start;
+        let mut next = bytes[..value_start].to_vec();
+        next.extend(value.as_bytes());
+        next.extend_from_slice(&bytes[value_end..]);
+        fs::write(path, next).unwrap();
+    }
+
+    fn rewrite_working_bank(root: &Path, edit: impl FnOnce(&mut BankFile)) {
+        let path = root.join(PROJECT).join("bank01.work");
+        let mut bank = BankFile::from_bytes(&fs::read(&path).unwrap()).unwrap();
+        edit(&mut bank);
+        fs::write(path, bank.to_bytes().unwrap()).unwrap();
+    }
+
+    fn audio_tracks_before_eight(structure: &ProjectStructure) -> Vec<TrackPlayback> {
+        structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap()
+            .parts
+            .iter()
+            .flat_map(|part| part.tracks.iter().take(7).map(|track| track.playback))
+            .collect()
+    }
+
+    fn assert_track_eight(structure: &ProjectStructure, master: bool) {
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        for part in &working.parts {
+            for track in part.tracks.iter().take(7) {
+                assert!(
+                    matches!(track.playback, TrackPlayback::Audio { .. }),
+                    "track {} changed role",
+                    track.index.get()
+                );
+            }
+            let eighth = &part.tracks[7];
+            assert_eq!(eighth.index.get(), 7);
+            if master {
+                assert_eq!(eighth.playback, TrackPlayback::Master);
+            } else {
+                assert!(matches!(eighth.playback, TrackPlayback::Audio { .. }));
+            }
+        }
+    }
+
+    #[test]
+    fn real_device_track_eight_is_master_without_a_slot() {
+        let project = fixture_dir("real_device").join("project.work");
+        let bank = fixture_dir("real_device").join("bank01.work");
+        let project_before = fs::read(&project).unwrap();
+        let bank_before = fs::read(&bank).unwrap();
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert_eq!(
+            structure.project_state.as_ref().unwrap().master_track,
+            Some(true)
+        );
+        assert_track_eight(&structure, true);
+        assert_eq!(fs::read(&project).unwrap(), project_before);
+        assert_eq!(fs::read(&bank).unwrap(), bank_before);
+    }
+
+    #[test]
+    fn master_track_off_keeps_track_eight_as_audio() {
+        let project = fixture_dir("real_device").join("project.work");
+        let project_before = fs::read(&project).unwrap();
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let enabled = read_project_structure(&root, &project_path()).unwrap();
+        let audio_tracks = audio_tracks_before_eight(&enabled);
+        set_master_track_text(&root, "0");
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert_eq!(
+            structure.project_state.as_ref().unwrap().master_track,
+            Some(false)
+        );
+        assert_track_eight(&structure, false);
+        assert_eq!(audio_tracks_before_eight(&structure), audio_tracks);
+        assert_eq!(fs::read(&project).unwrap(), project_before);
+    }
+
+    #[test]
+    fn master_track_values_other_than_one_stay_audio() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        set_master_track_text(&root, "2");
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert_eq!(
+            structure.project_state.as_ref().unwrap().master_track,
+            Some(false)
+        );
+        assert_track_eight(&structure, false);
+
+        set_master_track_text(&root, "no");
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let state = structure.project_state.as_ref().unwrap();
+        assert_eq!(state.parse_status, StateDocumentParseStatus::Malformed);
+        assert!(state.master_track.is_none());
+        assert!(state.bank.is_none());
+        assert_track_eight(&structure, false);
+    }
+
+    #[test]
+    fn missing_project_work_leaves_track_eight_as_audio() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let project = root.join(PROJECT);
+        fs::rename(project.join("project.work"), project.join("project.strd")).unwrap();
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        assert!(structure.project_state.is_none());
+        assert_track_eight(&structure, false);
+    }
+
+    fn legacy_scale_name(
+        scale: ot_domain::project_structure::PatternPlaybackScale,
+    ) -> &'static str {
+        use ot_domain::project_structure::PatternPlaybackScale;
+        match scale {
+            PatternPlaybackScale::Times2 => "2x",
+            PatternPlaybackScale::Times3Over2 => "3/2x",
+            PatternPlaybackScale::Times1 => "1x",
+            PatternPlaybackScale::Times3Over4 => "3/4x",
+            PatternPlaybackScale::Times1Over2 => "1/2x",
+            PatternPlaybackScale::Times1Over4 => "1/4x",
+            PatternPlaybackScale::Times1Over8 => "1/8x",
+            PatternPlaybackScale::Unrecognized(raw) => panic!("unrecognized scale {raw}"),
+        }
+    }
+
+    #[test]
+    fn tracked_patterns_keep_scale_mode_and_lengths() {
+        for fixture in ["real_device", "multipart"] {
+            let (_temp, root) = copied_project(fixture, &["project.work", "bank01.work"]);
+            let structure = read_project_structure(&root, &project_path()).unwrap();
+            let working = structure
+                .bank(bank_a(), StateDocumentRole::Working)
+                .unwrap();
+            let legacy =
+                crate::project_reader::read_project_banks(root.join(PROJECT).to_str().unwrap())
+                    .unwrap();
+            let mut per_track = 0;
+            for legacy_pattern in &legacy[0].parts[0].patterns {
+                let pattern = working
+                    .pattern(PatternIndex::new(legacy_pattern.id).unwrap())
+                    .unwrap();
+                match &pattern.scale {
+                    PatternScale::Normal {
+                        master_length,
+                        master_scale,
+                    } => {
+                        assert_eq!(legacy_pattern.scale_mode, "Normal", "{fixture}");
+                        assert_eq!(*master_length, legacy_pattern.length, "{fixture}");
+                        assert_eq!(
+                            legacy_scale_name(*master_scale),
+                            legacy_pattern.master_scale,
+                            "{fixture}"
+                        );
+                        assert!(legacy_pattern.per_track_settings.is_none(), "{fixture}");
+                    }
+                    PatternScale::PerTrack {
+                        master_length,
+                        master_scale,
+                        tracks,
+                    } => {
+                        per_track += 1;
+                        assert_eq!(legacy_pattern.scale_mode, "Per Track", "{fixture}");
+                        let settings = legacy_pattern.per_track_settings.as_ref().unwrap();
+                        match master_length {
+                            ot_domain::project_structure::PatternMasterLength::Finite(steps) => {
+                                assert_eq!(settings.master_len, steps.to_string(), "{fixture}");
+                            }
+                            ot_domain::project_structure::PatternMasterLength::Infinite => {
+                                assert_eq!(settings.master_len, "INF", "{fixture}");
+                            }
+                            other => panic!("{fixture} undocumented master length {other:?}"),
+                        }
+                        assert_eq!(
+                            legacy_scale_name(*master_scale),
+                            settings.master_scale,
+                            "{fixture}"
+                        );
+                        assert_eq!(tracks.len(), 8);
+                        for (track, legacy_track) in tracks.iter().zip(legacy_pattern.tracks.iter())
+                        {
+                            assert_eq!(track.track.get(), legacy_track.track_id, "{fixture}");
+                            assert_eq!(Some(track.length), legacy_track.per_track_len, "{fixture}");
+                            assert_eq!(
+                                Some(legacy_scale_name(track.scale).to_owned()),
+                                legacy_track.per_track_scale,
+                                "{fixture}"
+                            );
+                        }
+                    }
+                    PatternScale::Unrecognized { raw } => {
+                        panic!("{fixture} pattern {} scale mode {raw}", pattern.index.get());
+                    }
+                }
+            }
+            if fixture == "real_device" {
+                assert!(per_track > 0, "real_device has a per-track pattern");
+                match &working
+                    .pattern(PatternIndex::new(0).unwrap())
+                    .unwrap()
+                    .scale
+                {
+                    PatternScale::PerTrack { tracks, .. } => {
+                        assert_eq!(tracks[1].length, 12);
+                        assert_eq!(tracks[5].length, 64);
+                    }
+                    other => panic!("real_device pattern 0 is {other:?}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn per_track_scale_round_trip_keeps_each_track() {
+        let bank_fixture = fixture_dir("real_device").join("bank01.work");
+        let bank_before = fs::read(&bank_fixture).unwrap();
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let before = read_project_structure(&root, &project_path()).unwrap();
+        rewrite_working_bank(&root, |bank| {
+            let pattern = &mut bank.patterns.0[0];
+            pattern.scale.scale_mode = 1;
+            pattern.scale.master_len_per_track_multiplier = 1;
+            pattern.scale.master_len_per_track = 4;
+            pattern.scale.master_scale_per_track = 4;
+            for (index, track) in pattern.audio_track_trigs.0.iter_mut().enumerate() {
+                track.scale_per_track_mode.per_track_len = 8 + u8::try_from(index).unwrap();
+                track.scale_per_track_mode.per_track_scale = u8::try_from(index % 7).unwrap();
+            }
+        });
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        match &working
+            .pattern(PatternIndex::new(0).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::PerTrack {
+                master_length,
+                master_scale,
+                tracks,
+            } => {
+                assert_eq!(
+                    *master_length,
+                    ot_domain::project_structure::PatternMasterLength::Finite(260)
+                );
+                assert_eq!(
+                    *master_scale,
+                    ot_domain::project_structure::PatternPlaybackScale::Times1Over2
+                );
+                assert_eq!(tracks.len(), 8);
+                for (index, track) in tracks.iter().enumerate() {
+                    assert_eq!(track.track.get(), u8::try_from(index).unwrap());
+                    assert_eq!(track.length, 8 + u8::try_from(index).unwrap());
+                    assert_eq!(
+                        track.scale,
+                        ot_domain::project_structure::pattern_playback_scale(
+                            u8::try_from(index % 7).unwrap()
+                        )
+                    );
+                }
+            }
+            other => panic!("pattern 0 scale is {other:?}"),
+        }
+        let untouched = before.bank(bank_a(), StateDocumentRole::Working).unwrap();
+        for index in 1..16u8 {
+            let pattern = PatternIndex::new(index).unwrap();
+            assert_eq!(
+                working.pattern(pattern).unwrap().scale,
+                untouched.pattern(pattern).unwrap().scale
+            );
+        }
+        assert_eq!(fs::read(&bank_fixture).unwrap(), bank_before);
+    }
+
+    #[test]
+    fn per_track_inf_master_length_is_not_finite() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        rewrite_working_bank(&root, |bank| {
+            let pattern = &mut bank.patterns.0[0];
+            pattern.scale.scale_mode = 1;
+            pattern.scale.master_len_per_track_multiplier = 255;
+            pattern.scale.master_len_per_track = 255;
+            let sibling = &mut bank.patterns.0[1];
+            sibling.scale.scale_mode = 0;
+            sibling.scale.master_len = 255;
+            sibling.scale.master_scale = 2;
+        });
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        match &working
+            .pattern(PatternIndex::new(0).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::PerTrack { master_length, .. } => {
+                assert_eq!(
+                    *master_length,
+                    ot_domain::project_structure::PatternMasterLength::Infinite
+                );
+            }
+            other => panic!("pattern 0 scale is {other:?}"),
+        }
+        match &working
+            .pattern(PatternIndex::new(1).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::Normal {
+                master_length,
+                master_scale,
+            } => {
+                assert_eq!(*master_length, 255);
+                assert_eq!(
+                    *master_scale,
+                    ot_domain::project_structure::PatternPlaybackScale::Times1
+                );
+            }
+            other => panic!("pattern 1 scale is {other:?}"),
+        }
+
+        rewrite_working_bank(&root, |bank| {
+            let pattern = &mut bank.patterns.0[0];
+            pattern.scale.scale_mode = 1;
+            pattern.scale.master_len_per_track_multiplier = 255;
+            pattern.scale.master_len_per_track = 16;
+        });
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        match &working
+            .pattern(PatternIndex::new(0).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::PerTrack { master_length, .. } => {
+                assert_eq!(
+                    *master_length,
+                    ot_domain::project_structure::PatternMasterLength::Unrecognized {
+                        multiplier: 255,
+                        length: 16
+                    }
+                );
+            }
+            other => panic!("pattern 0 scale is {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unrecognized_scale_mode_and_scale_stay_raw() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        rewrite_working_bank(&root, |bank| {
+            bank.patterns.0[0].scale.scale_mode = 2;
+            bank.patterns.0[1].scale.scale_mode = 0;
+            bank.patterns.0[1].scale.master_scale = 9;
+            bank.patterns.0[2].scale.scale_mode = 1;
+            bank.patterns.0[2].scale.master_len_per_track_multiplier = 0;
+            bank.patterns.0[2].scale.master_len_per_track = 16;
+            bank.patterns.0[2].audio_track_trigs.0[3]
+                .scale_per_track_mode
+                .per_track_scale = 9;
+        });
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        assert_eq!(
+            working
+                .pattern(PatternIndex::new(0).unwrap())
+                .unwrap()
+                .scale,
+            PatternScale::Unrecognized { raw: 2 }
+        );
+        match &working
+            .pattern(PatternIndex::new(1).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::Normal { master_scale, .. } => {
+                assert_eq!(
+                    *master_scale,
+                    ot_domain::project_structure::PatternPlaybackScale::Unrecognized(9)
+                );
+            }
+            other => panic!("pattern 1 scale is {other:?}"),
+        }
+        match &working
+            .pattern(PatternIndex::new(2).unwrap())
+            .unwrap()
+            .scale
+        {
+            PatternScale::PerTrack { tracks, .. } => {
+                assert_eq!(
+                    tracks[3].scale,
+                    ot_domain::project_structure::PatternPlaybackScale::Unrecognized(9)
+                );
+            }
+            other => panic!("pattern 2 scale is {other:?}"),
+        }
+    }
+
     #[test]
     fn real_device_patterns_all_use_part_zero() {
         let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
@@ -983,7 +1455,8 @@ mod tests {
                         let track = &part.tracks[usize::from(entry.track)];
                         let expected =
                             SampleSlotId::new(kind, u16::try_from(index + 1).unwrap()).unwrap();
-                        assert_eq!(track.slot, TrackSlotReference::Slot(expected), "{fixture}");
+                        let (_, slot) = audio_playback(track);
+                        assert_eq!(slot, TrackSlotReference::Slot(expected), "{fixture}");
                         compared += 1;
                     }
                 }

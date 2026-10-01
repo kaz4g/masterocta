@@ -114,11 +114,25 @@ pub enum TrackSlotReference {
     Unrecognized(u8),
 }
 
+/// Whether an audio-track slot plays a machine or is the project master track.
+///
+/// `MASTER_TRACK` lives in working `project.work` `[SETTINGS]`. Pinned
+/// ot-tools-io stores it as `AudioControlPage.master_track`: `1` is master and
+/// every other parsed integer is not. When it is master, Track 8 does not play
+/// a sample, and leftover machine-slot bytes are not a slot reference.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrackPlayback {
+    Audio {
+        machine: MachineKind,
+        slot: TrackSlotReference,
+    },
+    Master,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TrackStructure {
     pub index: TrackIndex,
-    pub machine: MachineKind,
-    pub slot: TrackSlotReference,
+    pub playback: TrackPlayback,
 }
 
 /// A Part as read from the Bank's working (`unsaved`) Part copy.
@@ -128,12 +142,98 @@ pub struct PartStructure {
     pub tracks: Vec<TrackStructure>,
 }
 
+/// Pattern playback multiplier stored by pinned ot-tools-io.
+///
+/// `0` is 2x through `6` is 1/8x. Any other raw value stays unrecognized and is
+/// not rewritten to 1x.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PatternPlaybackScale {
+    Times2,
+    Times3Over2,
+    Times1,
+    Times3Over4,
+    Times1Over2,
+    Times1Over4,
+    Times1Over8,
+    Unrecognized(u8),
+}
+
+/// Master length while a pattern is in per-track scale mode.
+///
+/// `Infinite` is only the documented sentinel pair `multiplier == 255` and
+/// `length == 255`. A finite step count is never used for that pair. Normal
+/// mode uses [`PatternScale::Normal`] and does not have this sentinel.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PatternMasterLength {
+    Finite(u16),
+    Infinite,
+    Unrecognized { multiplier: u8, length: u8 },
+}
+
+/// One audio track's length and scale while the pattern is in per-track mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TrackScale {
+    pub track: TrackIndex,
+    pub length: u8,
+    pub scale: PatternPlaybackScale,
+}
+
+/// Active pattern scale. Inactive mode's fields are not copied into the other variant.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PatternScale {
+    /// `scale_mode == 0`. `master_length` is `master_len` and is always finite.
+    Normal {
+        master_length: u16,
+        master_scale: PatternPlaybackScale,
+    },
+    /// `scale_mode == 1`. Track scales follow audio tracks 0 through 7.
+    PerTrack {
+        master_length: PatternMasterLength,
+        master_scale: PatternPlaybackScale,
+        tracks: Vec<TrackScale>,
+    },
+    Unrecognized {
+        raw: u8,
+    },
+}
+
 /// A Pattern refers to a Part by index; it is not nested under that Part.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PatternStructure {
     pub index: PatternIndex,
     pub part: PartIndex,
-    pub master_length: u16,
+    pub scale: PatternScale,
+}
+
+pub fn pattern_playback_scale(raw: u8) -> PatternPlaybackScale {
+    match raw {
+        0 => PatternPlaybackScale::Times2,
+        1 => PatternPlaybackScale::Times3Over2,
+        2 => PatternPlaybackScale::Times1,
+        3 => PatternPlaybackScale::Times3Over4,
+        4 => PatternPlaybackScale::Times1Over2,
+        5 => PatternPlaybackScale::Times1Over4,
+        6 => PatternPlaybackScale::Times1Over8,
+        other => PatternPlaybackScale::Unrecognized(other),
+    }
+}
+
+/// Decode per-track master length from the pinned parser's range table.
+///
+/// `master_len_per_track_multiplier` selects the range. `255` with
+/// `master_len_per_track == 255` is `INF`. Multiplier `4` is 1024 steps.
+/// Multipliers `1`..=`3` are `256 * multiplier + length`. Multiplier `0` is the
+/// length byte itself, and that byte's documented minimum is 2. The alternate
+/// `(length + 1) * (multiplier + 1)` note on the length field contradicts this
+/// table, so it is not applied.
+pub fn per_track_master_length(multiplier: u8, length: u8) -> PatternMasterLength {
+    match multiplier {
+        255 if length == 255 => PatternMasterLength::Infinite,
+        4 => PatternMasterLength::Finite(1024),
+        0 if length >= 2 => PatternMasterLength::Finite(u16::from(length)),
+        1..=3 => PatternMasterLength::Finite(u16::from(multiplier) * 256 + u16::from(length)),
+        _ => PatternMasterLength::Unrecognized { multiplier, length },
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -219,6 +319,9 @@ pub struct ProjectStateDocument {
     pub bank: Option<ProjectBankSelection>,
     pub pattern: Option<ProjectPatternSelection>,
     pub arrangement: Option<ProjectArrangementSelection>,
+    /// `Some(true)` only when a parsed working project has `MASTER_TRACK=1`.
+    /// Withheld documents leave this `None`, and Track 8 stays an audio track.
+    pub master_track: Option<bool>,
 }
 
 pub fn project_bank_selection(raw: u8) -> ProjectBankSelection {
@@ -311,7 +414,10 @@ mod tests {
         let pattern = |index, part_index| PatternStructure {
             index: PatternIndex::new(index).unwrap(),
             part: part(part_index),
-            master_length: 16,
+            scale: PatternScale::Normal {
+                master_length: 16,
+                master_scale: PatternPlaybackScale::Times1,
+            },
         };
         let bank = BankStructure {
             bank: BankIndex::new(0).unwrap(),
@@ -392,6 +498,89 @@ mod tests {
                 ProjectArrangementSelection::Unmapped(raw)
             );
         }
+    }
+
+    #[test]
+    fn playback_scale_keeps_unrecognized_raw() {
+        assert_eq!(pattern_playback_scale(0), PatternPlaybackScale::Times2);
+        assert_eq!(pattern_playback_scale(2), PatternPlaybackScale::Times1);
+        assert_eq!(pattern_playback_scale(6), PatternPlaybackScale::Times1Over8);
+        assert_eq!(
+            pattern_playback_scale(7),
+            PatternPlaybackScale::Unrecognized(7)
+        );
+        assert_eq!(
+            pattern_playback_scale(255),
+            PatternPlaybackScale::Unrecognized(255)
+        );
+    }
+
+    #[test]
+    fn per_track_master_length_keeps_inf_distinct_from_finite() {
+        assert_eq!(
+            per_track_master_length(255, 255),
+            PatternMasterLength::Infinite
+        );
+        assert_eq!(
+            per_track_master_length(0, 255),
+            PatternMasterLength::Finite(255)
+        );
+        assert_eq!(
+            per_track_master_length(4, 0),
+            PatternMasterLength::Finite(1024)
+        );
+        assert_eq!(
+            per_track_master_length(0, 2),
+            PatternMasterLength::Finite(2)
+        );
+        assert_eq!(
+            per_track_master_length(1, 0),
+            PatternMasterLength::Finite(256)
+        );
+        assert_eq!(
+            per_track_master_length(3, 255),
+            PatternMasterLength::Finite(1023)
+        );
+        assert_ne!(
+            per_track_master_length(255, 255),
+            PatternMasterLength::Finite(255)
+        );
+        assert_ne!(
+            per_track_master_length(255, 255),
+            PatternMasterLength::Finite(1024)
+        );
+    }
+
+    #[test]
+    fn per_track_master_length_rejects_undocumented_multiplier() {
+        assert_eq!(
+            per_track_master_length(255, 16),
+            PatternMasterLength::Unrecognized {
+                multiplier: 255,
+                length: 16
+            }
+        );
+        assert_eq!(
+            per_track_master_length(0, 1),
+            PatternMasterLength::Unrecognized {
+                multiplier: 0,
+                length: 1
+            }
+        );
+        assert_eq!(
+            per_track_master_length(5, 16),
+            PatternMasterLength::Unrecognized {
+                multiplier: 5,
+                length: 16
+            }
+        );
+        assert_eq!(
+            per_track_master_length(9, 16),
+            PatternMasterLength::Unrecognized {
+                multiplier: 9,
+                length: 16
+            }
+        );
     }
 
     #[test]
