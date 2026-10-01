@@ -18,6 +18,7 @@ mod prepared_rename_runtime;
 mod project_compatibility;
 pub mod project_manager;
 mod project_reader;
+mod project_structure_command;
 mod project_structure_reader;
 mod purge;
 mod rename_planning_facts;
@@ -1632,6 +1633,7 @@ pub fn run() {
             v2_api::v2_root_disable_write,
             v2_api::v2_root_close,
             v2_api::v2_library_list,
+            v2_api::v2_project_structure_read,
             v2_api::v2_asset_metadata_get,
             v2_api::v2_asset_metadata_replace,
             v2_api::v2_audio_onsets_start,
