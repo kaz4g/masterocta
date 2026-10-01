@@ -11155,9 +11155,31 @@ mod tests {
         assert_eq!(dto.banks[0].patterns.len(), 16);
         assert_eq!(dto.banks[0].parts.len(), 4);
         assert_eq!(dto.banks[0].parts[0].tracks.len(), 8);
+        let state = dto.project_state.as_ref().unwrap();
+        assert_eq!(state.role, "working");
+        assert_eq!(state.parse_status, "parsed");
+        assert_eq!(state.source_relative_path, "SET/PROJECT/project.work");
+        assert_eq!(
+            state.bank,
+            Some(crate::project_structure_command::ProjectBankSelectionDto::Selected { index: 0 })
+        );
+        assert_eq!(
+            state.pattern,
+            Some(
+                crate::project_structure_command::ProjectPatternSelectionDto::Selected { index: 0 }
+            )
+        );
+        assert_eq!(
+            state.arrangement,
+            Some(
+                crate::project_structure_command::ProjectArrangementSelectionDto::Unmapped {
+                    raw: 0
+                }
+            )
+        );
 
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v1");
+        assert_eq!(json["schema"], "masterocta.project-structure:v2");
         let json = json.to_string();
         assert!(!json.contains(canonical.to_str().unwrap()));
         assert!(!json.contains("contentHash"));
@@ -11303,7 +11325,13 @@ mod tests {
             &project,
         )
         .unwrap();
-        assert_eq!(dto.schema, "masterocta.project-structure:v1");
+        assert_eq!(dto.schema, "masterocta.project-structure:v2");
+        assert!(dto.project_state.is_some());
+        let state = dto.project_state.as_ref().unwrap();
+        assert_eq!(state.parse_status, "malformed");
+        assert!(state.bank.is_none());
+        assert!(state.pattern.is_none());
+        assert!(state.arrangement.is_none());
         assert_eq!(dto.project_relative_path, "SET/ONLY");
         assert!(dto.banks.is_empty());
     }

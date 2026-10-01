@@ -13,7 +13,12 @@
         "bank_index_maps_to_letter_and_file_number",
         "machine_kind_keeps_unknown_raw_value",
         "patterns_using_part_follows_the_reference_not_nesting",
-        "unmodeled_dependencies_are_explicit"
+        "unmodeled_dependencies_are_explicit",
+        "project_bank_selection_reuses_bank_index",
+        "project_pattern_selection_reuses_pattern_index",
+        "project_bank_selection_keeps_out_of_range_raw",
+        "project_pattern_selection_keeps_out_of_range_raw",
+        "arrangement_raw_stays_unmapped_for_every_stored_value"
       ]
     },
     {
@@ -39,7 +44,18 @@
         "unreadable_bank_file_is_a_storage_error",
         "directory_named_as_bank_file_is_absent",
         "symlinked_bank_is_treated_as_absent",
-        "machine_slot_raw_values_map_without_guessing"
+        "machine_slot_raw_values_map_without_guessing",
+        "real_device_project_work_selects_bank_a_and_pattern_zero",
+        "multipart_project_work_selects_the_same_bank_and_pattern_indices",
+        "missing_project_work_does_not_fall_back_to_saved_checkpoint",
+        "malformed_project_work_withholds_selection",
+        "unsupported_project_os_withholds_selection",
+        "out_of_range_bank_and_pattern_stay_unrecognized",
+        "symlinked_project_work_is_not_followed",
+        "unreadable_project_work_is_a_storage_error",
+        "verified_os_1_40_project_work_keeps_active_selection",
+        "fifo_project_work_is_absent_without_blocking",
+        "oversized_project_work_is_rejected_before_parsing"
       ]
     },
     {

@@ -8,7 +8,8 @@ use crate::device_detection::is_octatrack_project;
 use crate::project_structure_reader::read_project_structure;
 use crate::root_registry::{ResolvedRoot, RootRegistry, RootRegistryError};
 use ot_domain::project_structure::{
-    BankStructure, MachineKind, PartStructure, PatternStructure, ProjectStructure,
+    BankStructure, MachineKind, PartStructure, PatternStructure, ProjectArrangementSelection,
+    ProjectBankSelection, ProjectPatternSelection, ProjectStateDocument, ProjectStructure,
     TrackSlotReference, TrackStructure, UnmodeledDependency,
 };
 use ot_domain::{
@@ -17,16 +18,60 @@ use ot_domain::{
 use ot_storage_ports::StorageError;
 use serde::Serialize;
 
-/// Payload discriminator for this DTO. Bump when Project State or Arranger
-/// fields change the contract so clients can reject an incompatible body.
-pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v1";
+/// Payload discriminator for this DTO. `v2` adds Working `project.work`
+/// `[STATES]` selection. Arranger rows are still absent.
+pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v2";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectStructureDto {
     pub(crate) schema: &'static str,
     pub(crate) project_relative_path: String,
+    pub(crate) project_state: Option<ProjectStateDto>,
     pub(crate) banks: Vec<BankStructureDto>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProjectStateDto {
+    pub(crate) role: String,
+    pub(crate) source_relative_path: String,
+    pub(crate) parse_status: String,
+    pub(crate) bank: Option<ProjectBankSelectionDto>,
+    pub(crate) pattern: Option<ProjectPatternSelectionDto>,
+    pub(crate) arrangement: Option<ProjectArrangementSelectionDto>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum ProjectBankSelectionDto {
+    Selected { index: u8 },
+    Unrecognized { raw: u8 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum ProjectPatternSelectionDto {
+    Selected { index: u8 },
+    Unrecognized { raw: u8 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub(crate) enum ProjectArrangementSelectionDto {
+    Unmapped { raw: u8 },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -188,7 +233,59 @@ fn to_dto(structure: ProjectStructure) -> ProjectStructureDto {
     ProjectStructureDto {
         schema: PROJECT_STRUCTURE_SCHEMA,
         project_relative_path: structure.project_relative_path.as_str().to_owned(),
+        project_state: structure.project_state.map(project_state_dto),
         banks: structure.banks.into_iter().map(bank_dto).collect(),
+    }
+}
+
+fn project_state_dto(state: ProjectStateDocument) -> ProjectStateDto {
+    let parsed = state.parse_status == StateDocumentParseStatus::Parsed;
+    ProjectStateDto {
+        role: role_name(state.role).to_owned(),
+        source_relative_path: state.source_relative_path.as_str().to_owned(),
+        parse_status: parse_status_name(state.parse_status).to_owned(),
+        bank: parsed
+            .then_some(state.bank)
+            .flatten()
+            .map(bank_selection_dto),
+        pattern: parsed
+            .then_some(state.pattern)
+            .flatten()
+            .map(pattern_selection_dto),
+        arrangement: parsed
+            .then_some(state.arrangement)
+            .flatten()
+            .map(arrangement_selection_dto),
+    }
+}
+
+fn bank_selection_dto(selection: ProjectBankSelection) -> ProjectBankSelectionDto {
+    match selection {
+        ProjectBankSelection::Selected(index) => {
+            ProjectBankSelectionDto::Selected { index: index.get() }
+        }
+        ProjectBankSelection::Unrecognized(raw) => ProjectBankSelectionDto::Unrecognized { raw },
+    }
+}
+
+fn pattern_selection_dto(selection: ProjectPatternSelection) -> ProjectPatternSelectionDto {
+    match selection {
+        ProjectPatternSelection::Selected(index) => {
+            ProjectPatternSelectionDto::Selected { index: index.get() }
+        }
+        ProjectPatternSelection::Unrecognized(raw) => {
+            ProjectPatternSelectionDto::Unrecognized { raw }
+        }
+    }
+}
+
+fn arrangement_selection_dto(
+    selection: ProjectArrangementSelection,
+) -> ProjectArrangementSelectionDto {
+    match selection {
+        ProjectArrangementSelection::Unmapped(raw) => {
+            ProjectArrangementSelectionDto::Unmapped { raw }
+        }
     }
 }
 
@@ -304,10 +401,11 @@ mod tests {
         let dto = ProjectStructureDto {
             schema: PROJECT_STRUCTURE_SCHEMA,
             project_relative_path: "SET/PROJECT".to_owned(),
+            project_state: None,
             banks: Vec::new(),
         };
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v1");
+        assert_eq!(json["schema"], "masterocta.project-structure:v2");
         assert_eq!(json["projectRelativePath"], "SET/PROJECT");
         assert!(json["banks"].as_array().unwrap().is_empty());
     }
