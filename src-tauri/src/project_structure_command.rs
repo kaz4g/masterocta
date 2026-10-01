@@ -60,7 +60,11 @@ pub(crate) struct TrackStructureDto {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum MachineKindDto {
     Static,
     Flex,
@@ -71,7 +75,11 @@ pub(crate) enum MachineKindDto {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub(crate) enum TrackSlotReferenceDto {
     Slot { slot_kind: String, number: u16 },
     Unassigned,
@@ -105,6 +113,15 @@ impl ProjectStructureReadError {
             Self::Storage(_) => {
                 "the project structure could not be read inside the registered root".to_owned()
             }
+        }
+    }
+
+    /// Registry unavailability stays unrecoverable. Path and storage failures
+    /// remain recoverable because the caller can correct the request.
+    pub(crate) fn recoverable(&self) -> bool {
+        match self {
+            Self::Root(error) => error.recoverable(),
+            Self::NotADirectory | Self::Storage(_) => true,
         }
     }
 }
@@ -259,5 +276,34 @@ fn unmodeled_name(dependency: UnmodeledDependency) -> &'static str {
         UnmodeledDependency::Scenes => "scenes",
         UnmodeledDependency::Arrangements => "arrangements",
         UnmodeledDependency::RecorderSetup => "recorderSetup",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slot_variant_fields_serialize_as_camel_case() {
+        let slot = TrackSlotReferenceDto::Slot {
+            slot_kind: "static".to_owned(),
+            number: 3,
+        };
+        let json = serde_json::to_value(&slot).unwrap();
+        assert_eq!(json["kind"], "slot");
+        assert_eq!(json["slotKind"], "static");
+        assert_eq!(json["number"], 3);
+        assert!(json.get("slot_kind").is_none());
+
+        let buffer = TrackSlotReferenceDto::RecorderBuffer { buffer_number: 2 };
+        let json = serde_json::to_value(&buffer).unwrap();
+        assert_eq!(json["kind"], "recorderBuffer");
+        assert_eq!(json["bufferNumber"], 2);
+        assert!(json.get("buffer_number").is_none());
+
+        let machine = MachineKindDto::Unknown { raw: 9 };
+        let json = serde_json::to_value(&machine).unwrap();
+        assert_eq!(json["kind"], "unknown");
+        assert_eq!(json["raw"], 9);
     }
 }

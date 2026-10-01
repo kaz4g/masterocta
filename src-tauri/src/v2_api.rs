@@ -4280,7 +4280,7 @@ pub async fn v2_project_structure_read(
             &root_id,
             &project_relative_path,
         )
-        .map_err(|error| ApiError::new(error.code(), error.message(), true))
+        .map_err(|error| ApiError::new(error.code(), error.message(), error.recoverable()))
     })
     .await
     .map_err(ApiError::task_failed)?
@@ -11284,5 +11284,29 @@ mod tests {
         )
         .unwrap();
         assert!(dto.banks.iter().all(|bank| bank.index != 1));
+    }
+
+    #[test]
+    fn registry_unavailable_stays_unrecoverable() {
+        let unavailable = crate::project_structure_command::ProjectStructureReadError::Root(
+            crate::root_registry::RootRegistryError::Unavailable,
+        );
+        let api = ApiError::new(
+            unavailable.code(),
+            unavailable.message(),
+            unavailable.recoverable(),
+        );
+        assert_eq!(api.code, "ROOT_UNAVAILABLE");
+        assert!(!api.recoverable);
+
+        let not_approved = crate::project_structure_command::ProjectStructureReadError::Root(
+            crate::root_registry::RootRegistryError::NotApproved,
+        );
+        let api = ApiError::new(
+            not_approved.code(),
+            not_approved.message(),
+            not_approved.recoverable(),
+        );
+        assert!(api.recoverable);
     }
 }
