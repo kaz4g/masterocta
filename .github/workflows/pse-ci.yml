@@ -1,0 +1,158 @@
+name: Project Structure CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: pse-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_INCREMENTAL: 0
+  RUSTFLAGS: -C debuginfo=0
+
+jobs:
+  scope:
+    name: Project Structure Scope
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      in_scope: ${{ steps.decide.outputs.in_scope }}
+      reason: ${{ steps.decide.outputs.reason }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Decide Project Structure scope
+        id: decide
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PSE_SCOPE_BASE: ${{ github.event.pull_request.base.sha }}
+          PSE_SCOPE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/pse-ci-scope.mjs
+
+  script-contracts:
+    name: Project Structure Scripts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Run Project Structure script contracts
+        run: node --test scripts/pse-fixture-manifest.test.mjs scripts/pse-read-model-check.test.mjs scripts/pse-ci-scope.test.mjs scripts/pse-ci-aggregate.test.mjs scripts/pse-ci-workflow.test.mjs
+
+  linux-read-model:
+    name: Project Structure Linux
+    needs: scope
+    if: needs.scope.outputs.in_scope == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          workspaces: src-tauri
+          prefix-key: pse-ci
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Run Project Structure read-model and fixture preserve
+        env:
+          PSE_EVIDENCE_DIR: ${{ runner.temp }}/pse-read-model
+        run: node scripts/pse-read-model-check.mjs --evidence "$PSE_EVIDENCE_DIR"
+
+      - name: Upload Project Structure evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pse-read-model-linux
+          path: ${{ runner.temp }}/pse-read-model/
+          if-no-files-found: error
+          retention-days: 14
+
+  macos-fs-contract:
+    name: Project Structure macOS
+    needs: scope
+    if: needs.scope.outputs.in_scope == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+        with:
+          workspaces: src-tauri
+          prefix-key: pse-ci
+
+      - name: Run Project Structure path and symlink contracts
+        env:
+          PSE_EVIDENCE_DIR: ${{ runner.temp }}/pse-read-model
+        run: node scripts/pse-read-model-check.mjs --evidence "$PSE_EVIDENCE_DIR"
+
+      - name: Upload Project Structure macOS evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pse-read-model-macos
+          path: ${{ runner.temp }}/pse-read-model/
+          if-no-files-found: error
+          retention-days: 14
+
+  aggregate:
+    name: Project Structure
+    if: always()
+    needs: [scope, script-contracts, linux-read-model, macos-fs-contract]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Evaluate Project Structure required check
+        env:
+          PSE_SCOPE_REASON: ${{ needs.scope.outputs.reason }}
+        run: |
+          set -euo pipefail
+          node scripts/pse-ci-aggregate.mjs \
+            --in-scope "${{ needs.scope.outputs.in_scope }}" \
+            --reason "${PSE_SCOPE_REASON}" \
+            --scope-result "${{ needs.scope.result }}" \
+            --script-contracts "${{ needs.script-contracts.result }}" \
+            --linux-read-model "${{ needs.linux-read-model.result }}" \
+            --macos-fs-contract "${{ needs.macos-fs-contract.result }}"

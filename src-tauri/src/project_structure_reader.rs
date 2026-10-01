@@ -325,6 +325,44 @@ mod tests {
     }
 
     #[test]
+    fn multipart_pattern_part_cycle_matches_tracked_fixture() {
+        let (_temp, root) = copied_project("multipart", &["project.work", "bank01.work"]);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        assert_eq!(working.unmodeled, BANK_UNMODELED_DEPENDENCIES.to_vec());
+        for index in 0..16u8 {
+            let pattern = working.pattern(PatternIndex::new(index).unwrap()).unwrap();
+            assert_eq!(pattern.part.get(), index % 4, "pattern {index}");
+        }
+        for part in 0..4u8 {
+            let track = &working.part(PartIndex::new(part).unwrap()).unwrap().tracks[2];
+            assert_eq!(track.machine, MachineKind::Static);
+            assert_eq!(
+                track.slot,
+                TrackSlotReference::Slot(
+                    SampleSlotId::new(SampleSlotKind::Static, 41 + u16::from(part)).unwrap()
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn real_device_patterns_all_use_part_zero() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let structure = read_project_structure(&root, &project_path()).unwrap();
+        let working = structure
+            .bank(bank_a(), StateDocumentRole::Working)
+            .unwrap();
+        assert_eq!(working.patterns.len(), 16);
+        for pattern in &working.patterns {
+            assert_eq!(pattern.part.get(), 0);
+        }
+        assert_eq!(working.unmodeled, BANK_UNMODELED_DEPENDENCIES.to_vec());
+    }
+
+    #[test]
     fn track_slots_match_catalog_machine_usage_edges() {
         for fixture in ["real_device", "multipart"] {
             let (_temp, root) = copied_project(fixture, &["project.work", "bank01.work"]);
@@ -420,11 +458,43 @@ mod tests {
     }
 
     #[test]
+    fn repeated_reads_return_equal_structure() {
+        let (_temp, root) = copied_project(
+            "real_device",
+            &["project.work", "bank01.work", "bank01.strd"],
+        );
+        let first = read_project_structure(&root, &project_path()).unwrap();
+        let second = read_project_structure(&root, &project_path()).unwrap();
+        assert_eq!(first, second);
+        let roles: Vec<_> = first
+            .banks
+            .iter()
+            .map(|entry| (entry.bank.get(), entry.role))
+            .collect();
+        assert_eq!(
+            roles,
+            vec![
+                (0, StateDocumentRole::Working),
+                (0, StateDocumentRole::SavedCheckpoint)
+            ]
+        );
+    }
+
+    #[test]
     fn project_path_escaping_the_root_is_rejected() {
         let (_temp, root) = copied_project("real_device", &["project.work"]);
         assert!(RootRelativePath::parse("../outside").is_err());
         let missing = RootRelativePath::parse("SET/MISSING").unwrap();
         assert!(read_project_structure(&root, &missing).is_err());
+    }
+
+    #[test]
+    fn missing_project_rejection_leaves_fixture_bytes_unchanged() {
+        let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
+        let before = tree_digest(&root);
+        let missing = RootRelativePath::parse("SET/MISSING").unwrap();
+        assert!(read_project_structure(&root, &missing).is_err());
+        assert_eq!(tree_digest(&root), before);
     }
 
     #[cfg(unix)]
@@ -468,5 +538,75 @@ mod tests {
             machine_slot_reference(SampleSlotKind::Static, 129),
             TrackSlotReference::Unrecognized(129)
         );
+    }
+
+    #[test]
+    fn external_copy_harness_reads_when_root_is_set() {
+        let Ok(root) = std::env::var("PSE_READ_MODEL_ROOT") else {
+            return;
+        };
+        // Registered roots are canonical. macOS /var -> /private/var must not
+        // be treated as PATH_ESCAPE when the copied tree itself did not move.
+        let root = PathBuf::from(root)
+            .canonicalize()
+            .expect("copied fixture root");
+        let project = RootRelativePath::parse(
+            std::env::var("PSE_READ_MODEL_PROJECT")
+                .as_deref()
+                .unwrap_or("SET/PROJECT"),
+        )
+        .expect("project path");
+        let expect = std::env::var("PSE_READ_MODEL_EXPECT").unwrap_or_else(|_| "ok".into());
+        match expect.as_str() {
+            "ok" => {
+                let first = read_project_structure(Path::new(&root), &project).unwrap();
+                let second = read_project_structure(Path::new(&root), &project).unwrap();
+                assert_eq!(first, second);
+                assert!(first
+                    .banks
+                    .iter()
+                    .any(|entry| entry.parse_status == StateDocumentParseStatus::Parsed));
+                assert!(first
+                    .banks
+                    .iter()
+                    .filter(|entry| entry.parse_status == StateDocumentParseStatus::Parsed)
+                    .all(|entry| entry.unmodeled == BANK_UNMODELED_DEPENDENCIES.to_vec()));
+            }
+            "missing" => {
+                let missing = RootRelativePath::parse("SET/MISSING").unwrap();
+                assert!(read_project_structure(Path::new(&root), &missing).is_err());
+            }
+            "mixed" => {
+                let structure = read_project_structure(Path::new(&root), &project).unwrap();
+                let broken = structure
+                    .bank(BankIndex::new(1).unwrap(), StateDocumentRole::Working)
+                    .unwrap();
+                assert_eq!(broken.parse_status, StateDocumentParseStatus::Malformed);
+                assert!(broken.patterns.is_empty());
+                assert!(broken.parts.is_empty());
+                assert_eq!(
+                    structure
+                        .bank(bank_a(), StateDocumentRole::Working)
+                        .unwrap()
+                        .parse_status,
+                    StateDocumentParseStatus::Parsed
+                );
+            }
+            "symlink_absent" => {
+                let structure = read_project_structure(Path::new(&root), &project).unwrap();
+                assert!(structure
+                    .bank(BankIndex::new(1).unwrap(), StateDocumentRole::Working)
+                    .is_none());
+                assert_eq!(
+                    structure
+                        .bank(bank_a(), StateDocumentRole::Working)
+                        .unwrap()
+                        .parse_status,
+                    StateDocumentParseStatus::Parsed
+                );
+            }
+            other => panic!("unknown PSE_READ_MODEL_EXPECT {other}"),
+        }
+        eprintln!("PSE_READ_MODEL_HARNESS_OK={expect}");
     }
 }
