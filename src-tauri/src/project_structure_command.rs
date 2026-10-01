@@ -4,6 +4,7 @@
 //! root-relative. Malformed and unsupported Banks expose no Pattern or Part
 //! values. This module does not write.
 
+use crate::device_detection::is_octatrack_project;
 use crate::project_structure_reader::read_project_structure;
 use crate::root_registry::{ResolvedRoot, RootRegistry, RootRegistryError};
 use ot_domain::project_structure::{
@@ -16,9 +17,14 @@ use ot_domain::{
 use ot_storage_ports::StorageError;
 use serde::Serialize;
 
+/// Payload discriminator for this DTO. Bump when Project State or Arranger
+/// fields change the contract so clients can reject an incompatible body.
+pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v1";
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectStructureDto {
+    pub(crate) schema: &'static str,
     pub(crate) project_relative_path: String,
     pub(crate) banks: Vec<BankStructureDto>,
 }
@@ -91,7 +97,7 @@ pub(crate) enum TrackSlotReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectStructureReadError {
     Root(RootRegistryError),
-    NotADirectory,
+    InvalidProjectPath,
     Storage(StorageError),
 }
 
@@ -99,7 +105,7 @@ impl ProjectStructureReadError {
     pub(crate) fn code(&self) -> &'static str {
         match self {
             Self::Root(error) => error.code(),
-            Self::NotADirectory => "INVALID_PROJECT_PATH",
+            Self::InvalidProjectPath => "INVALID_PROJECT_PATH",
             Self::Storage(error) => storage_code(error),
         }
     }
@@ -107,8 +113,9 @@ impl ProjectStructureReadError {
     pub(crate) fn message(&self) -> String {
         match self {
             Self::Root(error) => error.to_string(),
-            Self::NotADirectory => {
-                "the project path must be a directory inside the registered root".to_owned()
+            Self::InvalidProjectPath => {
+                "the project path must be an Octatrack project directory inside the registered root"
+                    .to_owned()
             }
             Self::Storage(_) => {
                 "the project structure could not be read inside the registered root".to_owned()
@@ -121,7 +128,7 @@ impl ProjectStructureReadError {
     pub(crate) fn recoverable(&self) -> bool {
         match self {
             Self::Root(error) => error.recoverable(),
-            Self::NotADirectory | Self::Storage(_) => true,
+            Self::InvalidProjectPath | Self::Storage(_) => true,
         }
     }
 }
@@ -132,10 +139,18 @@ fn storage_code(error: &StorageError) -> &'static str {
         "PATH_ESCAPE"
     } else if message.starts_with("SYMLINK_ESCAPE") {
         "SYMLINK_ESCAPE"
-    } else if message.starts_with("ROOT_REMOVED") {
-        "ROOT_REMOVED"
     } else {
         "PROJECT_STRUCTURE_UNAVAILABLE"
+    }
+}
+
+/// `RootRegistry::resolve` has already shown the registered root exists.
+/// A missing component inside that root is a bad project path.
+fn map_storage(error: StorageError) -> ProjectStructureReadError {
+    if error.message().starts_with("ROOT_REMOVED") {
+        ProjectStructureReadError::InvalidProjectPath
+    } else {
+        ProjectStructureReadError::Storage(error)
     }
 }
 
@@ -149,7 +164,7 @@ pub(crate) fn read_project_structure_dto(
         .map_err(ProjectStructureReadError::Root)?;
     ensure_project_directory(&resolved, project_relative_path)?;
     let structure = read_project_structure(&resolved.canonical_path, project_relative_path)
-        .map_err(ProjectStructureReadError::Storage)?;
+        .map_err(map_storage)?;
     Ok(to_dto(structure))
 }
 
@@ -161,16 +176,17 @@ fn ensure_project_directory(
         &resolved.canonical_path,
         project_relative_path,
     )
-    .map_err(ProjectStructureReadError::Storage)?;
-    if path.is_dir() {
+    .map_err(map_storage)?;
+    if path.is_dir() && is_octatrack_project(&path) {
         Ok(())
     } else {
-        Err(ProjectStructureReadError::NotADirectory)
+        Err(ProjectStructureReadError::InvalidProjectPath)
     }
 }
 
 fn to_dto(structure: ProjectStructure) -> ProjectStructureDto {
     ProjectStructureDto {
+        schema: PROJECT_STRUCTURE_SCHEMA,
         project_relative_path: structure.project_relative_path.as_str().to_owned(),
         banks: structure.banks.into_iter().map(bank_dto).collect(),
     }
@@ -282,6 +298,19 @@ fn unmodeled_name(dependency: UnmodeledDependency) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn schema_discriminator_serializes_on_the_dto() {
+        let dto = ProjectStructureDto {
+            schema: PROJECT_STRUCTURE_SCHEMA,
+            project_relative_path: "SET/PROJECT".to_owned(),
+            banks: Vec::new(),
+        };
+        let json = serde_json::to_value(&dto).unwrap();
+        assert_eq!(json["schema"], "masterocta.project-structure:v1");
+        assert_eq!(json["projectRelativePath"], "SET/PROJECT");
+        assert!(json["banks"].as_array().unwrap().is_empty());
+    }
 
     #[test]
     fn slot_variant_fields_serialize_as_camel_case() {
