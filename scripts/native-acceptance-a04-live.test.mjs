@@ -8,7 +8,9 @@ const dir = dirname(fileURLToPath(import.meta.url));
 const live = readFileSync(join(dir, "native-acceptance-a04-live.sh"), "utf8");
 
 test("live runner owns a fresh HOME and separates shell pid from app pid", () => {
-  assert.match(live, /\/tmp\/masterocta-native-acceptance-/);
+  assert.match(live, /mktemp -d "\/tmp\/masterocta-native-acceptance-/);
+  assert.match(live, /POST_RANGE_HASH/);
+  assert.match(live, /A04_HIDDEN_LOG/);
   assert.match(live, /pgrep -x masterocta/);
   assert.match(live, /launch_shell_pid=/);
   assert.match(live, /app_pid=/);

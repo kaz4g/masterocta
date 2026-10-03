@@ -21,7 +21,7 @@ BASE_SHA="8774bc1c2c29e94bbdf1440b9622b5ccb6da21e9"
 SHORT="$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD)"
 AUTOMATION_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-HOME_ISO="/tmp/masterocta-native-acceptance-${SHORT}-${STAMP}"
+HOME_ISO="$(mktemp -d "/tmp/masterocta-native-acceptance-${SHORT}-${STAMP}-XXXXXX")"
 CATALOG="${HOME_ISO}/Library/Application Support/MasterOCTa/catalog.sqlite3"
 EVID="${HOME_ISO}/a04-live-pre"
 LAUNCH_LOG="${HOME_ISO}/launch.log"
@@ -35,7 +35,8 @@ if /usr/bin/pgrep -x masterocta >/dev/null 2>&1; then
   exit 2
 fi
 
-mkdir -p "${HOME_ISO}" "${EVID}"
+mkdir -p "${EVID}"
+export A04_HIDDEN_LOG="${HOME_ISO}/hidden-apps.txt"
 
 cleanup() {
   local status=$?
@@ -68,14 +69,30 @@ cleanup() {
   else
     printf '%s\n' "APP_PROCESS_RESIDUAL=NO"
   fi
-  /usr/bin/osascript -e 'tell application "System Events"
-    if exists process "Vivaldi" then
-      set visible of process "Vivaldi" to true
-      repeat with w in windows of process "Vivaldi"
-        set miniaturized of w to false
-      end repeat
-    end if
-  end tell' >/dev/null 2>&1 || true
+  if [[ -f "${HOME_ISO}/hidden-apps.txt" ]]; then
+    sort -u "${HOME_ISO}/hidden-apps.txt" | while IFS= read -r hidden_name; do
+      [[ -n "${hidden_name}" ]] || continue
+      /usr/bin/osascript -e "tell application \"System Events\"
+        if exists process \"${hidden_name}\" then
+          set visible of process \"${hidden_name}\" to true
+          repeat with w in windows of process \"${hidden_name}\"
+            set miniaturized of w to false
+          end repeat
+        end if
+      end tell" >/dev/null 2>&1 || true
+    done
+  fi
+  if [[ -n "${RANGE_WAV:-}" && -f "${RANGE_WAV}" && -f "${EVID}/PRE_range.sha256" ]]; then
+    local post_hash pre_hash
+    post_hash="$(/usr/bin/shasum -a 256 "${RANGE_WAV}" | awk '{print $1}')"
+    pre_hash="$(awk '{print $1}' "${EVID}/PRE_range.sha256")"
+    if [[ "${post_hash}" == "${pre_hash}" ]]; then
+      printf '%s\n' "POST_RANGE_HASH=PASS"
+    else
+      printf '%s\n' "POST_RANGE_HASH=MISMATCH"
+      status=1
+    fi
+  fi
   if [[ "${status}" -eq 0 ]]; then
     printf '%s\n' "A04_LIVE_RUN=PASS"
   else

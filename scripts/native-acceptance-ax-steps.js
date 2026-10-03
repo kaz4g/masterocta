@@ -654,6 +654,7 @@ function hideOtherFrontApp(se, pid) {
   try {
     const other = se.processes.whose({ name: front.name })[0];
     other.visible = false;
+    rememberHiddenApp(front.name);
     const wins = other.windows();
     const count = wins ? wins.length : 0;
     for (let i = 0; i < count; i++) {
@@ -663,6 +664,23 @@ function hideOtherFrontApp(se, pid) {
   } catch (err) {
     log("[AX-ACTIVATE] hide error " + errFields(err));
     return false;
+  }
+}
+
+function rememberHiddenApp(name) {
+  try {
+    if (typeof ObjC === "undefined" || typeof Application !== "function") return;
+    ObjC.import("Foundation");
+    const env = $.NSProcessInfo.processInfo.environment.objectForKey("A04_HIDDEN_LOG");
+    if (!env) return;
+    const path = ObjC.unwrap(env);
+    const app = Application.currentApplication();
+    app.includeStandardAdditions = true;
+    const safeName = String(name).replace(/'/g, "'\\''");
+    const safePath = String(path).replace(/'/g, "'\\''");
+    app.doShellScript("printf '%s\\n' '" + safeName + "' >> '" + safePath + "'");
+  } catch (err) {
+    log("[AX-ACTIVATE] remember error " + errFields(err));
   }
 }
 
@@ -1742,6 +1760,9 @@ function stepA04SessionUsable(pid) {
   log("RETAINED_SESSION=" + (retained ? "PASS" : "NOT_OBSERVED"));
   log("APPLY_CONTROLS=" + (applyOk ? "PASS" : "NOT_OBSERVED"));
   log("EDIT_CONTROLS=" + (editOk ? "PASS" : "NOT_OBSERVED"));
+  if (!retained || !applyOk || !editOk) {
+    failA04("A04_SESSION_UNUSABLE", "retained=" + retained + " apply=" + applyOk + " edit=" + editOk);
+  }
   return "a04-session-usable";
 }
 
@@ -2158,7 +2179,7 @@ function stepPasteRange(pid, name, value) {
   const started = nowMs();
   let verified = null;
   let actual = null;
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     ensureFrontmost(ax, pid);
     try { ax.se.click(focusedField.el); } catch (err) { /* AXFocused is the fallback */ }
     try { focusedField.el.attributes.byName("AXFocused").value = true; } catch (err) { /* keep the keystroke guard */ }
@@ -2182,6 +2203,11 @@ function stepPasteRange(pid, name, value) {
       log("[RANGE][PASTE] attempt=" + attempt + " " + errFields(err));
       actual = str(() => focusedField.el.value());
       verified = null;
+      if (isAxStale(err) || actual === null) {
+        ui = uiEntire(ax);
+        const fresh = findTextField(ui, name);
+        if (fresh) focusedField = fresh;
+      }
     } finally {
       restoreClipboard(token);
     }

@@ -49,7 +49,7 @@ emit_final_report() {
   printf '%s\n' "=== A04_REPAIR5_FINAL_REPORT NOT_CANONICAL_EVIDENCE ==="
   printf '%s\n' "BASE_SHA=8774bc1c2c29e94bbdf1440b9622b5ccb6da21e9"
   printf '%s\n' "HEAD_SHA=${head_sha}"
-  printf '%s\n' "PRODUCT_CODE_CHANGED=NO"
+  printf '%s\n' "PRODUCT_CODE_CHANGED=$(product_code_changed)"
   printf '%s\n' "AUTOMATION_TESTS=NOT_RUN_IN_SCRIPT"
   printf '%s\n' "FRONTMOST_AX_STABLE=$(ax_metric FRONTMOST_AX_STABLE UNKNOWN)"
   printf '%s\n' "REANALYSIS_ACTIVE_STATE_OBSERVED=$(ax_metric REANALYSIS_ACTIVE_STATE_OBSERVED NOT_RUN)"
@@ -108,10 +108,9 @@ die() {
   fi
   A04_READY=NO
   SINGLE_RUN_STATUS=FAIL
-  CANCEL_SAFETY_STATUS=NOT_RUN
-  if printf '%s\n' "${detail}" | grep -q 'CANCEL_WINDOW_NOT_OBSERVED'; then
-    :
-  elif [[ "${stage}" != "A04_CANCEL_SAFETY" ]]; then
+  if [[ "${stage}" == "A04_CANCEL_SAFETY" ]]; then
+    CANCEL_SAFETY_STATUS=FAIL
+  else
     CANCEL_SAFETY_STATUS=NOT_RUN
   fi
   printf '%s\n' "RESULT=STOP stage=${stage} detail=${detail}"
@@ -125,14 +124,30 @@ pass() {
   printf '%s\n' "stage=${1} result=PASS ${2:-}"
 }
 
+product_code_changed() {
+  if git -C "${ROOT_DIR}" diff --name-only 8774bc1c2c29e94bbdf1440b9622b5ccb6da21e9 -- src src-tauri | grep -q . \
+    || git -C "${ROOT_DIR}" status --short -- src src-tauri | grep -q .; then
+    printf '%s\n' "YES"
+  else
+    printf '%s\n' "NO"
+  fi
+}
+
 draft_snapshot() {
   /usr/bin/sqlite3 -readonly -bail "${CATALOG}" <<SQL
 SELECT revision, region_start, region_end FROM slice_drafts ORDER BY id DESC LIMIT 1;
 SELECT COUNT(*) FROM slice_draft_markers;
 SELECT CASE WHEN COUNT(*) > 0 THEN COUNT(*) - 1 ELSE 0 END FROM slice_draft_markers;
 SELECT start_frame FROM slice_draft_markers ORDER BY ordinal;
+SELECT * FROM slice_draft_markers ORDER BY ordinal, id;
 SQL
 }
+
+if [[ "$(product_code_changed)" != "NO" ]]; then
+  printf '%s\n' "STOP_PRODUCT_CHANGE_REQUIRED"
+  printf '%s\n' "PRODUCT_CODE_CHANGED=YES"
+  exit 1
+fi
 
 printf '%s\n' "=== A04_AUTOMATION_REHEARSAL_ONLY NOT_CANONICAL_EVIDENCE ==="
 EXEC_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
