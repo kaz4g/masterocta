@@ -136,10 +136,10 @@ product_code_changed() {
 draft_snapshot() {
   /usr/bin/sqlite3 -readonly -bail "${CATALOG}" <<SQL
 SELECT revision, region_start, region_end FROM slice_drafts ORDER BY id DESC LIMIT 1;
-SELECT COUNT(*) FROM slice_draft_markers;
-SELECT CASE WHEN COUNT(*) > 0 THEN COUNT(*) - 1 ELSE 0 END FROM slice_draft_markers;
-SELECT start_frame FROM slice_draft_markers ORDER BY ordinal;
-SELECT * FROM slice_draft_markers ORDER BY ordinal, id;
+SELECT COUNT(*) FROM slice_draft_markers WHERE draft_id = (SELECT id FROM slice_drafts ORDER BY id DESC LIMIT 1);
+SELECT CASE WHEN COUNT(*) > 0 THEN COUNT(*) - 1 ELSE 0 END FROM slice_draft_markers WHERE draft_id = (SELECT id FROM slice_drafts ORDER BY id DESC LIMIT 1);
+SELECT start_frame FROM slice_draft_markers WHERE draft_id = (SELECT id FROM slice_drafts ORDER BY id DESC LIMIT 1) ORDER BY ordinal;
+SELECT * FROM slice_draft_markers WHERE draft_id = (SELECT id FROM slice_drafts ORDER BY id DESC LIMIT 1) ORDER BY ordinal;
 SQL
 }
 
