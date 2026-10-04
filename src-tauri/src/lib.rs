@@ -31,6 +31,8 @@ mod v2_api;
 mod write_runtime;
 
 #[cfg(test)]
+mod bank_mutation_contract;
+#[cfg(test)]
 mod gate_c_clone_rescan;
 
 use audio_pool::{
