@@ -34,6 +34,8 @@ mod write_runtime;
 mod bank_mutation_contract;
 #[cfg(test)]
 mod gate_c_clone_rescan;
+#[cfg(test)]
+mod sample_slot_boundary;
 
 use audio_pool::{
     cancel_transfer, collect_audio_files_recursive, copy_audio_files_or_use_existing,

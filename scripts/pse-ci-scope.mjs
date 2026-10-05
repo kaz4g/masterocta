@@ -22,6 +22,7 @@ const IN_SCOPE_PREFIXES = [
   "src-tauri/src/project_structure_command.rs",
   "src-tauri/src/v2_api.rs",
   "src-tauri/src/project_structure_reader.rs",
+  "src-tauri/src/sample_slot_boundary.rs",
   "src-tauri/src/bank_validation.rs",
   "src-tauri/src/legacy_read_adapter.rs",
   "src-tauri/crates/ot-domain/src/project_structure.rs",

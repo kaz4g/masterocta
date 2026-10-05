@@ -212,5 +212,6 @@ Sample/Slice worktree. Scene has no current read model.
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
 - M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - Project structure proposal: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)
+- Sample Slot ↔ AudioAsset boundary (#187): [`SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md`](./SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md)
 - Architecture decisions: [`ADR_INDEX.md`](./ADR_INDEX.md)
 - Agent handoff entrypoint: [`../CODEX_HANDOFF.md`](../CODEX_HANDOFF.md)
