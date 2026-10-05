@@ -165,6 +165,8 @@ impl BankMutationPhase {
 
 /// One entry of a project-scope manifest (BMS-WRITE).
 ///
+/// `ContentHash` here is the generic SHA-256 byte digest of one entry, the same
+/// value plan, backup, and executor use. It is not an AudioAsset identity.
 /// Symlink text is kept only as a digest so a manifest never carries a path
 /// outside the root. mtime, atime, and permission bits are not part of the
 /// contract; FAT media do not preserve them reliably.
@@ -710,6 +712,17 @@ pub enum StopCondition {
     ExpectedChangeBeforeMismatch {
         relative_path: RootRelativePath,
     },
+    /// Only `bankNN.work` / `bankNN.strd` directly in the project directory
+    /// may be planned. Samples, `project.*`, markers, and arrangements may not.
+    ExpectedChangeNotBankDocument {
+        relative_path: RootRelativePath,
+    },
+    ExpectedChangeOutsideOperatedBanks {
+        relative_path: RootRelativePath,
+    },
+    ExpectedChangeRoleNotAffected {
+        relative_path: RootRelativePath,
+    },
     NonRegularEntryInScope {
         relative_path: RootRelativePath,
     },
@@ -757,6 +770,9 @@ impl StopCondition {
             Self::NoOpExpectedChange { .. } => "BMS_NOOP_EXPECTED_CHANGE",
             Self::ExpectedChangeOutsideProject { .. } => "BMS_CHANGE_OUTSIDE_PROJECT",
             Self::ExpectedChangeBeforeMismatch { .. } => "BMS_CHANGE_BEFORE_MISMATCH",
+            Self::ExpectedChangeNotBankDocument { .. } => "BMS_CHANGE_NOT_BANK_DOCUMENT",
+            Self::ExpectedChangeOutsideOperatedBanks { .. } => "BMS_CHANGE_OUTSIDE_OPERATED_BANKS",
+            Self::ExpectedChangeRoleNotAffected { .. } => "BMS_CHANGE_ROLE_NOT_AFFECTED",
             Self::NonRegularEntryInScope { .. } => "BMS_NON_REGULAR_ENTRY",
             Self::DocumentNotParsed { .. } => "BMS_DOCUMENT_NOT_PARSED",
             Self::UnmodeledDependency(_) => "BMS_UNMODELED_DEPENDENCY",
@@ -859,10 +875,28 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
                 relative_path: path.clone(),
             });
         }
-        if !path.as_str().starts_with(&project_prefix) {
-            stops.push(StopCondition::ExpectedChangeOutsideProject {
+        match path
+            .as_str()
+            .strip_prefix(&project_prefix)
+            .map(bank_document_target)
+        {
+            None => stops.push(StopCondition::ExpectedChangeOutsideProject {
                 relative_path: path.clone(),
-            });
+            }),
+            Some(None) => stops.push(StopCondition::ExpectedChangeNotBankDocument {
+                relative_path: path.clone(),
+            }),
+            Some(Some((bank, _))) if bank != envelope.source && bank != envelope.destination => {
+                stops.push(StopCondition::ExpectedChangeOutsideOperatedBanks {
+                    relative_path: path.clone(),
+                })
+            }
+            Some(Some((_, role))) if !envelope.affected_roles.contains(&role) => {
+                stops.push(StopCondition::ExpectedChangeRoleNotAffected {
+                    relative_path: path.clone(),
+                })
+            }
+            Some(Some(_)) => {}
         }
         if !change.before.matches(envelope.scope_manifest.get(path)) {
             stops.push(StopCondition::ExpectedChangeBeforeMismatch {
@@ -889,6 +923,24 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
         stops.push(StopCondition::UnmodeledDependency(*dependency));
     }
     stops
+}
+
+/// Parses a project-directory child name as `bankNN.work` / `bankNN.strd`
+/// (BMS-CHANGESET). Nested paths and any other name return `None`.
+pub fn bank_document_target(file_name: &str) -> Option<(BankIndex, StateDocumentRole)> {
+    let (stem, extension) = file_name.split_once('.')?;
+    let role = match extension {
+        "work" => StateDocumentRole::Working,
+        "strd" => StateDocumentRole::SavedCheckpoint,
+        _ => return None,
+    };
+    let digits = stem.strip_prefix("bank")?;
+    if digits.len() != 2 || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let number: u8 = digits.parse().ok()?;
+    let bank = BankIndex::new(number.checked_sub(1)?).ok()?;
+    Some((bank, role))
 }
 
 /// Apply entry gate (BMS-ENTRY). Fail closed: any stop condition, including
@@ -1403,11 +1455,97 @@ mod tests {
                 StopCondition::ExpectedChangeOutsideProject {
                     relative_path: outside
                 },
+                StopCondition::ExpectedChangeNotBankDocument {
+                    relative_path: path("SET/PROJECT/markers.work")
+                },
                 StopCondition::ExpectedChangeBeforeMismatch {
                     relative_path: path("SET/PROJECT/markers.work")
                 },
             ]
         );
+    }
+
+    #[test]
+    fn bank_document_target_accepts_only_direct_bank_files() {
+        let bank_a_working = Some((bank(0), StateDocumentRole::Working));
+        assert_eq!(bank_document_target("bank01.work"), bank_a_working);
+        assert_eq!(
+            bank_document_target("bank16.strd"),
+            Some((bank(15), StateDocumentRole::SavedCheckpoint))
+        );
+        for name in [
+            "bank00.work",
+            "bank17.work",
+            "bank1.work",
+            "bank001.work",
+            "BANK01.work",
+            "bank01.WORK",
+            "bank01.work.bak",
+            "bank01.ot",
+            "bank01",
+            "project.work",
+            "project.strd",
+            "markers.work",
+            "arr01.work",
+            "kick.wav",
+            "AUDIO/bank01.work",
+            "bank+1.work",
+        ] {
+            assert_eq!(bank_document_target(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn bank_operations_may_only_plan_changes_to_operated_bank_documents() {
+        let mut fields = copy_fields();
+        fields
+            .scope_manifest
+            .insert(path("SET/PROJECT/AUDIO/kick.wav"), file(100, '5'));
+        let change = |value: &str, before: ExpectedState| ExpectedChange {
+            relative_path: path(value),
+            before,
+            after: expected_file(1, '1'),
+        };
+        fields.expected_changes = vec![
+            change("SET/PROJECT/bank02.work", ExpectedState::Absent),
+            change("SET/PROJECT/project.work", expected_file(10, 'a')),
+            change("SET/PROJECT/markers.work", expected_file(5, 'd')),
+            change("SET/PROJECT/AUDIO/kick.wav", expected_file(100, '5')),
+            change("SET/PROJECT/kick.wav.ot", ExpectedState::Absent),
+            change("SET/PROJECT/bank05.work", ExpectedState::Absent),
+            change("SET/PROJECT/bank02.strd", ExpectedState::Absent),
+            change("SET/AUDIO/kick.wav", ExpectedState::Absent),
+        ];
+        let stops = validate_envelope(&BankMutationEnvelope::seal(fields));
+        assert_eq!(
+            stops,
+            vec![
+                StopCondition::ExpectedChangeNotBankDocument {
+                    relative_path: path("SET/PROJECT/project.work")
+                },
+                StopCondition::ExpectedChangeNotBankDocument {
+                    relative_path: path("SET/PROJECT/markers.work")
+                },
+                StopCondition::ExpectedChangeNotBankDocument {
+                    relative_path: path("SET/PROJECT/AUDIO/kick.wav")
+                },
+                StopCondition::ExpectedChangeNotBankDocument {
+                    relative_path: path("SET/PROJECT/kick.wav.ot")
+                },
+                StopCondition::ExpectedChangeOutsideOperatedBanks {
+                    relative_path: path("SET/PROJECT/bank05.work")
+                },
+                StopCondition::ExpectedChangeRoleNotAffected {
+                    relative_path: path("SET/PROJECT/bank02.strd")
+                },
+                StopCondition::ExpectedChangeOutsideProject {
+                    relative_path: path("SET/AUDIO/kick.wav")
+                },
+            ]
+        );
+        for stop in &stops {
+            assert!(stop.code().starts_with("BMS_CHANGE_"), "{stop}");
+        }
     }
 
     #[test]
@@ -1545,6 +1683,10 @@ mod tests {
     fn backup_must_be_complete_local_reverified_and_cover_every_changed_file() {
         let mut fields = copy_fields();
         fields.kind = BankMutationKind::Swap;
+        fields.affected_roles = vec![
+            StateDocumentRole::Working,
+            StateDocumentRole::SavedCheckpoint,
+        ];
         fields.expected_changes = vec![
             ExpectedChange {
                 relative_path: path("SET/PROJECT/bank01.work"),
@@ -1777,6 +1919,15 @@ mod tests {
                 relative_path: path(PROJECT),
             },
             StopCondition::ExpectedChangeBeforeMismatch {
+                relative_path: path(PROJECT),
+            },
+            StopCondition::ExpectedChangeNotBankDocument {
+                relative_path: path(PROJECT),
+            },
+            StopCondition::ExpectedChangeOutsideOperatedBanks {
+                relative_path: path(PROJECT),
+            },
+            StopCondition::ExpectedChangeRoleNotAffected {
                 relative_path: path(PROJECT),
             },
             StopCondition::NonRegularEntryInScope {
