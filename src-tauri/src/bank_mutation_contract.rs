@@ -410,7 +410,57 @@ mod tests {
     /// Production part of the contract module, before its test module.
     fn contract_production_source() -> &'static str {
         let source = include_str!("../crates/ot-plan/src/bank_mutation.rs");
-        source.split("#[cfg(test)]").next().unwrap()
+        source.split("\n#[cfg(test)]\nmod tests").next().unwrap()
+    }
+
+    fn item_body<'a>(source: &'a str, header: &str) -> &'a str {
+        let start = source.find(header).unwrap_or_else(|| panic!("{header}"));
+        let rest = &source[start..];
+        &rest[..rest.find("\n}").unwrap()]
+    }
+
+    #[test]
+    fn production_cannot_resolve_readiness_or_forge_a_permit() {
+        let source = contract_production_source();
+        let lines: Vec<_> = source.lines().map(str::trim).collect();
+        let constructor = lines
+            .iter()
+            .position(|line| line.starts_with("pub fn assume_resolved"))
+            .unwrap();
+        assert_eq!(lines[constructor - 1], "#[cfg(test)]");
+
+        let readiness = item_body(source, "impl ReadinessEvidence {");
+        let constructors: Vec<_> = readiness
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("pub fn") && line.contains("-> Self"))
+            .collect();
+        assert_eq!(
+            constructors,
+            vec![
+                "pub fn current_main() -> Self {",
+                "pub fn assume_resolved(gaps: impl IntoIterator<Item = ReadinessGap>) -> Self {",
+            ]
+        );
+        assert!(source
+            .contains("pub struct ReadinessEvidence {\n    resolved: BTreeSet<ReadinessGap>,"));
+        assert!(
+            source.contains("pub struct ApplyEntryPermit {\n    envelope: BankMutationEnvelope,")
+        );
+        assert!(source.contains(
+            "pub struct BankMutationEnvelope {\n    id: PlanId,\n    fields: BankMutationEnvelopeFields,"
+        ));
+        assert!(!source.contains("DerefMut"));
+
+        let constructions = lines
+            .iter()
+            .filter(|line| {
+                !line.starts_with("//") && line.contains("ApplyEntryPermit { envelope }")
+            })
+            .count();
+        assert_eq!(constructions, 1);
+        let gate = item_body(source, "pub fn evaluate_apply_entry(");
+        assert!(gate.contains("Ok(ApplyEntryPermit { envelope })"));
     }
 
     #[test]

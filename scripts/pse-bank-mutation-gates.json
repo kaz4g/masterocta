@@ -55,6 +55,7 @@
       "contract_rules": ["BMS-ENTRY", "BMS-PLAN"],
       "contract_tests": [
         "stale_live_observation_withholds_the_permit",
+        "permit_must_be_reverified_against_a_fresh_observation",
         "a_byte_changed_after_planning_makes_the_plan_stale",
         "sealed_plan_id_is_deterministic_and_detects_tampering"
       ]
@@ -102,6 +103,8 @@
       "contract_rules": ["BMS-CHANGESET", "BMS-VERIFY-BYTES"],
       "contract_tests": [
         "bank_operations_may_only_plan_changes_to_operated_bank_documents",
+        "change_set_is_limited_to_operated_bank_files",
+        "copy_change_set_may_not_touch_the_source_bank",
         "bank_document_target_accepts_only_direct_bank_files",
         "expected_change_verification_rejects_unplanned_and_wrong_results"
       ]

@@ -410,12 +410,26 @@ pub struct PlannedDocument {
 /// must be present and how they are checked. Build it with
 /// [`BankMutationEnvelope::seal`]; the [`PlanId`] covers every field.
 ///
-/// `fields` stays private after sealing. Callers can read the projection
-/// through [`std::ops::Deref`] but cannot change it and reuse an
+/// `id` and `fields` stay private after sealing. Callers can read the
+/// projection through [`std::ops::Deref`] but cannot change it and reuse an
 /// [`ApplyEntryPermit`].
+///
+/// ```compile_fail,E0616
+/// # use ot_plan::bank_mutation::BankMutationEnvelope;
+/// fn retarget(envelope: &mut BankMutationEnvelope) {
+///     envelope.fields.expected_changes.clear();
+/// }
+/// ```
+///
+/// ```compile_fail,E0596
+/// # use ot_plan::bank_mutation::BankMutationEnvelope;
+/// fn retarget(envelope: &mut BankMutationEnvelope) {
+///     envelope.expected_changes.clear();
+/// }
+/// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BankMutationEnvelope {
-    pub id: PlanId,
+    id: PlanId,
     fields: BankMutationEnvelopeFields,
 }
 
@@ -446,6 +460,10 @@ impl BankMutationEnvelope {
     pub fn seal(fields: BankMutationEnvelopeFields) -> Self {
         let id = derive_bank_mutation_plan_id(&fields);
         Self { id, fields }
+    }
+
+    pub fn id(&self) -> &PlanId {
+        &self.id
     }
 
     pub fn validate_integrity(&self) -> bool {
@@ -671,6 +689,22 @@ impl ReadinessGap {
 /// resolved is a reviewed change to that function and its pinned test, backed
 /// by the evidence named in [`ReadinessGap::tracking`]. There is no production
 /// constructor that closes a gap.
+///
+/// ```
+/// # use ot_plan::bank_mutation::{ReadinessEvidence, ReadinessGap};
+/// let readiness = ReadinessEvidence::current_main();
+/// assert_eq!(readiness.open_gaps(), ReadinessGap::ALL.to_vec());
+/// ```
+///
+/// ```compile_fail,E0599
+/// # use ot_plan::bank_mutation::{ReadinessEvidence, ReadinessGap};
+/// let readiness = ReadinessEvidence::assume_resolved(ReadinessGap::ALL);
+/// ```
+///
+/// ```compile_fail,E0451
+/// # use ot_plan::bank_mutation::{ReadinessEvidence, ReadinessGap};
+/// let readiness = ReadinessEvidence { resolved: ReadinessGap::ALL.into_iter().collect() };
+/// ```
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReadinessEvidence {
     resolved: BTreeSet<ReadinessGap>,
@@ -841,6 +875,18 @@ impl fmt::Display for StopCondition {
 /// was checked. A future Apply entry point must read [`Self::envelope`] and
 /// must not write from a separately supplied envelope, even one with the same
 /// [`PlanId`].
+///
+/// A permit is evidence from one observation, not a lease. Immediately before
+/// the first write, under the root writer lock, the executor must re-observe
+/// the target and call [`Self::reverify`]; only the permit it returns may be
+/// used for that write.
+///
+/// ```compile_fail,E0451
+/// # use ot_plan::bank_mutation::{ApplyEntryPermit, BankMutationEnvelope};
+/// fn forge(envelope: BankMutationEnvelope) -> ApplyEntryPermit {
+///     ApplyEntryPermit { envelope }
+/// }
+/// ```
 #[derive(Debug, Eq, PartialEq)]
 pub struct ApplyEntryPermit {
     envelope: BankMutationEnvelope,
@@ -853,6 +899,17 @@ impl ApplyEntryPermit {
 
     pub fn envelope(&self) -> &BankMutationEnvelope {
         &self.envelope
+    }
+
+    /// Re-runs every entry check on the owned envelope against a fresh
+    /// observation. Consumes the permit, so a stale one cannot be kept.
+    pub fn reverify(
+        self,
+        live: &LiveTargetObservation,
+        backup: Option<&BackupEvidence>,
+        readiness: &ReadinessEvidence,
+    ) -> Result<Self, Vec<StopCondition>> {
+        evaluate_apply_entry(self.envelope, live, backup, readiness)
     }
 }
 
@@ -910,11 +967,9 @@ fn unique_roles(roles: &[StateDocumentRole]) -> Vec<StateDocumentRole> {
     unique
 }
 
-/// Banks whose files this operation must write.
-///
-/// Copy writes the destination only. Move and Swap write both Banks.
-/// A Copy may still declare an extra source-Bank change; the whitelist allows
-/// it, and this set is only the required subset.
+/// Banks whose files this operation writes, and the only Banks a change set
+/// may name. Copy writes the destination only; its source must stay
+/// byte-identical. Move and Swap write both Banks.
 fn written_bank_indexes(fields: &BankMutationEnvelopeFields) -> Vec<BankIndex> {
     match fields.kind {
         BankMutationKind::Copy => vec![fields.destination],
@@ -1109,6 +1164,7 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
     }
     let project_prefix = format!("{}/", envelope.project_relative_path.as_str());
     let allowed = operated_change_paths(envelope);
+    let written = written_bank_indexes(envelope);
     let mut seen = BTreeSet::new();
     for change in &envelope.expected_changes {
         let path = &change.relative_path;
@@ -1133,7 +1189,7 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
             Some(None) => stops.push(StopCondition::ExpectedChangeNotBankDocument {
                 relative_path: path.clone(),
             }),
-            Some(Some((bank, _))) if bank != envelope.source && bank != envelope.destination => {
+            Some(Some((bank, _))) if !written.contains(&bank) => {
                 stops.push(StopCondition::ExpectedChangeOutsideOperatedBanks {
                     relative_path: path.clone(),
                 })
@@ -1749,6 +1805,9 @@ mod tests {
                 StopCondition::NoOpExpectedChange {
                     relative_path: path("SET/PROJECT/bank01.work")
                 },
+                StopCondition::ExpectedChangeOutsideOperatedBanks {
+                    relative_path: path("SET/PROJECT/bank01.work")
+                },
                 StopCondition::ExpectedChangeOutsideProject {
                     relative_path: outside
                 },
@@ -1899,6 +1958,85 @@ mod tests {
                 relative_path: path("SET/PROJECT/bank01.work"),
             }]
         );
+    }
+
+    #[test]
+    fn copy_change_set_may_not_touch_the_source_bank() {
+        let mut fields = copy_fields();
+        fields.expected_changes.push(ExpectedChange {
+            relative_path: path("SET/PROJECT/bank01.work"),
+            before: expected_file(20, 'b'),
+            after: expected_file(20, '0'),
+        });
+        assert_eq!(
+            validate_envelope(&BankMutationEnvelope::seal(fields)),
+            vec![StopCondition::ExpectedChangeOutsideOperatedBanks {
+                relative_path: path("SET/PROJECT/bank01.work"),
+            }]
+        );
+    }
+
+    #[test]
+    fn permit_keeps_the_checked_fields_not_a_later_edit() {
+        let checked = BankMutationEnvelope::seal(copy_fields());
+        let live = live_for(&checked);
+        let backup = backup_for(&checked);
+        let permit =
+            evaluate_apply_entry(checked.clone(), &live, Some(&backup), &all_resolved()).unwrap();
+
+        let mut edited_fields = copy_fields();
+        edited_fields.expected_changes[0].after = expected_file(20, '9');
+        let edited = BankMutationEnvelope::seal(edited_fields);
+        assert_ne!(edited.id(), checked.id());
+        assert_eq!(permit.envelope(), &checked);
+        assert_ne!(permit.envelope(), &edited);
+        assert_eq!(permit.plan_id(), checked.id());
+        assert_eq!(
+            permit.envelope().expected_changes,
+            checked.expected_changes,
+            "the permit exposes only the fields that were evaluated"
+        );
+
+        let mut forged = checked.clone();
+        forged.fields.expected_changes[0].after = expected_file(20, '9');
+        assert!(!forged.validate_integrity());
+        let stops =
+            evaluate_apply_entry(forged, &live, Some(&backup), &all_resolved()).unwrap_err();
+        assert!(stops.contains(&StopCondition::PlanIntegrityMismatch));
+    }
+
+    #[test]
+    fn permit_must_be_reverified_against_a_fresh_observation() {
+        let envelope = BankMutationEnvelope::seal(copy_fields());
+        let backup = backup_for(&envelope);
+        let live = live_for(&envelope);
+        let permit =
+            evaluate_apply_entry(envelope.clone(), &live, Some(&backup), &all_resolved()).unwrap();
+        let permit = permit
+            .reverify(&live, Some(&backup), &all_resolved())
+            .unwrap();
+        assert_eq!(permit.envelope(), &envelope);
+
+        let mut drifted = live.clone();
+        drifted
+            .scope_manifest
+            .insert(path("SET/PROJECT/markers.work"), file(5, '0'));
+        let stops = permit
+            .reverify(&drifted, Some(&backup), &all_resolved())
+            .unwrap_err();
+        assert_eq!(
+            stops,
+            vec![StopCondition::StalePrecondition(TreeChange {
+                relative_path: path("SET/PROJECT/markers.work"),
+                kind: TreeChangeKind::ContentChanged,
+            })]
+        );
+
+        let permit = evaluate_apply_entry(envelope, &live, Some(&backup), &all_resolved()).unwrap();
+        let stops = permit
+            .reverify(&live, Some(&backup), &ReadinessEvidence::current_main())
+            .unwrap_err();
+        assert_eq!(stops.len(), ReadinessGap::ALL.len());
     }
 
     #[test]

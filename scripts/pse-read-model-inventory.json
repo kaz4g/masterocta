@@ -97,6 +97,7 @@
         "bank_operations_may_only_plan_changes_to_operated_bank_documents",
         "change_set_is_limited_to_operated_bank_files",
         "clean_plan_with_resolved_readiness_gets_a_permit_bound_to_its_plan",
+        "copy_change_set_may_not_touch_the_source_bank",
         "copy_structure_check_compares_content_not_file_names",
         "current_main_readiness_keeps_every_gap_open",
         "current_main_withholds_the_permit_even_for_a_clean_plan",
@@ -105,9 +106,11 @@
         "expected_change_verification_rejects_unplanned_and_wrong_results",
         "expected_changes_must_be_unique_real_and_inside_the_project",
         "move_structure_check_stays_closed_until_the_vacated_state_is_decided",
+        "omitted_affected_bank_evidence_blocks_the_plan",
         "only_apply_and_recovery_may_write_and_failures_have_one_disposition",
         "only_fixture_scope_targets_are_writable",
-        "omitted_affected_bank_evidence_blocks_the_plan",
+        "permit_keeps_the_checked_fields_not_a_later_edit",
+        "permit_must_be_reverified_against_a_fresh_observation",
         "phase_flow_cannot_skip_steps_or_cancel_mid_apply",
         "project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix",
         "recovery_must_restore_the_whole_scope_to_pre",
@@ -134,6 +137,7 @@
         "frontend_has_no_direct_filesystem_write_capability",
         "generic_mutation_commands_are_pinned_and_carry_no_bank_mutation",
         "no_bank_mutation_command_is_exposed_to_the_frontend",
+        "production_cannot_resolve_readiness_or_forge_a_permit",
         "tracked_real_device_documents_are_parsed_and_unmodeled_dependencies_are_listed",
         "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
       ]
