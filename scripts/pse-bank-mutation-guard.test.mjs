@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
@@ -40,6 +40,7 @@ function withRepositoryCopy(mutate) {
       "src/features/project-structure",
       "scripts/pse-bank-mutation-gates.json",
       "scripts/pse-read-model-inventory.json",
+      "docs/planning/PSE_BANK_MUTATION_SAFETY_CONTRACT.md",
     ];
     for (const entry of entries) {
       cpSync(path.join(repositoryRoot, entry), path.join(temp, entry), { recursive: true });
@@ -225,7 +226,8 @@ describe("v2 command surface and legacy gate", () => {
 });
 
 describe("ChangePlan / Mutation gate ledger", () => {
-  const evaluate = (value, fileExists = () => false) =>
+  const repoFileExists = (relativePath) => existsSync(path.join(repositoryRoot, relativePath));
+  const evaluate = (value, fileExists = repoFileExists) =>
     evaluateLedger(value, { inventory: inventory(), fileExists });
 
   it("covers every #191 ChangePlan and Mutation item exactly once", () => {
@@ -236,7 +238,40 @@ describe("ChangePlan / Mutation gate ledger", () => {
       [...ISSUE_191_GATE_IDS].sort(),
     );
     assert.equal(current.contract.issue, 182);
-    assert.equal(current.contract.document, null);
+    assert.equal(
+      current.contract.document,
+      "docs/planning/PSE_BANK_MUTATION_SAFETY_CONTRACT.md",
+    );
+    for (const gate of current.gates) {
+      assert.deepEqual(gate.required_tests, [], gate.id);
+      assert.equal(gate.status, "BLOCKED", gate.id);
+    }
+  });
+
+  it("checks contract rule and test mappings without activating gates", () => {
+    const mapped = ledger();
+    const gate = mapped.gates.find((entry) => entry.id === "mutation.expected-changed-files-only");
+    assert.ok(gate.contract_rules.includes("BMS-CHANGESET"));
+    assert.deepEqual(evaluate(mapped, () => true).findings, []);
+
+    const unknownTest = ledger();
+    unknownTest.gates.find((entry) => entry.id === gate.id).contract_tests = ["not_a_test"];
+    assert.match(
+      evaluate(unknownTest, () => true).findings[0].detail,
+      /contract test not_a_test, which is not in/,
+    );
+
+    const badRule = ledger();
+    badRule.gates.find((entry) => entry.id === gate.id).contract_rules = ["VERIFY"];
+    assert.match(evaluate(badRule, () => true).findings[0].detail, /not a BMS-\* rule id/);
+
+    const empty = ledger();
+    empty.gates.find((entry) => entry.id === gate.id).contract_tests = [];
+    assert.match(evaluate(empty, () => true).findings[0].detail, /non-empty array/);
+
+    const noDocument = ledger();
+    noDocument.contract.document = null;
+    assert.match(evaluate(noDocument).findings[0].detail, /without a #182 contract document/);
   });
 
   it("fails when a gate is dropped or duplicated", () => {

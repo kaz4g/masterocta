@@ -351,10 +351,24 @@ for these phases until the #183 runner exists.
 | `recovery.restores-pre-state` | back to PRE hash / reference state | #182, #183, #184, #185 |
 | `recovery.retry-idempotency` | retry / idempotency | #182, #183, #185 |
 
-`#182` hook: `contract.document` in the ledger is `null`. When the #182
-contract lands, set it to the contract's repository path; the guard then
-requires the file to exist. This document and the ledger do not define the
-contract.
+`#182` hook: `contract.document` in the ledger is
+[`docs/planning/PSE_BANK_MUTATION_SAFETY_CONTRACT.md`](../planning/PSE_BANK_MUTATION_SAFETY_CONTRACT.md),
+and the guard requires that file to exist. The contract, not this document,
+defines the rules.
+
+Each mutation / recovery gate (and the two #182-related change-plan gates)
+also lists `contract_rules` (BMS rule ids) and `contract_tests` (contract
+tests already required by the inventory). These are a map, not the gate's
+`required_tests`: every gate stays **BLOCKED** until the #183 runner applies
+a real Bank change to fixture copies. The guard checks that mapped tests are
+in the inventory, that rules are `BMS-*` ids, and that a mapping is only
+present when the contract document is set. Rule-to-gate table: contract §14.
+
+Scope limit carried from the contract (BMS-SAMPLE): the contract manifest
+covers the project directory only. Samples in the Set Audio Pool (outside the
+project) are out of that scope, so `mutation.unrelated-files-preserved` and
+`mutation.reference-integrity` need #184 / #185 checks at the Set-root level
+or over the files the slots reference before they can leave BLOCKED.
 
 ### PR gate policy
 
@@ -408,8 +422,13 @@ the Bank editor line before #182 / #183 define how one is allowed.
 Known limits: a write reached through a generic module (for example a Bank
 intent routed through `v2_change_plan` / `v2_change_apply`) is not caught by
 file names. `check-architecture.mjs` pins the full v2 command surface, and the
-Viewer E2E asserts no mutation command is invoked, but a Bank intent inside the
-generic change flow must be reviewed under #182.
+Viewer E2E asserts no mutation command is invoked. The #182 contract rule
+BMS-ROUTE covers the rest: a generic command that can touch Bank documents
+must call `evaluate_apply_entry` before Apply and must be added to this
+guard's allowlist explicitly. The contract test
+`generic_mutation_commands_are_pinned_and_carry_no_bank_mutation` pins the
+generic media-mutating command list and fails if the composition code
+references Bank mutation types without the entry gate.
 
 Lifting a rule is part of the reviewed #182 / #183 change, together with the
 runtime mutation gates. Editing the ledger alone cannot unlock Apply.
