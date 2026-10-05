@@ -451,6 +451,26 @@ export function evaluateLedger(ledger, { inventory, fileExists } = {}) {
       fail(`${label} id does not match phase ${gate.phase}`);
     }
     summary[gate.status] += 1;
+    for (const key of ["contract_rules", "contract_tests"]) {
+      if (gate[key] === undefined) continue;
+      if (!Array.isArray(gate[key]) || gate[key].length === 0) {
+        fail(`${label} ${key} must be a non-empty array when present`);
+        continue;
+      }
+      if (contractDocument === null) {
+        fail(`${label} maps ${key} without a #182 contract document`);
+      }
+    }
+    for (const rule of Array.isArray(gate.contract_rules) ? gate.contract_rules : []) {
+      if (typeof rule !== "string" || !/^BMS-[A-Z]+(?:-[A-Z]+)*$/.test(rule)) {
+        fail(`${label} contract rule ${rule} is not a BMS-* rule id`);
+      }
+    }
+    for (const test of Array.isArray(gate.contract_tests) ? gate.contract_tests : []) {
+      if (!inventoryNames.has(test)) {
+        fail(`${label} maps contract test ${test}, which is not in scripts/pse-read-model-inventory.json`);
+      }
+    }
     const tests = Array.isArray(gate.required_tests) ? gate.required_tests : null;
     if (!tests) {
       fail(`${label} required_tests must be an array`);

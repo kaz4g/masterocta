@@ -4,8 +4,8 @@
   "contract": {
     "issue": 182,
     "title": "Bank Mutation Safety Contract",
-    "document": null,
-    "todo": "Set document to the repository path of the #182 contract once it is merged. The guard then requires the file to exist. This ledger does not define the contract."
+    "document": "docs/planning/PSE_BANK_MUTATION_SAFETY_CONTRACT.md",
+    "note": "contract_rules / contract_tests below map each gate to the #182 rules and the contract tests that already run in the inventory. They are not the gate's required_tests: every mutation and recovery gate stays BLOCKED until the #183 runner exercises a real Apply on fixture copies."
   },
   "mutation_runner": {
     "issue": 183,
@@ -51,7 +51,13 @@
       "title": "stale/precondition detection",
       "status": "BLOCKED",
       "waits_on": [181, 182],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-ENTRY", "BMS-PLAN"],
+      "contract_tests": [
+        "stale_live_observation_withholds_the_permit",
+        "a_byte_changed_after_planning_makes_the_plan_stale",
+        "sealed_plan_id_is_deterministic_and_detects_tampering"
+      ]
     },
     {
       "id": "change-plan.plan-generation-no-write",
@@ -60,7 +66,9 @@
       "status": "BLOCKED",
       "waits_on": [181],
       "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-NOWRITE"],
+      "contract_tests": ["contract_evaluation_on_a_real_read_model_leaves_the_copy_byte_identical"]
     },
     {
       "id": "mutation.pre-manifest",
@@ -69,7 +77,9 @@
       "status": "BLOCKED",
       "waits_on": [182, 183],
       "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-WRITE"],
+      "contract_tests": ["every_kind_of_tree_difference_counts_as_a_write"]
     },
     {
       "id": "mutation.post-manifest",
@@ -78,7 +88,9 @@
       "status": "BLOCKED",
       "waits_on": [182, 183],
       "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-WRITE"],
+      "contract_tests": ["every_kind_of_tree_difference_counts_as_a_write"]
     },
     {
       "id": "mutation.expected-changed-files-only",
@@ -86,7 +98,13 @@
       "title": "expected changed filesだけが変更されることを検証",
       "status": "BLOCKED",
       "waits_on": [181, 182, 183],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-CHANGESET", "BMS-VERIFY-BYTES"],
+      "contract_tests": [
+        "bank_operations_may_only_plan_changes_to_operated_bank_documents",
+        "bank_document_target_accepts_only_direct_bank_files",
+        "expected_change_verification_rejects_unplanned_and_wrong_results"
+      ]
     },
     {
       "id": "mutation.unrelated-files-preserved",
@@ -95,7 +113,12 @@
       "status": "BLOCKED",
       "waits_on": [182, 183],
       "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-VERIFY-BYTES", "BMS-SAMPLE"],
+      "contract_tests": [
+        "expected_change_verification_rejects_unplanned_and_wrong_results",
+        "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
+      ]
     },
     {
       "id": "mutation.reference-integrity",
@@ -103,7 +126,14 @@
       "title": "Pattern / Part / Track / Sample Slot reference integrity",
       "status": "BLOCKED",
       "waits_on": [183, 184],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-VERIFY-STRUCTURE", "BMS-SAMPLE"],
+      "contract_tests": [
+        "copy_structure_check_compares_content_not_file_names",
+        "swap_structure_check_requires_both_directions",
+        "move_structure_check_stays_closed_until_the_vacated_state_is_decided",
+        "structure_check_rejects_unparsed_banks_and_project_state_drift"
+      ]
     },
     {
       "id": "recovery.backup-creation",
@@ -111,7 +141,9 @@
       "title": "backup creation verification",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-BACKUP"],
+      "contract_tests": ["backup_must_be_complete_local_reverified_and_cover_every_changed_file"]
     },
     {
       "id": "recovery.failure-injection",
@@ -119,7 +151,9 @@
       "title": "failure injection",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-FAIL"],
+      "contract_tests": ["only_apply_and_recovery_may_write_and_failures_have_one_disposition"]
     },
     {
       "id": "recovery.partial-apply-failure",
@@ -127,7 +161,12 @@
       "title": "partial Apply failure test",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-FAIL", "BMS-RECOVER"],
+      "contract_tests": [
+        "only_apply_and_recovery_may_write_and_failures_have_one_disposition",
+        "recovery_must_restore_the_whole_scope_to_pre"
+      ]
     },
     {
       "id": "recovery.verify-failure",
@@ -135,7 +174,9 @@
       "title": "Verify failure test",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-FAIL", "BMS-VERIFY-BYTES", "BMS-VERIFY-STRUCTURE"],
+      "contract_tests": ["only_apply_and_recovery_may_write_and_failures_have_one_disposition"]
     },
     {
       "id": "recovery.rollback",
@@ -143,7 +184,12 @@
       "title": "rollback/recovery test",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-RECOVER"],
+      "contract_tests": [
+        "recovery_must_restore_the_whole_scope_to_pre",
+        "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
+      ]
     },
     {
       "id": "recovery.restores-pre-state",
@@ -151,7 +197,9 @@
       "title": "recovery後にPRE hash/reference stateへ戻ることを検証",
       "status": "BLOCKED",
       "waits_on": [182, 183, 184, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-RECOVER", "BMS-VERIFY-STRUCTURE"],
+      "contract_tests": ["recovery_must_restore_the_whole_scope_to_pre"]
     },
     {
       "id": "recovery.retry-idempotency",
@@ -159,7 +207,9 @@
       "title": "retry/idempotency test",
       "status": "BLOCKED",
       "waits_on": [182, 183, 185],
-      "required_tests": []
+      "required_tests": [],
+      "contract_rules": ["BMS-FLOW"],
+      "contract_tests": ["phase_flow_cannot_skip_steps_or_cancel_mid_apply"]
     }
   ]
 }
