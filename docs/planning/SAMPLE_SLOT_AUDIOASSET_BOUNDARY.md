@@ -127,7 +127,7 @@ Track (Bank 文書, Part(unsaved), Track, 有効 machine Static/Flex)
 | 参照の種類 | 構造モデル | `usage_edges` | 根拠 |
 | --- | --- | --- | --- |
 | unsaved Part の有効 machine の Slot | あり | あり（既定 Static Slot を除く） | `slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset` |
-| (a) sample lock（Pattern × Track × Step） | なし | あり（`SampleLock`。Pattern の unsaved Part の有効 machine 側 pool、Track 長の内側だけ。Static machine の lock も `flex_slot_id` から読み、Track 長を超える step は数えない。どちらも #209 で不具合の疑い） | `project_reader` の `a_sample_lock_uses_the_machine_pool_of_its_patterns_part`、`sample_locks_count_within_pattern_length_only`、`lock_pool_follows_track_machine_type`。これらは現状の（#209 の）挙動を固定している |
+| (a) sample lock（Pattern × Track × Step） | なし | あり（`SampleLock`。Pattern の unsaved Part の有効 machine 側 pool。Static は `static_slot_id`、Flex は `flex_slot_id`。参照走査は 64 step 全体。有効 Track 長の内側は `audible: true`、長さ外の leftover lock は `audible: false` で潜在参照として残す） | `project_reader` の `static_sample_lock_reads_static_slot_id_not_flex`、`flex_sample_lock_reads_flex_slot_id_not_static`、`sample_lock_field_choice_follows_machine_type_on_each_track`、`sample_locks_beyond_pattern_length_remain_inaudible_references`、`sample_lock_audible_uses_per_track_length_in_scale_mode_one`、`lock_pool_follows_track_machine_type`（#209） |
 | (b) 無効側 machine の Slot（Flex machine の `static_slot_id` など） | なし | なし | `structure_and_usage_cover_only_unsaved_active_machine_slots` |
 | (c) `parts.saved` の Part | なし | なし | 同上。追跡 fixture でも unsaved と値が違う |
 | (d) `recorder_slot_id` | なし | なし | 同上。Recorder buffer は有効 Flex machine の `flex_slot_id` からだけ出る。Bank の生値の範囲は #210 で確認中 |

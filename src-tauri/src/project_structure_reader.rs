@@ -444,7 +444,6 @@ fn opened_file_path(file: &File) -> Result<PathBuf, std::io::Error> {
 
 #[cfg(target_os = "macos")]
 fn opened_file_path(file: &File) -> Result<PathBuf, std::io::Error> {
-    use std::ffi::CStr;
     use std::os::fd::AsRawFd;
     let mut buf = vec![0u8; libc::PATH_MAX as usize];
     // SAFETY: `file` is an open descriptor and `buf` is at least PATH_MAX bytes,
