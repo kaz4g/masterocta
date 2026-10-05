@@ -84,6 +84,51 @@
         "unknown_machine_type_rejects_bank",
         "unknown_machine_type_in_saved_part_rejects_bank"
       ]
+    },
+    {
+      "id": "ot-plan-bank-mutation-contract",
+      "package": "ot-plan",
+      "features": [],
+      "filter": "bank_mutation::",
+      "required_tests": [
+        "a_single_open_gap_withholds_the_permit",
+        "backup_must_be_complete_local_reverified_and_cover_every_changed_file",
+        "clean_plan_with_resolved_readiness_gets_a_permit_bound_to_its_plan",
+        "copy_structure_check_compares_content_not_file_names",
+        "current_main_readiness_keeps_every_gap_open",
+        "current_main_withholds_the_permit_even_for_a_clean_plan",
+        "envelope_shape_fails_closed",
+        "every_kind_of_tree_difference_counts_as_a_write",
+        "expected_change_verification_rejects_unplanned_and_wrong_results",
+        "expected_changes_must_be_unique_real_and_inside_the_project",
+        "move_structure_check_stays_closed_until_the_vacated_state_is_decided",
+        "only_apply_and_recovery_may_write_and_failures_have_one_disposition",
+        "only_fixture_scope_targets_are_writable",
+        "phase_flow_cannot_skip_steps_or_cancel_mid_apply",
+        "project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix",
+        "recovery_must_restore_the_whole_scope_to_pre",
+        "sealed_plan_id_is_deterministic_and_detects_tampering",
+        "stale_live_observation_withholds_the_permit",
+        "stop_condition_codes_are_unique",
+        "structure_check_rejects_unparsed_banks_and_project_state_drift",
+        "swap_structure_check_requires_both_directions",
+        "unparsed_documents_unmodeled_dependencies_and_links_block_the_plan"
+      ]
+    },
+    {
+      "id": "masterocta-bank-mutation-contract",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "bank_mutation_contract::",
+      "required_tests": [
+        "a_byte_changed_after_planning_makes_the_plan_stale",
+        "a_symlink_in_the_project_scope_blocks_the_plan_without_being_followed",
+        "contract_evaluation_on_a_real_read_model_leaves_the_copy_byte_identical",
+        "frontend_has_no_direct_filesystem_write_capability",
+        "no_bank_mutation_command_is_exposed_to_the_frontend",
+        "tracked_real_device_documents_are_parsed_and_unmodeled_dependencies_are_listed",
+        "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
+      ]
     }
   ]
 }

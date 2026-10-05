@@ -12,6 +12,9 @@ describe("pse ci scope", () => {
     for (const file of ["src/api/projectStructure.ts", "src/features/project-structure/ProjectStructureViewer.tsx", "src/features/library/CatalogWorkspaceViews.tsx", "src-tauri/src/project_structure_command.rs"]) assert.equal(isInScopePath(file), true);
     assert.equal(isInScopePath("src-tauri/src/project_structure_reader.rs"), true);
     assert.equal(isInScopePath("src-tauri/tests/fixtures/real_device/bank01.work"), true);
+    assert.equal(isInScopePath("src-tauri/crates/ot-plan/src/bank_mutation.rs"), true);
+    assert.equal(isInScopePath("src-tauri/src/bank_mutation_contract.rs"), true);
+    assert.equal(isInScopePath("src-tauri/crates/ot-plan/src/rename.rs"), false);
     assert.equal(isInScopePath("scripts/pse-read-model-check.mjs"), true);
     assert.equal(isInScopePath("src-tauri/Cargo.lock"), true);
     assert.equal(isInScopePath(".github/workflows/pse-ci.yml"), true);
