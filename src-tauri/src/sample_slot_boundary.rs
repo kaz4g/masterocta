@@ -543,6 +543,7 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
                 ),
                 TrackSlotReference::RecorderBuffer(buffer) => {
                     assert_eq!(machine, MachineKind::Flex);
+                    // Raw range vs `RecorderBufferId` (129..=136) is under review in #210.
                     assert_eq!(u16::from(active), buffer.flex_slot());
                     recorder_buffers += 1;
                 }

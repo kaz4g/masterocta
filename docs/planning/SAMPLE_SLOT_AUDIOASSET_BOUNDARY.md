@@ -98,7 +98,7 @@ catalog の `slot_assignments` は、この組を解決した後の root 相対�
 - 絶対パス
 - lineage、waveform、`.ot` sidecar slice、slice draft
 
-Flex 129–136 は Recorder buffer である。Slot ではない。AudioAsset へ解決しない（`TrackSlotReference::RecorderBuffer`、`UnmodeledDependency::RecorderSetup`）。
+Flex 129–136 は Recorder buffer である（Bank の生値の範囲は #210 で確認中）。Slot ではない。AudioAsset へ解決しない（`TrackSlotReference::RecorderBuffer`、`UnmodeledDependency::RecorderSetup`）。
 
 ### 3.2 解決の連鎖
 
@@ -125,10 +125,10 @@ Track (Bank 文書, Part(unsaved), Track, 有効 machine Static/Flex)
 | 参照の種類 | 構造モデル | `usage_edges` | 根拠 |
 | --- | --- | --- | --- |
 | unsaved Part の有効 machine の Slot | あり | あり（既定 Static Slot を除く） | `slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset` |
-| (a) sample lock（Pattern × Track × Step） | なし | あり（`SampleLock`。Pattern の unsaved Part の有効 machine 側 pool、Track 長の内側だけ） | `project_reader` の `a_sample_lock_uses_the_machine_pool_of_its_patterns_part`、`sample_locks_count_within_pattern_length_only` |
+| (a) sample lock（Pattern × Track × Step） | なし | あり（`SampleLock`。Pattern の unsaved Part の有効 machine 側 pool、Track 長の内側だけ。Static machine の lock も `flex_slot_id` から読み、Track 長を超える step は数えない。どちらも #209 で不具合の疑い） | `project_reader` の `a_sample_lock_uses_the_machine_pool_of_its_patterns_part`、`sample_locks_count_within_pattern_length_only`、`lock_pool_follows_track_machine_type`。これらは現状の（#209 の）挙動を固定している |
 | (b) 無効側 machine の Slot（Flex machine の `static_slot_id` など） | なし | なし | `structure_and_usage_cover_only_unsaved_active_machine_slots` |
 | (c) `parts.saved` の Part | なし | なし | 同上。追跡 fixture でも unsaved と値が違う |
-| (d) `recorder_slot_id` | なし | なし | 同上。Recorder buffer は有効 Flex machine の `flex_slot_id` からだけ出る |
+| (d) `recorder_slot_id` | なし | なし | 同上。Recorder buffer は有効 Flex machine の `flex_slot_id` からだけ出る。Bank の生値の範囲は #210 で確認中 |
 
 (a)–(d) は、#181 の前に read model へ加えるか、未モデルとして計画を失敗で閉じるかのどちらかにする。(a) は `usage_edges` にあるが、catalog の投影だけで書き込み計画を作らない（control plane §12）。影響範囲を `usage_edges` だけから数えると既定 Static Slot を落とし、構造モデルだけから数えると (a)–(d) を落とす。
 
@@ -202,7 +202,7 @@ legacy コマンドの `rename_file` / `delete_file` / `delete_audio_files` は 
 
 - 計画が Slot について持つのは、Slot の identity（Project 文書、`SampleSlotId`、参照座標）、`SampleReferenceStatus`、#207 の `scope_manifest` だけである。AudioAsset の hash や FileInstance を計画に入れない（I-1 / I-9）。
 - 影響 Slot は構造モデルから数える。§3.2 規則 6 の (a)–(d) は、#181 の前に read model へ加えるか、未モデルとして計画を失敗で閉じる。
-- 計画の変更対象に `audio_assets`、`file_instances`、`asset_derivations`、媒体上の音声バイトを入れない。入っていたら計画を失敗として閉じる（#207 BMS-SAMPLE と同じ）。
+- 計画の変更対象に `audio_assets`、`file_instances`、`asset_derivations`、媒体上の音声バイトを入れない。入っていたら計画を失敗として閉じる（#207 BMS-CHANGESET の `ExpectedChangeNotBankDocument` と BMS-SAMPLE）。
 - `Missing` / `InvalidPath` / `Ambiguous` は Broken refs として数える（control plane §6）。
 - 同一 Project 内の Bank 操作で Slot 番号は変わらない。Project をまたぐ移植は PSE-6 であり、#181 の範囲外である。
 
@@ -225,8 +225,8 @@ Bank 操作の後状態では少なくとも次を確認する。
 
 | ID | 内容 | 止まる理由 / 対応する台帳 |
 | --- | --- | --- |
-| P-1 | Bank ChangePlan / Apply が Sample 側データに触れないこと | #182（#207 BMS-VERIFY-BYTES / BMS-SAMPLE）。gate `mutation.expected-changed-files-only` / `mutation.unrelated-files-preserved`。#181 / #183 のコードが無い |
-| P-2 | Bank 変更後の参照整合 | #184。gate `mutation.reference-integrity`。Apply が無い |
+| P-1 | Bank ChangePlan / Apply が Sample 側データに触れないこと | #182（#207 BMS-CHANGESET（`ExpectedChangeNotBankDocument`）/ BMS-VERIFY-BYTES / BMS-SAMPLE）。gate `mutation.expected-changed-files-only` / `mutation.unrelated-files-preserved`。#181 / #183 のコードが無い |
+| P-2 | Bank 変更後の参照整合 | #184（#207 BMS-VERIFY-STRUCTURE / BMS-SAMPLE）。gate `mutation.reference-integrity`。Apply が無い |
 | P-3 | Project 間の Slot 再割当（AudioAsset 経由） | PSE-6 |
 | P-4 | WFM2 cache が Project 側の操作で無効化されないこと | Project 側に書き込みが無い。現状はソースガードだけ |
 | P-5 | `.ot` sidecar slice（`FileInstanceSidecar`）と slot-local 設定（`SlotAssignment`、`markers.work` / `markers.strd`）の書き込み分担 | どちらにも writer が無い（Auto Slice `.ot` Apply は NOT_STARTED）。Bank 操作は `markers.*` を書かない |
