@@ -6,10 +6,29 @@
 - Workflow: [`.github/workflows/pse-ci.yml`](../../.github/workflows/pse-ci.yml)
 - Shared entry: `pnpm run test:pse-read-model` / `node scripts/pse-read-model-check.mjs`
 - Inventory: [`scripts/pse-read-model-inventory.json`](../../scripts/pse-read-model-inventory.json)
+- Bank Mutation Safety Guard: `pnpm run check:pse-bank-mutation` / `node scripts/pse-bank-mutation-guard.mjs`
+- ChangePlan / Mutation gate ledger: [`scripts/pse-bank-mutation-gates.json`](../../scripts/pse-bank-mutation-gates.json)
 
 This document is the CI audit, reuse map, and Gate ledger for the Project
 Structure / Bank Editor line. It does **not** authorize Bank Apply, Recovery,
 or public distribution. M5–M11 numbers are unchanged.
+
+The checkboxes in the #191 body are not updated by CI. §11 is the canonical
+per-item status for #191.
+
+## 0. Refresh on `f28e9a2` (`MO-PSE-CI-FOUNDATION-2`)
+
+| Item | Value |
+| --- | --- |
+| `origin/main` | `f28e9a2e2112c3746cea4d8138499a87f7d6d37b` at refresh start |
+| Landed since §1 | #193 v2 read command, #195 contained reads, #197 `[STATES]` BANK / PATTERN, #199 master track / per-track scale / `INF`, #200 exit audit, #202 read-only Viewer |
+| Closed without merge | #190 Arranger read (`STOP_WITH_FINDINGS`, see the exit audit) |
+| Read model judgment | `PSE_READ_MODEL = COMPLETE`, `BANK_CHANGEPLAN_READINESS = NOT_READY`, `APPLY_READINESS = NOT_READY` ([`PSE_READ_MODEL_EXIT_AUDIT.md`](../planning/PSE_READ_MODEL_EXIT_AUDIT.md)) |
+| Added here | `Bank Mutation Safety Guard` job, gate ledger, aggregate wiring, this refresh |
+| Not added | ChangePlan, Apply, Recovery, any write path, the #182 contract |
+
+Sections 1 and 8 keep the foundation-start snapshot. Where they differ from
+the current state, §0, §4, and §11 win.
 
 ## 1. Canonical state at foundation start
 
@@ -42,6 +61,9 @@ Gate C.
 | macOS app bundle / signed build | `Gate C Candidate Build` | dispatch-only freeze + codesign | macos-latest | `workflow_dispatch` only | not a PR check | **not reused** for PR CI (signing / draft release) |
 | Project Structure inventory + PRE/POST | **new** `Project Structure CI` | `node scripts/pse-read-model-check.mjs` | ubuntu-22.04 + macos-latest | PR + push `main` | this workflow | added |
 | Script / aggregate contracts | **new** `Project Structure Scripts` | `pnpm run test:pse-scripts` | ubuntu-22.04 | always | this workflow | added |
+| Viewer API / UI contracts (#202) | `CI` / `Frontend Checks` | explicit `vitest run src/api/projectStructure.test.ts src/features/project-structure/ProjectStructureViewer.test.tsx` | ubuntu-latest | PR + push `main` (path-filtered) | existing CI | none; a removed Viewer test file fails the step |
+| Viewer browser regression (#202) | `CI` / `E2E Tests` | `e2e/project-structure-viewer.spec.ts` inside `pnpm run test:e2e` | ubuntu-latest | same | existing CI | asserts no mutation command is invoked |
+| Bank write-surface trip-wire | **new** `Bank Mutation Safety Guard` | `node scripts/pse-bank-mutation-guard.mjs` | ubuntu-22.04 | always (no path filter) | this workflow | added in `MO-PSE-CI-FOUNDATION-2` |
 
 ### Why a dedicated workflow
 
@@ -86,16 +108,21 @@ CI-only parser.
 | Sample Management / Gate C regression | existing | unchanged `CI` workflow | existing CI | reused; not weakened | none |
 | Linux / macOS FS + symlink | #191 | same read-model entry on both OSes | Linux + macOS jobs | **PASS** when both succeed | none |
 | macOS signed / notarized app | — | Gate C Candidate only | not a PR check | **NOT_APPLICABLE** for this read-only foundation | do not run release workflows from PR CI |
-| Viewer UI / E2E | #180 | none | — | **BLOCKED** | Viewer implementation |
-| ChangePlan determinism / stale | #181 | none | — | **BLOCKED** | ChangePlan implementation |
-| Expected-changed-files Apply | #183 | none | — | **BLOCKED** | Apply authorization + implementation |
-| Reference integrity after mutation | #184 | none | — | **BLOCKED** | Apply + integrity suite |
-| Backup / failure injection / Recovery | #185 | none | — | **BLOCKED** | Recovery implementation |
-| Native acceptance | #186 | none | — | **BLOCKED** | Native session after Viewer/Apply |
+| `project.work` `[STATES]`, master track, per-track scale, `INF` | #196 / #198 | inventory names added by #197 / #199 | Linux + macOS read-model jobs | **PASS** when both succeed | keep inventory current |
+| Viewer UI / E2E | #180 | #202 Viewer + explicit Frontend Checks step + `e2e/project-structure-viewer.spec.ts` | existing `CI` Frontend Checks / E2E; Viewer paths are in PSE scope | **PASS** when those jobs succeed | Native desktop inspection stays with #186 |
+| Bank write-surface trip-wire | #191 | `scripts/pse-bank-mutation-guard.mjs` | `Bank Mutation Safety Guard` job, always runs, feeds the aggregate | **PASS** while the Bank editor path has no write API (§12) | revise only with #182 / #183 |
+| ChangePlan / Mutation gate ledger | #191 | `scripts/pse-bank-mutation-gates.json` checked by the guard | same job | **PASS** = all 18 gates listed, mutation / recovery gates BLOCKED | #181 / #182 / #183 |
+| ChangePlan determinism / stale | #181 | ledger entries only | — | **BLOCKED** (`BANK_CHANGEPLAN_READINESS = NOT_READY`) | ChangePlan implementation |
+| Expected-changed-files Apply | #183 | ledger entries only | — | **BLOCKED** | #182 contract + #183 runner |
+| Reference integrity after mutation | #184 | ledger entry only | — | **BLOCKED** | Apply + integrity suite |
+| Backup / failure injection / Recovery | #185 | ledger entries only | — | **BLOCKED** | Recovery implementation |
+| Native acceptance | #186 | none | — | **BLOCKED** | Native session after Viewer/Apply (§13) |
 | Slot ↔ AudioAsset boundary | #187 | none | — | **BLOCKED** | ownership-boundary implementation |
 
 Unimplemented gates are not empty tests, `continue-on-error`, or unconditional
-skips. They stay **BLOCKED** until the product code exists.
+skips. They stay **BLOCKED** until the product code exists. The ledger makes
+that state machine-checked: a BLOCKED gate may not list tests, and a mutation
+or recovery gate cannot be marked ACTIVE yet.
 
 ## 5. Fixture safety and proof scope
 
@@ -153,8 +180,12 @@ the read. That is a path-contract check, not a weakening of containment.
 | Action pins | same full SHAs as existing CI |
 | Artifacts | PRE/POST/summary JSON only; no catalog, user audio, or Project originals |
 | Aggregate | `always()`; evaluates `needs.*.result`; never unconditional `exit 0` |
+| Always-required jobs | `Project Structure Scope`, `Project Structure Scripts`, `Bank Mutation Safety Guard` (failure, cancel, skip, or missing result fails the aggregate even on docs-only PRs) |
+| In-scope jobs | `Project Structure Linux`, `Project Structure macOS` |
 
 Required-check candidate name: **`Project Structure CI / Project Structure`**.
+The aggregate already includes the Bank Mutation Safety Guard, so the guard
+does not need its own required-check entry.
 
 ## 7. Compatibility
 
@@ -178,13 +209,22 @@ Required-check candidate name: **`Project Structure CI / Project Structure`**.
 | Multiple Bank fixtures | still only `bank01` tracked | **BLOCKED** for multi-bank plans |
 | Scenes / Recorder unmodeled | listed, never treated as absent | keep listed; do not skip |
 
+Status on `f28e9a2`: `[STATES]` `BANK` / `PATTERN` are mapped (#197);
+`ARRANGEMENT` stays `Unmapped(raw)` and is still a ChangePlan blocker. #190 was
+closed without merge. Bank internal identity, multi-Bank fixtures, and Scene /
+Recorder are unchanged and remain ChangePlan blockers per the exit audit §7.C.
+
 Do not revive disabled legacy `copy_bank`. Do not reuse rename APIs as Bank swap.
+The Bank Mutation Safety Guard fails if `copy_bank`, `copy_parts`,
+`copy_patterns`, `copy_tracks`, `save_parts`, `commit_part`, `commit_all_parts`,
+or `reload_part` leave `DISABLED_COMMANDS`.
 
 This CI PASS is **not** Bank Apply approval.
 
 ## 9. Required checks vs repository protection
 
-Read-only check of ruleset `Protect main` (`21538639`) on 2026-09-30:
+Read-only check of ruleset `Protect main` (`21538639`) on 2026-09-30, re-checked
+read-only on 2026-10-04 with the same rule types:
 
 - Enforcement: active on the default branch
 - Rules: `deletion`, `non_fast_forward`, `pull_request` (0 approving reviews)
@@ -202,15 +242,33 @@ No ruleset or branch-protection change is made by this work.
 | `CI / E2E Tests` | existing | Playwright |
 | `CI / Gate C Synthetic Smoke (ubuntu-22.04)` | existing | Gate C regression |
 | `CI / Gate C Synthetic Smoke (macos-latest)` | existing | Gate C regression |
-| `Project Structure CI / Project Structure` | **new aggregate** | read-model + fixture + skip/fail propagation |
+| `Project Structure CI / Project Structure` | **new aggregate** | read-model + fixture + skip/fail propagation + Bank Mutation Safety Guard |
 
-`Bank Mutation Safety` is **not** a candidate until #183/#185 exist.
+A runtime `Bank Mutation Safety` check (PRE/POST around a real Apply, failure
+injection, recovery) is **not** a candidate until #183 / #185 exist. Until then
+the static guard inside the aggregate is the only mutation-side check.
+
+macOS / Tauri build: PR CI compiles and tests the `masterocta` crate on
+`macos-latest` (Gate C Synthetic Smoke and Project Structure macOS). No PR job
+builds the `.app` bundle; the signed bundle stays in the dispatch-only Gate C
+Candidate workflow.
+
+### Path-filter caveat for the owner
+
+`CI` uses workflow-level `paths:`. If its jobs become required status checks,
+a PR that touches none of those paths never reports them and stays pending.
+`Project Structure CI` has no workflow-level filter and reports
+`NOT_APPLICABLE` instead, so it can be required as-is. Changing protection is
+an owner decision and is not part of this work.
 
 ## 10. Reproduction
 
 ```bash
 # script contracts (no Rust)
 pnpm run test:pse-scripts
+
+# Bank write-surface trip-wire + gate ledger (no Rust)
+pnpm run check:pse-bank-mutation
 
 # real reader + inventory + PRE/POST (needs Rust / GTK stack on Linux)
 pnpm run test:pse-read-model
@@ -219,3 +277,154 @@ pnpm run test:pse-read-model
 Record the checked SHA, OS, rustc/cargo/node versions, suite counts from the
 inventory summary, and the Actions run URL. Do not reuse another branch’s
 green result. Do not treat the GitHub test-merge SHA as the PR head SHA.
+
+## 11. #191 item status (canonical)
+
+Status values: **DONE** (automated and running on PRs), **PARTIAL**,
+**BLOCKED** (waits on the listed issue), **OWNER** (repository setting, not
+changed by agents). `DONE` for a CI item means the check exists and runs; a
+given PR is only green when its own Actions run is green.
+
+### CI foundation
+
+| #191 item | Status | Where |
+| --- | --- | --- |
+| current CI audit / reusable workflow | DONE | §2 (start) + §0 (refresh) |
+| `cargo fmt --all -- --check` | DONE | `CI` / `Rust Tests` |
+| `cargo clippy ... -D warnings` | DONE | `CI` / `Rust Tests`, split as `--workspace --exclude masterocta` + `-p masterocta --features test-seams` |
+| Rust workspace / unit tests | DONE | `CI` / `Rust Tests`, same split |
+| Frontend typecheck | DONE | `CI` / `Frontend Checks` |
+| Frontend unit / component tests | DONE | `CI` / `Frontend Checks`, incl. explicit Viewer step |
+| E2E gate | DONE | `CI` / `E2E Tests`, incl. `project-structure-viewer.spec.ts` |
+| macOS / Tauri build gate | PARTIAL | crate compile + tests on `macos-latest`; no PR `.app` bundle build (§9) |
+| existing Gate C regression kept | DONE | `CI` / `Gate C Synthetic Smoke` ubuntu + macOS, unchanged |
+| Project Structure job / workflow | DONE | `Project Structure CI` |
+
+### Read-only safety gates
+
+| #191 item | Status | Where |
+| --- | --- | --- |
+| Project fixture read | DONE | inventory suites, `real_device` + `multipart` |
+| Bank / Pattern / Part / Track / Slot projection | DONE | `masterocta-project-structure-reader` suite |
+| deterministic read model | DONE | `repeated_reads_return_equal_structure` |
+| no-write proof | DONE | PRE/POST + reader has no write API, now enforced by the guard (§12) |
+| PRE/POST fixture hash identity | DONE | `scripts/pse-fixture-manifest.mjs` scenarios |
+| malformed / unsupported fail-closed | DONE | `undecodable_bank_*`, `bank_failing_validation_*`, `malformed_project_work_*`, `unsupported_project_os_*` |
+
+### ChangePlan gates (#181)
+
+All six are ledger entries with status BLOCKED. `BANK_CHANGEPLAN_READINESS`
+is `NOT_READY` (exit audit §11).
+
+| Ledger id | #191 item | Waits on |
+| --- | --- | --- |
+| `change-plan.bank-copy-deterministic` | Bank Copy ChangePlan deterministic | #181 |
+| `change-plan.bank-move-deterministic` | Bank Move ChangePlan deterministic | #181 |
+| `change-plan.bank-swap-deterministic` | Bank Swap ChangePlan deterministic | #181 |
+| `change-plan.affected-reference-enumeration` | affected reference enumeration | #181 |
+| `change-plan.stale-precondition-detection` | stale / precondition detection | #181, #182 (hash / stale guard) |
+| `change-plan.plan-generation-no-write` | plan generation does not change the fixture | #181; reuse `pse-fixture-manifest.mjs`. Already partly enforced: any Rust module named `*bank*` / `*project_structure*` is scanned by the guard and may not write |
+
+How a ChangePlan gate becomes ACTIVE: add its Rust tests to
+`scripts/pse-read-model-inventory.json` (so they run with zero-test and
+ignore detection on Linux and macOS), list the same names in the gate's
+`required_tests`, and set `status` to `ACTIVE`. The guard rejects ACTIVE
+gates whose tests are not in the inventory.
+
+### Mutation safety gates (#183 and later)
+
+All twelve are ledger entries with status BLOCKED. The guard rejects ACTIVE
+for these phases until the #183 runner exists.
+
+| Ledger id | #191 item | Waits on |
+| --- | --- | --- |
+| `mutation.pre-manifest` | PRE manifest / hash | #182, #183; primitive exists (`pse-fixture-manifest.mjs`) |
+| `mutation.post-manifest` | POST manifest / hash after Apply | #182, #183; same primitive |
+| `mutation.expected-changed-files-only` | only expected files change | #181 (plan lists files), #182, #183 |
+| `mutation.unrelated-files-preserved` | unrelated byte / hash preservation | #182, #183 |
+| `mutation.reference-integrity` | Pattern / Part / Track / Slot integrity | #183, #184 |
+| `recovery.backup-creation` | backup creation | #182, #183, #185 |
+| `recovery.failure-injection` | failure injection | #182, #183, #185 |
+| `recovery.partial-apply-failure` | partial Apply failure | #182, #183, #185 |
+| `recovery.verify-failure` | Verify failure | #182, #183, #185 |
+| `recovery.rollback` | rollback / recovery | #182, #183, #185 |
+| `recovery.restores-pre-state` | back to PRE hash / reference state | #182, #183, #184, #185 |
+| `recovery.retry-idempotency` | retry / idempotency | #182, #183, #185 |
+
+`#182` hook: `contract.document` in the ledger is `null`. When the #182
+contract lands, set it to the contract's repository path; the guard then
+requires the file to exist. This document and the ledger do not define the
+contract.
+
+### PR gate policy
+
+| #191 item | Status | Where |
+| --- | --- | --- |
+| required-check candidates documented | DONE | §9 |
+| branch protection / ruleset change | OWNER | no required status checks today; see §9 caveat |
+
+### Safety / Non-goals
+
+| #191 item | Status | Where |
+| --- | --- | --- |
+| no real Octatrack CF original as CI fixture | DONE | tracked fixtures only, copied to temp (§5) |
+| no write to user originals | DONE | read-only path + guard |
+| no CI mutation of external devices | DONE | workflows have `contents: read`, no device access |
+| M6 / M7 completion criteria unchanged | DONE | not edited |
+| Sample Management gates not removed / weakened | DONE | `CI` workflow unchanged by this line |
+| Bank Apply not unlocked by CI work | DONE | guard + ledger keep it locked |
+
+### Completion conditions
+
+| #191 completion line | Status |
+| --- | --- |
+| Bank Editor CI defined against current main | DONE (§0, §2, §4) |
+| minimum CI for #179 actually passes | DONE (exit audit §6) |
+| read-only / no-write fixture gate automated | DONE |
+| gates after #181 written down | DONE (ledger + this section) |
+| Mutation Safety Gate implemented or clearly BLOCKED before #183 | DONE as machine-checked BLOCKED; runtime gate is #183 work |
+| no regression in Sample Management / Gate C | DONE when the PR's `CI` run is green |
+| CI names and required-check candidates documented | DONE (§6, §9) |
+| evidence recorded in canonical docs | DONE (this file) |
+
+#191 stays open: its ChangePlan and Mutation gates are BLOCKED, not done.
+
+## 12. Bank Mutation Safety Guard rules
+
+`scripts/pse-bank-mutation-guard.mjs` is a static trip-wire. It does not prove
+that no write syscall runs; it stops the obvious ways a write path could enter
+the Bank editor line before #182 / #183 define how one is allowed.
+
+| Rule | Scope | Fails when |
+| --- | --- | --- |
+| `RUST_WRITE_API` | production code (outside `#[cfg(test)] mod`) of the five required Rust files plus any `*.rs` under `src-tauri/src` or `src-tauri/crates` whose file name contains `bank` or `project_structure` | std::fs write / rename / delete, write-mode `OpenOptions`, `File::create`, `io::Write`, libc write / create / delete flags or calls, `to_data_file`, or a dependency on an executor / backup / write runtime |
+| `FRONTEND_IPC` | `src/api/projectStructure.ts`, non-test files under `src/features/project-structure/` and any `src/features/bank*/` | a `v2_*` command other than `v2_project_structure_read`, or a legacy disabled / authorized write command name |
+| `FRONTEND_IMPORT` | same | a value import of `@tauri-apps/*`, the `src/api` barrel, or any `src/api` module other than `projectStructure` (the API file itself may use only `client`) |
+| `V2_SURFACE` | `src-tauri/src/v2_api.rs` | a v2 command whose name contains `bank` or `project_structure` other than the read |
+| `LEGACY_GATE` | `src-tauri/src/legacy_command_gate.rs` | a legacy Bank-family write leaves `DISABLED_COMMANDS` |
+| `LEDGER` | `scripts/pse-bank-mutation-gates.json` | a #191 gate is missing or unknown, a BLOCKED gate lists tests or has no blocker, a mutation / recovery gate is ACTIVE, `mutation_runner.implemented` is not `false`, or a set contract document does not exist |
+| `MISSING_TARGET` / `*_PARSE` | all of the above | a required file is missing or cannot be parsed |
+
+Known limits: a write reached through a generic module (for example a Bank
+intent routed through `v2_change_plan` / `v2_change_apply`) is not caught by
+file names. `check-architecture.mjs` pins the full v2 command surface, and the
+Viewer E2E asserts no mutation command is invoked, but a Bank intent inside the
+generic change flow must be reviewed under #182.
+
+Lifting a rule is part of the reviewed #182 / #183 change, together with the
+runtime mutation gates. Editing the ledger alone cannot unlock Apply.
+
+## 13. Gate ↔ #186 Native acceptance map
+
+CI gates run on fixtures. #186 is a human Native session on a copy of a real
+Project. CI PASS does not replace any #186 row.
+
+| #186 scope | CI gates that must be green first | Native-only evidence |
+| --- | --- | --- |
+| Project Structure Viewer | read-only gates, Viewer Frontend Checks / E2E | desktop layout, real Project copy, quit / relaunch |
+| Bank Copy / Move / Swap | `change-plan.*`, `mutation.*` | operation on a copied Project |
+| ChangePlan review | `change-plan.*` | review UI shows every affected file and reference |
+| fixture / temporary project Apply | `mutation.*`, Bank write-surface guard revised under #182 | Apply on a temporary copy only |
+| Verify / Recovery | `recovery.*` | recovery after a forced failure on a copy |
+| Sample Slot reference integrity | `mutation.reference-integrity`, `recovery.restores-pre-state` | slots still resolve after the operation; #187 boundary |
+| quit / relaunch persistence | none in CI today | Native only |

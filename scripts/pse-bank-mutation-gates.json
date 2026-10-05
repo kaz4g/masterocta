@@ -1,0 +1,165 @@
+{
+  "schema": "masterocta-pse-bank-mutation-gates:v1",
+  "update_hint": "Ledger of the #191 ChangePlan and Mutation safety gates. A gate stays BLOCKED until its product code exists. A change-plan gate may become ACTIVE only when every required test is listed in scripts/pse-read-model-inventory.json, which runs them with zero-test detection. Mutation and recovery gates cannot become ACTIVE until the #182 contract document and the #183 mutation runner exist; the guard fails closed until then.",
+  "contract": {
+    "issue": 182,
+    "title": "Bank Mutation Safety Contract",
+    "document": null,
+    "todo": "Set document to the repository path of the #182 contract once it is merged. The guard then requires the file to exist. This ledger does not define the contract."
+  },
+  "mutation_runner": {
+    "issue": 183,
+    "implemented": false,
+    "todo": "The #183 Fixture Apply work adds a runner that executes mutation and recovery gates on temporary fixture copies only. Until then mutation and recovery gates must stay BLOCKED."
+  },
+  "gates": [
+    {
+      "id": "change-plan.bank-copy-deterministic",
+      "phase": "change-plan",
+      "title": "Bank Copy ChangePlan deterministic test",
+      "status": "BLOCKED",
+      "waits_on": [181],
+      "required_tests": []
+    },
+    {
+      "id": "change-plan.bank-move-deterministic",
+      "phase": "change-plan",
+      "title": "Bank Move ChangePlan deterministic test",
+      "status": "BLOCKED",
+      "waits_on": [181],
+      "required_tests": []
+    },
+    {
+      "id": "change-plan.bank-swap-deterministic",
+      "phase": "change-plan",
+      "title": "Bank Swap ChangePlan deterministic test",
+      "status": "BLOCKED",
+      "waits_on": [181],
+      "required_tests": []
+    },
+    {
+      "id": "change-plan.affected-reference-enumeration",
+      "phase": "change-plan",
+      "title": "affected reference enumeration test",
+      "status": "BLOCKED",
+      "waits_on": [181],
+      "required_tests": []
+    },
+    {
+      "id": "change-plan.stale-precondition-detection",
+      "phase": "change-plan",
+      "title": "stale/precondition detection",
+      "status": "BLOCKED",
+      "waits_on": [181, 182],
+      "required_tests": []
+    },
+    {
+      "id": "change-plan.plan-generation-no-write",
+      "phase": "change-plan",
+      "title": "ChangePlan生成だけではfixtureを変更しないことを証明",
+      "status": "BLOCKED",
+      "waits_on": [181],
+      "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
+      "required_tests": []
+    },
+    {
+      "id": "mutation.pre-manifest",
+      "phase": "mutation",
+      "title": "PRE fixture manifest/hash取得",
+      "status": "BLOCKED",
+      "waits_on": [182, 183],
+      "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
+      "required_tests": []
+    },
+    {
+      "id": "mutation.post-manifest",
+      "phase": "mutation",
+      "title": "Apply後のPOST manifest/hash取得",
+      "status": "BLOCKED",
+      "waits_on": [182, 183],
+      "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
+      "required_tests": []
+    },
+    {
+      "id": "mutation.expected-changed-files-only",
+      "phase": "mutation",
+      "title": "expected changed filesだけが変更されることを検証",
+      "status": "BLOCKED",
+      "waits_on": [181, 182, 183],
+      "required_tests": []
+    },
+    {
+      "id": "mutation.unrelated-files-preserved",
+      "phase": "mutation",
+      "title": "unrelated files byte/hash preservation",
+      "status": "BLOCKED",
+      "waits_on": [182, 183],
+      "reusable_primitives": ["scripts/pse-fixture-manifest.mjs"],
+      "required_tests": []
+    },
+    {
+      "id": "mutation.reference-integrity",
+      "phase": "mutation",
+      "title": "Pattern / Part / Track / Sample Slot reference integrity",
+      "status": "BLOCKED",
+      "waits_on": [183, 184],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.backup-creation",
+      "phase": "recovery",
+      "title": "backup creation verification",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.failure-injection",
+      "phase": "recovery",
+      "title": "failure injection",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.partial-apply-failure",
+      "phase": "recovery",
+      "title": "partial Apply failure test",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.verify-failure",
+      "phase": "recovery",
+      "title": "Verify failure test",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.rollback",
+      "phase": "recovery",
+      "title": "rollback/recovery test",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.restores-pre-state",
+      "phase": "recovery",
+      "title": "recovery後にPRE hash/reference stateへ戻ることを検証",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 184, 185],
+      "required_tests": []
+    },
+    {
+      "id": "recovery.retry-idempotency",
+      "phase": "recovery",
+      "title": "retry/idempotency test",
+      "status": "BLOCKED",
+      "waits_on": [182, 183, 185],
+      "required_tests": []
+    }
+  ]
+}

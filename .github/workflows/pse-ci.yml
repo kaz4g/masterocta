@@ -52,7 +52,19 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Run Project Structure script contracts
-        run: node --test scripts/pse-fixture-manifest.test.mjs scripts/pse-read-model-check.test.mjs scripts/pse-ci-scope.test.mjs scripts/pse-ci-aggregate.test.mjs scripts/pse-ci-workflow.test.mjs
+        run: node --test scripts/pse-fixture-manifest.test.mjs scripts/pse-read-model-check.test.mjs scripts/pse-ci-scope.test.mjs scripts/pse-ci-aggregate.test.mjs scripts/pse-ci-workflow.test.mjs scripts/pse-bank-mutation-guard.test.mjs
+
+  bank-mutation-safety:
+    name: Bank Mutation Safety Guard
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Run Bank Mutation Safety Guard
+        run: node scripts/pse-bank-mutation-guard.mjs
 
   linux-read-model:
     name: Project Structure Linux
@@ -136,7 +148,7 @@ jobs:
   aggregate:
     name: Project Structure
     if: always()
-    needs: [scope, script-contracts, linux-read-model, macos-fs-contract]
+    needs: [scope, script-contracts, bank-mutation-safety, linux-read-model, macos-fs-contract]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
 
@@ -154,5 +166,6 @@ jobs:
             --reason "${PSE_SCOPE_REASON}" \
             --scope-result "${{ needs.scope.result }}" \
             --script-contracts "${{ needs.script-contracts.result }}" \
+            --bank-mutation-safety "${{ needs.bank-mutation-safety.result }}" \
             --linux-read-model "${{ needs.linux-read-model.result }}" \
             --macos-fs-contract "${{ needs.macos-fs-contract.result }}"
