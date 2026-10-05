@@ -789,20 +789,16 @@ fn playback_projects_recorder(playback: &serde_json::Value, forbidden: &BTreeSet
                     return true;
                 }
                 match map.get("kind").and_then(serde_json::Value::as_str) {
-                    Some("slot") => {
-                        if field_projects_recorder(map, "number", forbidden) {
-                            return true;
-                        }
+                    Some("slot") if field_projects_recorder(map, "number", forbidden) => {
+                        return true;
                     }
-                    Some("recorderBuffer") => {
-                        if field_projects_recorder(map, "bufferNumber", forbidden) {
-                            return true;
-                        }
+                    Some("recorderBuffer")
+                        if field_projects_recorder(map, "bufferNumber", forbidden) =>
+                    {
+                        return true;
                     }
-                    Some("unrecognized") => {
-                        if field_projects_recorder(map, "raw", forbidden) {
-                            return true;
-                        }
+                    Some("unrecognized") if field_projects_recorder(map, "raw", forbidden) => {
+                        return true;
                     }
                     _ => {}
                 }
