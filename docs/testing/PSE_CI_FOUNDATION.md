@@ -117,7 +117,7 @@ CI-only parser.
 | Reference integrity after mutation | #184 | ledger entry only | — | **BLOCKED** | Apply + integrity suite |
 | Backup / failure injection / Recovery | #185 | ledger entries only | — | **BLOCKED** | Recovery implementation |
 | Native acceptance | #186 | none | — | **BLOCKED** | Native session after Viewer/Apply (§13) |
-| Slot ↔ AudioAsset boundary | #187 | none | — | **BLOCKED** | ownership-boundary implementation |
+| Slot ↔ AudioAsset boundary | #187 | [`SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md`](../planning/SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md) + `sample_slot_boundary` inventory suite + `sampleSlotBoundary.test.ts` | inventory suite on the PR head; frontend in `CI / Frontend Checks` | **PASS** for the current read / Sample-write surface when the Linux/macOS jobs succeed | Bank ChangePlan / Apply invariants stay pending with #181 / #183 / #184 (doc §8) |
 
 Unimplemented gates are not empty tests, `continue-on-error`, or unconditional
 skips. They stay **BLOCKED** until the product code exists. The ledger makes

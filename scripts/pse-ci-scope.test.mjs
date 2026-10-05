@@ -11,6 +11,7 @@ describe("pse ci scope", () => {
   it("treats reader, fixture, script, lockfile, and workflow paths as in-scope", () => {
     for (const file of ["src/api/projectStructure.ts", "src/features/project-structure/ProjectStructureViewer.tsx", "src/features/library/CatalogWorkspaceViews.tsx", "src-tauri/src/project_structure_command.rs"]) assert.equal(isInScopePath(file), true);
     assert.equal(isInScopePath("src-tauri/src/project_structure_reader.rs"), true);
+    assert.equal(isInScopePath("src-tauri/src/sample_slot_boundary.rs"), true);
     assert.equal(isInScopePath("src-tauri/tests/fixtures/real_device/bank01.work"), true);
     assert.equal(isInScopePath("src-tauri/crates/ot-plan/src/bank_mutation.rs"), true);
     assert.equal(isInScopePath("src-tauri/crates/ot-plan/Cargo.toml"), true);

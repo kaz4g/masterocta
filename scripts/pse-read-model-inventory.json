@@ -141,6 +141,24 @@
         "tracked_real_device_documents_are_parsed_and_unmodeled_dependencies_are_listed",
         "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
       ]
+    },
+    {
+      "id": "masterocta-sample-slot-boundary",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "sample_slot_boundary::",
+      "required_tests": [
+        "slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset",
+        "duplicate_content_shares_one_asset_while_each_slot_keeps_its_file_instance",
+        "missing_referenced_file_is_reported_by_the_sample_projection_only",
+        "changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage",
+        "slice_export_leaves_project_bank_and_slot_projection_unchanged",
+        "project_structure_read_leaves_assets_hashes_and_lineage_unchanged",
+        "path_rebinding_keeps_slot_identity_bank_references_and_asset_identity",
+        "project_structure_dto_exposes_slot_identity_only",
+        "project_line_sources_do_not_name_sample_line_entities",
+        "sample_line_sources_do_not_name_project_structure_entities"
+      ]
     }
   ]
 }
