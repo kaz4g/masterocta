@@ -201,8 +201,8 @@ legacy コマンドの `rename_file` / `delete_file` / `delete_audio_files` は 
 ### #181 Bank Copy / Move / Swap ChangePlan
 
 - 計画が Slot について持つのは、Slot の identity（Project 文書、`SampleSlotId`、参照座標）、`SampleReferenceStatus`、#207 の `scope_manifest` だけである。AudioAsset の hash や FileInstance を計画に入れない（I-1 / I-9）。
-- 影響 Slot は構造モデルから数える。§3.2 規則 6 の (a)–(d) は、#181 の前に read model へ加えるか、未モデルとして計画を失敗で閉じる。
-- 計画の変更対象に `audio_assets`、`file_instances`、`asset_derivations`、媒体上の音声バイトを入れない。入っていたら計画を失敗として閉じる（#207 BMS-CHANGESET の `ExpectedChangeNotBankDocument` と BMS-SAMPLE）。
+- 影響 Slot は構造モデルから数える。数える元の Bank 文書か `project.work` に parse 済みの証拠が無ければ、計画は `MissingParserEvidence` / `BMS_MISSING_PARSER_EVIDENCE` で止まる（#207）。§3.2 規則 6 の (a)–(d) は、#181 の前に read model へ加えるか、未モデルとして計画を失敗で閉じる。
+- 計画の変更対象に `audio_assets`、`file_instances`、`asset_derivations`、媒体上の音声バイトを入れない。入っていたら計画を失敗として閉じる（#207 BMS-CHANGESET の `ExpectedChangeNotBankDocument` / `BMS_CHANGE_NOT_BANK_DOCUMENT` と BMS-SAMPLE）。操作しない Bank の文書（Copy の複製元を含む）も変更対象にしない（`ExpectedChangeOutsideOperatedBanks` / `BMS_CHANGE_OUTSIDE_OPERATED_BANKS`）。
 - `Missing` / `InvalidPath` / `Ambiguous` は Broken refs として数える（control plane §6）。
 - 同一 Project 内の Bank 操作で Slot 番号は変わらない。Project をまたぐ移植は PSE-6 であり、#181 の範囲外である。
 
@@ -225,7 +225,7 @@ Bank 操作の後状態では少なくとも次を確認する。
 
 | ID | 内容 | 止まる理由 / 対応する台帳 |
 | --- | --- | --- |
-| P-1 | Bank ChangePlan / Apply が Sample 側データに触れないこと | #182（#207 BMS-CHANGESET（`ExpectedChangeNotBankDocument`）/ BMS-VERIFY-BYTES / BMS-SAMPLE）。gate `mutation.expected-changed-files-only` / `mutation.unrelated-files-preserved`。#181 / #183 のコードが無い |
+| P-1 | Bank ChangePlan / Apply が Sample 側データに触れないこと | #182（#207 BMS-CHANGESET（`ExpectedChangeNotBankDocument`、`BMS_CHANGE_OUTSIDE_OPERATED_BANKS`）/ BMS-VERIFY-BYTES / BMS-SAMPLE）。gate `mutation.expected-changed-files-only` / `mutation.unrelated-files-preserved`。#181 / #183 のコードが無い |
 | P-2 | Bank 変更後の参照整合 | #184（#207 BMS-VERIFY-STRUCTURE / BMS-SAMPLE）。gate `mutation.reference-integrity`。Apply が無い |
 | P-3 | Project 間の Slot 再割当（AudioAsset 経由） | PSE-6 |
 | P-4 | WFM2 cache が Project 側の操作で無効化されないこと | Project 側に書き込みが無い。現状はソースガードだけ |
