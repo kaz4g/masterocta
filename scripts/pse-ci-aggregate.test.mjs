@@ -6,6 +6,7 @@ import { evaluateAggregate, runCli } from "./pse-ci-aggregate.mjs";
 const successJobs = {
   scope: "success",
   "script-contracts": "success",
+  "bank-mutation-safety": "success",
   "linux-read-model": "success",
   "macos-fs-contract": "success",
 };
@@ -24,6 +25,7 @@ describe("pse ci aggregate", () => {
       jobs: {
         scope: "success",
         "script-contracts": "success",
+        "bank-mutation-safety": "success",
         "linux-read-model": "skipped",
         "macos-fs-contract": "skipped",
       },
@@ -74,6 +76,21 @@ describe("pse ci aggregate", () => {
     );
   });
 
+  it("fails when the Bank Mutation Safety Guard does not succeed, even out of scope", () => {
+    for (const result of ["failure", "cancelled", "skipped", undefined]) {
+      for (const inScope of [true, false]) {
+        const jobs = { ...successJobs, "bank-mutation-safety": result };
+        if (!inScope) {
+          jobs["linux-read-model"] = "skipped";
+          jobs["macos-fs-contract"] = "skipped";
+        }
+        const report = evaluateAggregate({ inScope, jobs });
+        assert.equal(report.verdict, "FAIL", `${inScope} ${result}`);
+        assert.equal(report.exit_code, 1);
+      }
+    }
+  });
+
   it("does not exit 0 for a failing CLI evaluation", () => {
     const previous = process.exitCode;
     const code = runCli([
@@ -84,6 +101,8 @@ describe("pse ci aggregate", () => {
       "--scope-result",
       "success",
       "--script-contracts",
+      "success",
+      "--bank-mutation-safety",
       "success",
       "--linux-read-model",
       "failure",

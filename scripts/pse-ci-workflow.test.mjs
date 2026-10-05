@@ -44,6 +44,21 @@ describe("pse-ci workflow contract", () => {
     assert.doesNotMatch(workflow, /continue-on-error:\s*true/);
   });
 
+  it("runs the Bank Mutation Safety Guard on every PR and feeds it to the aggregate", () => {
+    const job = /\n  bank-mutation-safety:\n([\s\S]*?)(?=\n  [a-z-]+:\n)/.exec(workflow);
+    assert.ok(job, "bank-mutation-safety job is missing");
+    assert.match(job[1], /name: Bank Mutation Safety Guard/);
+    assert.match(job[1], /node scripts\/pse-bank-mutation-guard\.mjs/);
+    assert.doesNotMatch(job[1], /\bif:/);
+    assert.doesNotMatch(job[1], /needs:/);
+    assert.match(
+      workflow,
+      /needs: \[scope, script-contracts, bank-mutation-safety, linux-read-model, macos-fs-contract\]/,
+    );
+    assert.match(workflow, /--bank-mutation-safety "\$\{\{ needs\.bank-mutation-safety\.result \}\}"/);
+    assert.match(workflow, /scripts\/pse-bank-mutation-guard\.test\.mjs/);
+  });
+
   it("does not launch a signed release or Gate C candidate build", () => {
     assert.doesNotMatch(workflow, /gate-c-candidate/);
     assert.doesNotMatch(workflow, /tauri build/);

@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 
 export const AGGREGATE_SCHEMA = "masterocta-pse-ci-aggregate:v1";
 
-const ALWAYS_REQUIRED = ["scope", "script-contracts"];
+const ALWAYS_REQUIRED = ["scope", "script-contracts", "bank-mutation-safety"];
 const IN_SCOPE_REQUIRED = ["linux-read-model", "macos-fs-contract"];
 
 function fail(reason, jobs, extras = {}) {
@@ -110,6 +110,7 @@ export function runCli(argv) {
     jobs: {
       scope: takeOption(args, "--scope-result"),
       "script-contracts": takeOption(args, "--script-contracts"),
+      "bank-mutation-safety": takeOption(args, "--bank-mutation-safety"),
       "linux-read-model": takeOption(args, "--linux-read-model"),
       "macos-fs-contract": takeOption(args, "--macos-fs-contract"),
     },
