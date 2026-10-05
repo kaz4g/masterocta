@@ -15,7 +15,7 @@ use crate::root_registry::RootRegistry;
 use crate::slice_export_apply::slice_export_apply_sync;
 use crate::v2_api::{
     catalog_identity, gate_c_register_and_index_root, gate_c_rescan_and_store,
-    load_library_snapshot, opaque_asset_id, opaque_file_instance_id,
+    gate_c_rescan_catalog_only, load_library_snapshot, opaque_asset_id, opaque_file_instance_id,
 };
 use ot_application::ApplyTrimDerivation;
 use ot_domain::project_structure::{
@@ -25,24 +25,26 @@ use ot_domain::project_structure::{
 use ot_domain::slice_draft::{DraftMarker, SliceDraft};
 use ot_domain::slicing::{FrameRange, PcmFrame};
 use ot_domain::{
-    resolve_project_reference_syntax, slot_kind_rank, ContentHash, FileInstance, LibrarySnapshot,
-    RootId, RootRelativePath, SampleReferenceStatus, SampleSlotId, SampleUsageKind,
-    StateDocumentRole, TrimIntent,
+    resolve_project_reference_syntax, slot_kind_rank, ContentHash, ContentHashFreshness,
+    FileInstance, LibrarySnapshot, RootId, RootRelativePath, SampleReferenceStatus,
+    SampleSettingsOwner, SampleSlotId, SampleUsageKind, StateDocumentRole, TrimIntent,
 };
 use ot_storage_ports::slice_drafts::{SliceDraftBinding, SliceDraftCatalog};
 use ot_storage_ports::{AssetDerivationCatalog, CatalogRootIdentity};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 const PROJECT: &str = "SET/PROJECT";
 const PROJECT_WORK: &str = "SET/PROJECT/project.work";
 const WORKING_BANK: &str = "SET/PROJECT/bank01.work";
-const FIXTURE_FILES: [&str; 3] = ["project.work", "bank01.work", "bank01.strd"];
+const MARKERS_WORK: &str = "SET/PROJECT/markers.work";
+const FIXTURE_FILES: [&str; 4] = ["project.work", "bank01.work", "bank01.strd", "markers.work"];
 const FIRST_WAV_FRAMES: u32 = 2_000;
 
 type TreeDigest = BTreeMap<String, (u64, String)>;
@@ -137,6 +139,13 @@ impl Fixture {
 
     fn rescan(&self) -> LibrarySnapshot {
         gate_c_rescan_and_store(&self.registry, &self.catalog, &self.root_id).unwrap();
+        self.library()
+    }
+
+    /// Production rescan: the previous catalog `FileInstance` rows are the
+    /// hash-reuse baseline (`can_reuse_hash`).
+    fn rescan_incremental(&self) -> LibrarySnapshot {
+        gate_c_rescan_catalog_only(&self.registry, &self.catalog, &self.root_id).unwrap();
         self.library()
     }
 
@@ -354,12 +363,57 @@ fn slot_projection(library: &LibrarySnapshot) -> impl PartialEq + std::fmt::Debu
             )
         })
         .collect();
+    let slot_settings: Vec<_> = library
+        .sample_settings
+        .iter()
+        .filter(|settings| settings.owner == SampleSettingsOwner::SlotAssignment)
+        .cloned()
+        .collect();
     (
         library.state_documents.clone(),
         library.slot_assignments.clone(),
         library.usage_edges.clone(),
+        slot_settings,
         files,
     )
+}
+
+fn slot_local_settings(library: &LibrarySnapshot) -> Vec<ot_domain::SampleSettings> {
+    library
+        .sample_settings
+        .iter()
+        .filter(|settings| settings.owner == SampleSettingsOwner::SlotAssignment)
+        .cloned()
+        .collect()
+}
+
+fn contains_absolute_path(text: &str) -> bool {
+    path_tokens(text).any(is_absolute_path)
+}
+
+fn path_tokens(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|character: char| {
+        character.is_whitespace()
+            || matches!(
+                character,
+                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '<' | '>'
+            )
+    })
+    .map(|token| token.trim_matches(|character: char| matches!(character, '.' | ':' | '=')))
+    .filter(|token| !token.is_empty())
+}
+
+fn is_absolute_path(text: &str) -> bool {
+    let text = text
+        .strip_prefix("file://")
+        .or_else(|| text.strip_prefix("file:"))
+        .unwrap_or(text);
+    Path::new(text).is_absolute()
+        || text.starts_with(r"\\")
+        || (text.len() >= 3
+            && text.as_bytes()[0].is_ascii_alphabetic()
+            && text.as_bytes()[1] == b':'
+            && matches!(text.as_bytes()[2], b'\\' | b'/'))
 }
 
 fn wav_layout(bytes: &[u8]) -> ot_audio::pcm::WavLayout {
@@ -509,6 +563,7 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
     let mut saved_differs = 0;
     let mut inactive_slots = 0;
     let mut recorder_buffers = 0;
+    let mut recorder_observations = Vec::new();
     for part in &working.parts {
         let index = usize::from(part.index.get());
         let unsaved = &bank.parts.unsaved.0[index];
@@ -549,6 +604,38 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
                 }
                 _ => {}
             }
+            let raw_recorder = slots.recorder_slot_id;
+            if raw_recorder != slots.flex_slot_id && raw_recorder != slots.static_slot_id {
+                let active_number = bank_machine_slot_to_usage_index(active)
+                    .map(|index| u16::try_from(index + 1).unwrap());
+                let forbidden = recorder_slot_projections(raw_recorder, active, active_number);
+                assert!(
+                    !forbidden.is_empty(),
+                    "recorder_slot_id {raw_recorder} collapses into the active machine slot"
+                );
+                if let Some(modeled) = modeled_slot_number(slot) {
+                    assert!(
+                        !forbidden.contains(&modeled),
+                        "structure projects recorder_slot_id {raw_recorder} as {modeled}"
+                    );
+                }
+                for edge in library.usage_edges.iter().filter(|edge| {
+                    edge.bank_document_relative_path.as_str() == WORKING_BANK
+                        && edge.part_index == Some(part.index.get())
+                        && edge.track_index == track.index.get()
+                }) {
+                    assert!(
+                        !forbidden.contains(&edge.slot.number()),
+                        "usage projects recorder_slot_id {raw_recorder}"
+                    );
+                }
+                recorder_observations.push(RecorderSlotObservation {
+                    part: index,
+                    track: position,
+                    raw: raw_recorder,
+                    forbidden,
+                });
+            }
             if bank_machine_slot_to_usage_index(inactive).is_some() && inactive != active {
                 inactive_slots += 1;
             }
@@ -577,6 +664,79 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
         recorder_buffers > 0,
         "recorder buffers come from flex_slot_id only"
     );
+    assert!(
+        !recorder_observations.is_empty(),
+        "fixture recorder_slot_id differs from flex_slot_id and static_slot_id"
+    );
+    assert_dto_omits_recorder_slot_ids(&fixture, &recorder_observations);
+}
+
+struct RecorderSlotObservation {
+    part: usize,
+    track: usize,
+    raw: u8,
+    forbidden: BTreeSet<u16>,
+}
+
+fn modeled_slot_number(slot: TrackSlotReference) -> Option<u16> {
+    match slot {
+        TrackSlotReference::Slot(id) => Some(id.number()),
+        TrackSlotReference::RecorderBuffer(buffer) => Some(buffer.flex_slot()),
+        TrackSlotReference::Unrecognized(raw) => Some(u16::from(raw)),
+        TrackSlotReference::Unassigned | TrackSlotReference::NoSampleMachine => None,
+    }
+}
+
+/// Numbers a reader would emit if it projected `recorder_slot_id` as a raw
+/// machine byte or as a 1-based slot. Values that are already the active
+/// machine slot stay out of this set.
+fn recorder_slot_projections(raw: u8, active: u8, active_number: Option<u16>) -> BTreeSet<u16> {
+    let mut forbidden = BTreeSet::from([u16::from(raw), u16::from(raw).saturating_add(1)]);
+    forbidden.remove(&u16::from(active));
+    if let Some(number) = active_number {
+        forbidden.remove(&number);
+    }
+    forbidden
+}
+
+fn assert_dto_omits_recorder_slot_ids(fixture: &Fixture, observations: &[RecorderSlotObservation]) {
+    let dto = read_project_structure_dto(
+        &fixture.registry,
+        &fixture.root_id,
+        &Fixture::project_path(),
+    )
+    .unwrap();
+    let json = serde_json::to_value(&dto).unwrap();
+    assert!(
+        !json.to_string().contains("recorderSlotId"),
+        "DTO names recorder_slot_id"
+    );
+    let working = json["banks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|bank| bank["sourceRelativePath"] == WORKING_BANK)
+        .expect("working bank DTO");
+    for observation in observations {
+        let slot =
+            &working["parts"][observation.part]["tracks"][observation.track]["playback"]["slot"];
+        let Some(map) = slot.as_object() else {
+            continue;
+        };
+        for key in ["recorderSlotId", "recorder_slot_id"] {
+            assert!(!map.contains_key(key), "DTO slot carries {key}");
+        }
+        for key in ["number", "bufferNumber", "raw"] {
+            if let Some(value) = map.get(key).and_then(serde_json::Value::as_u64) {
+                let value = u16::try_from(value).unwrap();
+                assert!(
+                    !observation.forbidden.contains(&value),
+                    "DTO {key} projects recorder_slot_id {}",
+                    observation.raw
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -661,7 +821,7 @@ fn changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_li
         ot_audio::test_minimal_wav(FIRST_WAV_FRAMES + 500),
     )
     .unwrap();
-    let library = fixture.rescan();
+    let library = fixture.rescan_incremental();
 
     let (path, status) = slot_assignment_status(&library, target.slot);
     assert_eq!(status, SampleReferenceStatus::Resolved);
@@ -672,8 +832,80 @@ fn changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_li
         .find(|file| file.relative_path == target.file.relative_path)
         .unwrap();
     assert_ne!(rebound.content_hash, target.file.content_hash);
+    assert_eq!(
+        rebound.hash_freshness,
+        ContentHashFreshness::ComputedThisScan
+    );
     assert_eq!(fixture.derivation_edges(), lineage_before);
     assert_eq!(fixture.structure(), structure_before);
+}
+
+/// A same-length replacement whose observed mtime is restored matches the
+/// incremental scan's reuse rule (`can_reuse_hash`). Coarse removable-media
+/// timestamps can hide that replacement, so I-5 does not promise a new
+/// AudioAsset unless size or mtime changes.
+#[test]
+fn same_size_and_mtime_replacement_keeps_the_previous_content_hash() {
+    let fixture = Fixture::new();
+    let target = first_resolved_slot(&fixture);
+    let previous_mtime = target
+        .file
+        .modified_at_unix_ns
+        .expect("indexed audio has an observed mtime");
+    let structure_before = fixture.structure();
+    let path = fixture.absolute(&target.file.relative_path);
+    let mut bytes = fs::read(&path).unwrap();
+    let flipped = bytes.len() / 2;
+    bytes[flipped] ^= 0xff;
+    assert_eq!(bytes.len() as u64, target.file.byte_size);
+    fs::write(&path, &bytes).unwrap();
+    restore_observed_mtime(&path, previous_mtime);
+    assert_eq!(observed_mtime_ns(&path), Some(previous_mtime));
+
+    let library = fixture.rescan_incremental();
+    let (resolved, status) = slot_assignment_status(&library, target.slot);
+    assert_eq!(status, SampleReferenceStatus::Resolved);
+    assert_eq!(
+        resolved.as_deref(),
+        Some(target.file.relative_path.as_str())
+    );
+    let kept = library
+        .file_instances
+        .iter()
+        .find(|file| file.relative_path == target.file.relative_path)
+        .unwrap();
+    assert_eq!(kept.byte_size, target.file.byte_size);
+    assert_eq!(kept.modified_at_unix_ns, Some(previous_mtime));
+    assert_eq!(kept.content_hash, target.file.content_hash);
+    assert_eq!(
+        kept.hash_freshness,
+        ContentHashFreshness::ReusedUnchangedMetadata
+    );
+    assert_eq!(fixture.structure(), structure_before);
+}
+
+fn restore_observed_mtime(path: &Path, unix_ns: i64) {
+    let file = File::options().write(true).open(path).unwrap();
+    file.set_modified(system_time_from_unix_ns(unix_ns))
+        .unwrap();
+}
+
+fn observed_mtime_ns(path: &Path) -> Option<i64> {
+    let modified = fs::metadata(path).unwrap().modified().ok()?;
+    match modified.duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_nanos()).ok(),
+        Err(error) => i64::try_from(error.duration().as_nanos())
+            .ok()
+            .and_then(i64::checked_neg),
+    }
+}
+
+fn system_time_from_unix_ns(unix_ns: i64) -> SystemTime {
+    if unix_ns >= 0 {
+        UNIX_EPOCH + Duration::from_nanos(u64::try_from(unix_ns).unwrap())
+    } else {
+        UNIX_EPOCH - Duration::from_nanos(unix_ns.unsigned_abs())
+    }
 }
 
 #[test]
@@ -682,6 +914,22 @@ fn slice_export_leaves_project_bank_and_slot_projection_unchanged() {
     let target = first_resolved_slot(&fixture);
     let revision = save_single_slice_draft(&fixture, &target.file);
     let tree_before = tree_digest(fixture.ot_root.path());
+    assert!(
+        tree_before.contains_key(MARKERS_WORK),
+        "boundary fixture copies markers.work"
+    );
+    let marker_bytes = tree_before.get(MARKERS_WORK).unwrap().clone();
+    let settings_before = slot_local_settings(&fixture.library());
+    assert!(
+        settings_before.iter().any(|settings| {
+            settings
+                .marker_source_relative_path
+                .as_ref()
+                .is_some_and(|path| path.as_str() == MARKERS_WORK)
+                && (settings.trim_start.is_some() || !settings.slices.is_empty())
+        }),
+        "slot settings project the copied marker document"
+    );
     let structure_before = fixture.structure();
     let projection_before = slot_projection(&fixture.library());
     let derived_runtime = open_shared_derived_audio_runtime(fixture.data.path()).unwrap();
@@ -703,6 +951,13 @@ fn slice_export_leaves_project_bank_and_slot_projection_unchanged() {
     );
 
     assert_eq!(tree_digest(fixture.ot_root.path()), tree_before);
+    assert_eq!(
+        tree_digest(fixture.ot_root.path())
+            .get(MARKERS_WORK)
+            .cloned(),
+        Some(marker_bytes)
+    );
+    assert_eq!(slot_local_settings(&fixture.library()), settings_before);
     assert_eq!(fixture.structure(), structure_before);
     assert_eq!(slot_projection(&fixture.library()), projection_before);
     assert!(fixture
@@ -830,7 +1085,6 @@ fn project_structure_dto_exposes_slot_identity_only() {
     )
     .unwrap();
     let json = serde_json::to_value(&dto).unwrap();
-    let root_text = fixture.canonical_root.to_string_lossy().into_owned();
     let forbidden_keys = [
         "contentHash",
         "assetId",
@@ -860,7 +1114,10 @@ fn project_structure_dto_exposes_slot_identity_only() {
             }
             serde_json::Value::Array(items) => stack.extend(items.iter()),
             serde_json::Value::String(text) => {
-                assert!(!text.contains(&root_text), "DTO leaks an absolute path");
+                assert!(
+                    !contains_absolute_path(text),
+                    "DTO leaks an absolute path: {text}"
+                );
             }
             _ => {}
         }
@@ -868,10 +1125,30 @@ fn project_structure_dto_exposes_slot_identity_only() {
     assert!(slot_objects > 0, "fixture DTO contains slot references");
 }
 
-const PROJECT_LINE_SOURCES: [(&str, &str); 3] = [
+#[test]
+fn absolute_path_guard_rejects_paths_outside_the_registered_root() {
+    assert!(contains_absolute_path(
+        "/Users/example/Library/Application Support/masterocta/catalog.sqlite"
+    ));
+    assert!(contains_absolute_path(r"C:\Users\example\AppData\cache"));
+    assert!(contains_absolute_path(r"\\server\share\derived"));
+    assert!(contains_absolute_path("see file:///tmp/derived.wav"));
+    assert!(!contains_absolute_path("SET/PROJECT/bank01.work"));
+    assert!(!contains_absolute_path("masterocta.project-structure:v3"));
+}
+
+const PROJECT_LINE_SOURCES: [(&str, &str); 5] = [
     (
         "ot-domain/project_structure.rs",
         include_str!("../crates/ot-domain/src/project_structure.rs"),
+    ),
+    (
+        "ot-codec/project_document.rs",
+        include_str!("../crates/ot-codec/src/project_document.rs"),
+    ),
+    (
+        "ot-codec/project_structure.rs",
+        include_str!("../crates/ot-codec/src/project_structure.rs"),
     ),
     (
         "project_structure_reader.rs",
@@ -880,6 +1157,26 @@ const PROJECT_LINE_SOURCES: [(&str, &str); 3] = [
     (
         "project_structure_command.rs",
         include_str!("project_structure_command.rs"),
+    ),
+];
+
+const PROJECT_LINE_FUNCTIONS: [(&str, &str, &[&str]); 2] = [
+    (
+        "legacy_read_adapter.rs",
+        include_str!("legacy_read_adapter.rs"),
+        &[
+            "scan_state_inventory",
+            "parse_project_state",
+            "parse_bank_state",
+            "append_usage_edges",
+            "scan_slot_local_settings",
+            "read_markers_source",
+        ],
+    ),
+    (
+        "project_reader.rs",
+        include_str!("project_reader.rs"),
+        &["compute_sample_usage_for_documents"],
     ),
 ];
 
@@ -963,23 +1260,62 @@ fn assert_sources_avoid(sources: &[(&str, &str)], forbidden: &[&str]) {
     }
 }
 
+fn function_source<'a>(source: &'a str, name: &str) -> &'a str {
+    let marker = format!("fn {name}");
+    let found = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing fn {name}"));
+    let start = source[..found]
+        .rfind('\n')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let mut depth = 0;
+    let mut seen_body = false;
+    for (offset, character) in source[start..].char_indices() {
+        match character {
+            '{' => {
+                depth += 1;
+                seen_body = true;
+            }
+            '}' => {
+                depth -= 1;
+                if seen_body && depth == 0 {
+                    return &source[start..start + offset + character.len_utf8()];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("unclosed fn {name}");
+}
+
+const SAMPLE_LINE_TYPE_NAMES: [&str; 10] = [
+    "AudioAsset",
+    "FileInstance",
+    "asset_derivation",
+    "DerivationEdge",
+    "derived_audio",
+    "SliceDraft",
+    "waveform",
+    "ot_catalog",
+    "ot_audio",
+    "ot_application",
+];
+
 #[test]
 fn project_line_sources_do_not_name_sample_line_entities() {
-    assert_sources_avoid(
-        &PROJECT_LINE_SOURCES,
-        &[
-            "AudioAsset",
-            "FileInstance",
-            "asset_derivation",
-            "DerivationEdge",
-            "derived_audio",
-            "SliceDraft",
-            "waveform",
-            "ot_catalog",
-            "ot_audio",
-            "ot_application",
-        ],
-    );
+    assert_sources_avoid(&PROJECT_LINE_SOURCES, &SAMPLE_LINE_TYPE_NAMES);
+    let mut scoped = Vec::new();
+    for (file, source, names) in PROJECT_LINE_FUNCTIONS {
+        for name in names {
+            scoped.push((format!("{file}::{name}"), function_source(source, name)));
+        }
+    }
+    let scoped_refs: Vec<(&str, &str)> = scoped
+        .iter()
+        .map(|(name, body)| (name.as_str(), *body))
+        .collect();
+    assert_sources_avoid(&scoped_refs, &SAMPLE_LINE_TYPE_NAMES);
 }
 
 #[test]
