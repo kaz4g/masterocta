@@ -217,6 +217,8 @@ Parse:
 
 Phase 2 の終わりは ChangePlan、Backup、Prepare、Status までである。Apply コマンドは出さない。Phase 3 の Apply 先は、テスト用に複製した Project だけである。実機 CF 原本は対象にしない。
 
+Bank Apply が満たすべき検査可能な契約は [`PSE_BANK_MUTATION_SAFETY_CONTRACT.md`](./PSE_BANK_MUTATION_SAFETY_CONTRACT.md)（#182）に置く。契約の定義は Apply の承認ではない。
+
 書き込みフェーズに入る前に、対象がユーザー承認済み Octatrack root の内側であることを検証する。traversal、symlink escape、壊れた名前は拒否する。失敗または取消のあとに原本が変わっている状態を成功にしない。
 
 ## 7. Undo は Project Snapshot
