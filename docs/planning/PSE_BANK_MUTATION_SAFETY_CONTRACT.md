@@ -41,7 +41,7 @@ APPLY_READINESS        = NOT_READY
 | `WorkingSavedCheckpointRule` | `.work` / `.strd` のどちらを動かすか、`[STATES] BANK` をどう扱うか未決 | 監査 §7C、control plane §12 |
 | `ApplyAuthorization` | PSE-3 Apply の明示承認文書がない | control plane §9 |
 
-項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_every_gap_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は `#[cfg(test)]` の契約テスト専用であり、製品ビルドからは呼べない。
+項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_every_gap_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は `#[cfg(test)]` の契約テスト専用であり、製品ビルドからは呼べない。`ReadinessEvidence` の field は private で、製品から得られる値は `current_main()`（と同値の `Default` / `Clone`）だけである。証拠: `ot-plan` の doctest（`current_main()` は compile でき、`assume_resolved` の呼び出しと struct literal は compile できない）と、inventory 内のテスト `production_cannot_resolve_readiness_or_forge_a_permit`（`#[cfg(test)]` の位置、`-> Self` を返す公開関数が 2 つだけであること、field が private であることを source で検査）。stable の rustdoc は `compile_fail` の error code を照合しないため、各 snippet が意図した error（E0599 / E0451 など）だけで失敗することは手元で個別に compile して確認した。
 
 ## 2. 既存 safety primitive の再利用監査
 
@@ -126,13 +126,13 @@ envelope が precondition として記録してよいのは、**Slot の identit
 
 ### 変更してよいファイル（BMS-CHANGESET）
 
-Bank 操作の `expected_changes` に入れてよい path は、project directory 直下の **`bankNN.work` / `bankNN.strd`（`NN` = `01`–`16`）だけ**である（`bank_document_target`）。さらに、その Bank が `source` か `destination` であり、その role が `affected_roles` に含まれなければならない。違反は次の安定コードで STOP する。
+Bank 操作の `expected_changes` に入れてよい path は、project directory 直下の **`bankNN.work` / `bankNN.strd`（`NN` = `01`–`16`）だけ**である（`bank_document_target`）。さらに、その Bank が操作で書く Bank（Copy は `destination` だけ、Move / Swap は `source` と `destination`）であり、その role が `affected_roles` に含まれなければならない。違反は次の安定コードで STOP する。
 
 | 違反 | `StopCondition` | code |
 | --- | --- | --- |
 | project directory の外 | `ExpectedChangeOutsideProject` | `BMS_CHANGE_OUTSIDE_PROJECT` |
 | project 内だが Bank 文書ではない（`project.work` / `project.strd`、`markers.work`、`arrNN.work`、sample ファイル、`.ot`、サブディレクトリ内の path、大文字や桁数違いの名前など） | `ExpectedChangeNotBankDocument` | `BMS_CHANGE_NOT_BANK_DOCUMENT` |
-| 操作対象外の Bank の文書 | `ExpectedChangeOutsideOperatedBanks` | `BMS_CHANGE_OUTSIDE_OPERATED_BANKS` |
+| 操作で書かない Bank の文書（Copy の複製元を含む） | `ExpectedChangeOutsideOperatedBanks` | `BMS_CHANGE_OUTSIDE_OPERATED_BANKS` |
 | `affected_roles` に無い role の文書 | `ExpectedChangeRoleNotAffected` | `BMS_CHANGE_ROLE_NOT_AFFECTED` |
 
 テスト: `bank_operations_may_only_plan_changes_to_operated_bank_documents`、`bank_document_target_accepts_only_direct_bank_files`。
@@ -141,13 +141,15 @@ Bank 操作の `expected_changes` に入れてよい path は、project director
 
 `expected_changes[].after` は Prepare で作った staged bytes から取る。Bank internal identity が未証明なので、複製先 Bank が複製元と byte 一致すると仮定しない。
 
-変更してよい path は、操作が必ず書く Bank ファイルを過不足なく含む。Copy は複製先、Move と Swap は複製元と複製先で、それぞれ `affected_roles` の文書が change set に無いときは `MissingOperatedBankChange` になる。Copy の複製元を追加で含めることは、上の whitelist が許す。
+変更してよい path は、操作が必ず書く Bank ファイルを過不足なく含む。Copy は複製先、Move と Swap は複製元と複製先で、それぞれ `affected_roles` の文書が change set に無いときは `MissingOperatedBankChange` になる。つまり change set は「操作で書く Bank × `affected_roles`」の Bank 文書と完全に一致しなければならない。Copy の複製元は byte 不変であるべきなので change set に含められない（`copy_change_set_may_not_touch_the_source_bank`）。
 
 schema 慣行は #197 / #199 と同じである。rule または encode する field を変えるときは `contract_schema` と canonical prefix を上げ、v1 を in-place で拡張しない。read model の DTO schema が Plan 時点と Apply 直前で違えば STOP する（`ReadModelSchemaChanged`）。
 
 ## 6. Apply entry の STOP 条件（BMS-ENTRY）
 
-`evaluate_apply_entry` は検査対象の envelope を消費し、通ったときだけ `ApplyEntryPermit` を作る。permit はその envelope を保持する。`fields` は `seal` のあと外から変更できない。将来の Apply は `permit.envelope()` を使い、同じ `PlanId` の別 envelope を書き込まない。STOP 条件は 1 つ見つけた時点で止めず、該当するものをすべて決定的な順序で返す。各条件には `BMS_*` の安定コードがある（`stop_condition_codes_are_unique`）。
+`evaluate_apply_entry` は検査対象の envelope を消費し、通ったときだけ `ApplyEntryPermit` を作る。permit はその envelope を保持する。`fields` は `seal` のあと外から変更できない。`id` も private で、`Deref` は読み取り専用である（`DerefMut` は無い）。permit を外で組み立てることはできない。将来の Apply は `permit.envelope()` を使い、同じ `PlanId` の別 envelope を書き込まない（`permit_keeps_the_checked_fields_not_a_later_edit`）。
+
+permit は 1 回の観測に対する証拠であり、lease ではない。**#183 の executor は、root の writer lock を取ったあと、最初の write の直前に target を再観測し、`ApplyEntryPermit::reverify` で integrity と entry 検査をすべてやり直さなければならない。** その write には `reverify` が返した permit だけを使う。`reverify` は permit を消費するので、古い permit は残らない（`permit_must_be_reverified_against_a_fresh_observation`）。STOP 条件は 1 つ見つけた時点で止めず、該当するものをすべて決定的な順序で返す。各条件には `BMS_*` の安定コードがある（`stop_condition_codes_are_unique`）。
 
 | 区分 | `StopCondition` | テスト |
 | --- | --- | --- |
@@ -163,6 +165,8 @@ schema 慣行は #197 / #199 と同じである。rule または encode する f
 stale 判定は対象ファイルだけでなく project scope 全体で行う。Plan 後に scope 内のどの entry が増減・変化しても、その Plan は使えない。
 
 parser 証拠は Plan が選んだ文書だけではなく、操作が読む Bank を覆わなければならない。`project.work` と、affected role の複製元 Bank は Parsed で plan に含まれる。Swap、および manifest に既にある複製先 Bank も同じである。unmodeled 依存は envelope の任意リストではなく、executor が Apply 直前に渡す `LiveTargetObservation.project_structure` から取る。Plan が文書を省いたり unmodeled を空にしても、read model が未解析または unmodeled なら permit は出ない。
+
+**未完了（#183 / fail closed）**: `LiveTargetObservation.project_structure` は今のところ呼び出し側が渡す値である。これを信頼できる read model とするには、#183 の executor が writer lock の内側で、contained reader（`project_structure_reader`）を使って同じ project を再読込した結果を入れる必要がある。その配線は #183 の範囲で、まだ無い。それまでは readiness gap がすべて未解決なので permit は出ない（§1）。#183 はこの配線と、read model を executor 以外から注入できないことのテストを、gate を ACTIVE にする条件に含める。
 
 ## 7. Target（BMS-TARGET）
 
@@ -256,8 +260,8 @@ Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけであ
 
 | suite | package | 内容 |
 | --- | --- | --- |
-| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 28 件 |
-| `masterocta-bank-mutation-contract` | `masterocta --features test-seams` | 実 reader + TempDir PRE/POST 5 件、UI / command 境界 3 件、envelope の sample 非依存 1 件 |
+| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 31 件（このほか `ot-plan` の doctest 6 件を `CI / Rust Tests` が実行） |
+| `masterocta-bank-mutation-contract` | `masterocta --features test-seams` | 実 reader + TempDir PRE/POST 5 件、UI / command 境界 3 件、envelope の sample 非依存 1 件、readiness / permit の production 境界 1 件 |
 
 ### Gate ledger との対応
 
@@ -295,7 +299,7 @@ ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範�
 | Issue | この契約のあとに必要なこと |
 | --- | --- |
 | #181 | Copy / Move / Swap の ChangePlan が `BankMutationEnvelope` を出す。§1 の §7C 系 gap（#204 ほか）が先 |
-| #183 | Prepare（staged bytes）、Apply、Verify を fixture / temporary copy 上で実装する。Apply 入口は `ApplyEntryPermit` を取る。production 用の contained manifest capture（symlink 非追従、root 内）を実装する。target class を backend 証拠から決める |
+| #183 | Prepare（staged bytes）、Apply、Verify を fixture / temporary copy 上で実装する。Apply 入口は `ApplyEntryPermit` を取り、writer lock 下で `reverify` してから書く。`LiveTargetObservation.project_structure` を lock 内の contained reader の再読込結果で埋める。production 用の contained manifest capture（symlink 非追従、root 内）を実装する。target class を backend 証拠から決める |
 | #184 | 正常系・境界・失敗系の reference integrity。Arranger / arrangement 参照が読めるようになったら structure verify に加える。project 外 sample を含む Slot 参照先の referenced-file check（§13） |
 | #185 | Bank 用 backup manifest、journal、resume / rollback、`mutation_gate` への Bank journal 追加、failure injection、retry / idempotency。Recovery 後に Set root 単位または referenced-file 単位で外部 sample の不変を確認（§13） |
 | #186 | Native 受入。実機 CF 原本は別承認まで対象外 |
