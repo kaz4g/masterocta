@@ -409,10 +409,14 @@ pub struct PlannedDocument {
 /// #181 owns how these values are computed. This contract owns which values
 /// must be present and how they are checked. Build it with
 /// [`BankMutationEnvelope::seal`]; the [`PlanId`] covers every field.
+///
+/// `fields` stays private after sealing. Callers can read the projection
+/// through [`std::ops::Deref`] but cannot change it and reuse an
+/// [`ApplyEntryPermit`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BankMutationEnvelope {
     pub id: PlanId,
-    pub fields: BankMutationEnvelopeFields,
+    fields: BankMutationEnvelopeFields,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -592,6 +596,9 @@ pub struct LiveTargetObservation {
     pub read_model_schema: String,
     pub target_class: ApplyTargetClass,
     pub scope_manifest: TreeManifest,
+    /// Executor read model for the same project. Parser evidence and unmodeled
+    /// dependencies are taken from this value, not from the plan's lists.
+    pub project_structure: ProjectStructure,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -662,7 +669,8 @@ impl ReadinessGap {
 ///
 /// Production code must use [`ReadinessEvidence::current_main`]. Marking a gap
 /// resolved is a reviewed change to that function and its pinned test, backed
-/// by the evidence named in [`ReadinessGap::tracking`].
+/// by the evidence named in [`ReadinessGap::tracking`]. There is no production
+/// constructor that closes a gap.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ReadinessEvidence {
     resolved: BTreeSet<ReadinessGap>,
@@ -673,7 +681,10 @@ impl ReadinessEvidence {
         Self::default()
     }
 
-    /// For contract tests that exercise the permit path.
+    /// Contract tests only. A production build of this crate cannot call it,
+    /// so a downstream executor cannot mark [`ReadinessGap::ApplyAuthorization`]
+    /// or any other gap resolved.
+    #[cfg(test)]
     pub fn assume_resolved(gaps: impl IntoIterator<Item = ReadinessGap>) -> Self {
         Self {
             resolved: gaps.into_iter().collect(),
@@ -709,6 +720,10 @@ pub enum StopCondition {
     ExpectedChangeOutsideProject {
         relative_path: RootRelativePath,
     },
+    /// An operated Bank file the operation must write is missing from the change set.
+    MissingOperatedBankChange {
+        relative_path: RootRelativePath,
+    },
     ExpectedChangeBeforeMismatch {
         relative_path: RootRelativePath,
     },
@@ -721,6 +736,10 @@ pub enum StopCondition {
         relative_path: RootRelativePath,
     },
     ExpectedChangeRoleNotAffected {
+        relative_path: RootRelativePath,
+    },
+    /// An affected Bank, or `project.work`, has no parsed document in the plan.
+    MissingParserEvidence {
         relative_path: RootRelativePath,
     },
     NonRegularEntryInScope {
@@ -769,10 +788,12 @@ impl StopCondition {
             Self::DuplicateExpectedChange { .. } => "BMS_DUPLICATE_EXPECTED_CHANGE",
             Self::NoOpExpectedChange { .. } => "BMS_NOOP_EXPECTED_CHANGE",
             Self::ExpectedChangeOutsideProject { .. } => "BMS_CHANGE_OUTSIDE_PROJECT",
+            Self::MissingOperatedBankChange { .. } => "BMS_MISSING_OPERATED_BANK_CHANGE",
             Self::ExpectedChangeBeforeMismatch { .. } => "BMS_CHANGE_BEFORE_MISMATCH",
             Self::ExpectedChangeNotBankDocument { .. } => "BMS_CHANGE_NOT_BANK_DOCUMENT",
             Self::ExpectedChangeOutsideOperatedBanks { .. } => "BMS_CHANGE_OUTSIDE_OPERATED_BANKS",
             Self::ExpectedChangeRoleNotAffected { .. } => "BMS_CHANGE_ROLE_NOT_AFFECTED",
+            Self::MissingParserEvidence { .. } => "BMS_MISSING_PARSER_EVIDENCE",
             Self::NonRegularEntryInScope { .. } => "BMS_NON_REGULAR_ENTRY",
             Self::DocumentNotParsed { .. } => "BMS_DOCUMENT_NOT_PARSED",
             Self::UnmodeledDependency(_) => "BMS_UNMODELED_DEPENDENCY",
@@ -816,16 +837,241 @@ impl fmt::Display for StopCondition {
 
 /// Proof that every entry check passed for one sealed plan.
 ///
-/// Only [`evaluate_apply_entry`] constructs it. A future Apply entry point
-/// must take this permit, so it cannot be called without the checks.
+/// Only [`evaluate_apply_entry`] constructs it, and it owns the envelope that
+/// was checked. A future Apply entry point must read [`Self::envelope`] and
+/// must not write from a separately supplied envelope, even one with the same
+/// [`PlanId`].
 #[derive(Debug, Eq, PartialEq)]
 pub struct ApplyEntryPermit {
-    plan_id: PlanId,
+    envelope: BankMutationEnvelope,
 }
 
 impl ApplyEntryPermit {
     pub fn plan_id(&self) -> &PlanId {
-        &self.plan_id
+        &self.envelope.id
+    }
+
+    pub fn envelope(&self) -> &BankMutationEnvelope {
+        &self.envelope
+    }
+}
+
+fn role_extension(role: StateDocumentRole) -> &'static str {
+    match role {
+        StateDocumentRole::Working => "work",
+        StateDocumentRole::SavedCheckpoint => "strd",
+    }
+}
+
+fn project_child(project: &RootRelativePath, file_name: &str) -> RootRelativePath {
+    let components = project.as_str().split('/').chain([file_name]);
+    RootRelativePath::from_components(components)
+        .expect("bank and project document names are single relative components")
+}
+
+fn project_work_path(project: &RootRelativePath) -> RootRelativePath {
+    project_child(project, "project.work")
+}
+
+fn bank_document_path(
+    project: &RootRelativePath,
+    bank: BankIndex,
+    role: StateDocumentRole,
+) -> RootRelativePath {
+    let file_name = format!("bank{:02}.{}", bank.file_number(), role_extension(role));
+    project_child(project, &file_name)
+}
+
+#[cfg(test)]
+fn bank_slot_for_path(
+    project: &RootRelativePath,
+    path: &RootRelativePath,
+) -> Option<(BankIndex, StateDocumentRole)> {
+    for bank in BankIndex::all() {
+        for role in [
+            StateDocumentRole::Working,
+            StateDocumentRole::SavedCheckpoint,
+        ] {
+            if bank_document_path(project, bank, role) == *path {
+                return Some((bank, role));
+            }
+        }
+    }
+    None
+}
+
+fn unique_roles(roles: &[StateDocumentRole]) -> Vec<StateDocumentRole> {
+    let mut unique = Vec::new();
+    for role in roles {
+        if !unique.contains(role) {
+            unique.push(*role);
+        }
+    }
+    unique
+}
+
+/// Banks whose files this operation must write.
+///
+/// Copy writes the destination only. Move and Swap write both Banks.
+/// A Copy may still declare an extra source-Bank change; the whitelist allows
+/// it, and this set is only the required subset.
+fn written_bank_indexes(fields: &BankMutationEnvelopeFields) -> Vec<BankIndex> {
+    match fields.kind {
+        BankMutationKind::Copy => vec![fields.destination],
+        BankMutationKind::Move | BankMutationKind::Swap => {
+            vec![fields.source, fields.destination]
+        }
+    }
+}
+
+fn operated_change_paths(fields: &BankMutationEnvelopeFields) -> Vec<RootRelativePath> {
+    let mut paths = Vec::new();
+    for bank in written_bank_indexes(fields) {
+        for role in unique_roles(&fields.affected_roles) {
+            paths.push(bank_document_path(
+                &fields.project_relative_path,
+                bank,
+                role,
+            ));
+        }
+    }
+    paths.sort_by(|left, right| left.as_str().cmp(right.as_str()));
+    paths.dedup();
+    paths
+}
+
+struct ParserSlot {
+    relative_path: RootRelativePath,
+    role: StateDocumentRole,
+    bank: Option<BankIndex>,
+}
+
+/// `project.work`, the source Bank for every affected role, and a destination
+/// Bank that already exists or that Swap must read.
+fn required_parser_slots(fields: &BankMutationEnvelopeFields) -> Vec<ParserSlot> {
+    let mut slots = vec![ParserSlot {
+        relative_path: project_work_path(&fields.project_relative_path),
+        role: StateDocumentRole::Working,
+        bank: None,
+    }];
+    for role in unique_roles(&fields.affected_roles) {
+        slots.push(ParserSlot {
+            relative_path: bank_document_path(&fields.project_relative_path, fields.source, role),
+            role,
+            bank: Some(fields.source),
+        });
+        let destination_path =
+            bank_document_path(&fields.project_relative_path, fields.destination, role);
+        let destination_exists = matches!(
+            fields.scope_manifest.get(&destination_path),
+            Some(ManifestEntry::File { .. })
+        );
+        if fields.kind == BankMutationKind::Swap || destination_exists {
+            slots.push(ParserSlot {
+                relative_path: destination_path,
+                role,
+                bank: Some(fields.destination),
+            });
+        }
+    }
+    slots
+}
+
+fn parser_coverage_stops(envelope: &BankMutationEnvelope) -> Vec<StopCondition> {
+    let mut stops = Vec::new();
+    for slot in required_parser_slots(envelope) {
+        let parsed = envelope.documents.iter().any(|document| {
+            document.relative_path == slot.relative_path
+                && document.role == slot.role
+                && document.parse_status == StateDocumentParseStatus::Parsed
+        });
+        if parsed {
+            continue;
+        }
+        let already_rejected = envelope.documents.iter().any(|document| {
+            document.relative_path == slot.relative_path
+                && document.parse_status != StateDocumentParseStatus::Parsed
+        });
+        if !already_rejected {
+            stops.push(StopCondition::MissingParserEvidence {
+                relative_path: slot.relative_path,
+            });
+        }
+    }
+    stops
+}
+
+fn push_unique(stops: &mut Vec<StopCondition>, stop: StopCondition) {
+    if !stops.contains(&stop) {
+        stops.push(stop);
+    }
+}
+
+fn append_trusted_parser_stops(
+    stops: &mut Vec<StopCondition>,
+    envelope: &BankMutationEnvelope,
+    structure: &ProjectStructure,
+) {
+    let same_project = structure.project_relative_path == envelope.project_relative_path;
+    for slot in required_parser_slots(envelope) {
+        if !same_project {
+            push_unique(
+                stops,
+                StopCondition::MissingParserEvidence {
+                    relative_path: slot.relative_path,
+                },
+            );
+            continue;
+        }
+        let Some(bank) = slot.bank else {
+            match &structure.project_state {
+                Some(state)
+                    if state.source_relative_path == slot.relative_path
+                        && state.role == StateDocumentRole::Working
+                        && state.parse_status != StateDocumentParseStatus::Parsed =>
+                {
+                    push_unique(
+                        stops,
+                        StopCondition::DocumentNotParsed {
+                            relative_path: slot.relative_path,
+                            parse_status: state.parse_status,
+                        },
+                    );
+                }
+                Some(state)
+                    if state.source_relative_path == slot.relative_path
+                        && state.role == StateDocumentRole::Working => {}
+                _ => push_unique(
+                    stops,
+                    StopCondition::MissingParserEvidence {
+                        relative_path: slot.relative_path,
+                    },
+                ),
+            }
+            continue;
+        };
+        match structure.bank(bank, slot.role) {
+            Some(entry) if entry.source_relative_path == slot.relative_path => {
+                if entry.parse_status != StateDocumentParseStatus::Parsed {
+                    push_unique(
+                        stops,
+                        StopCondition::DocumentNotParsed {
+                            relative_path: slot.relative_path.clone(),
+                            parse_status: entry.parse_status,
+                        },
+                    );
+                }
+                for dependency in &entry.unmodeled {
+                    push_unique(stops, StopCondition::UnmodeledDependency(*dependency));
+                }
+            }
+            _ => push_unique(
+                stops,
+                StopCondition::MissingParserEvidence {
+                    relative_path: slot.relative_path,
+                },
+            ),
+        }
     }
 }
 
@@ -862,6 +1108,7 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
         stops.push(StopCondition::EmptyChangeSet);
     }
     let project_prefix = format!("{}/", envelope.project_relative_path.as_str());
+    let allowed = operated_change_paths(envelope);
     let mut seen = BTreeSet::new();
     for change in &envelope.expected_changes {
         let path = &change.relative_path;
@@ -904,6 +1151,15 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
             });
         }
     }
+    if !envelope.expected_changes.is_empty() {
+        for path in &allowed {
+            if !seen.contains(path.as_str()) {
+                stops.push(StopCondition::MissingOperatedBankChange {
+                    relative_path: path.clone(),
+                });
+            }
+        }
+    }
     for (path, entry) in envelope.scope_manifest.iter() {
         if matches!(entry, ManifestEntry::Symlink { .. } | ManifestEntry::Other) {
             stops.push(StopCondition::NonRegularEntryInScope {
@@ -919,6 +1175,7 @@ pub fn validate_envelope(envelope: &BankMutationEnvelope) -> Vec<StopCondition> 
             });
         }
     }
+    stops.extend(parser_coverage_stops(envelope));
     for dependency in &envelope.unmodeled {
         stops.push(StopCondition::UnmodeledDependency(*dependency));
     }
@@ -946,7 +1203,7 @@ pub fn bank_document_target(file_name: &str) -> Option<(BankIndex, StateDocument
 /// Apply entry gate (BMS-ENTRY). Fail closed: any stop condition, including
 /// any open readiness gap, withholds the permit.
 pub fn evaluate_apply_entry(
-    envelope: &BankMutationEnvelope,
+    envelope: BankMutationEnvelope,
     live: &LiveTargetObservation,
     backup: Option<&BackupEvidence>,
     readiness: &ReadinessEvidence,
@@ -956,13 +1213,11 @@ pub fn evaluate_apply_entry(
         .into_iter()
         .map(StopCondition::ReadinessGap)
         .collect();
-    stops.extend(validate_envelope(envelope));
-    stops.extend(live_target_stops(envelope, live));
-    stops.extend(backup_stops(envelope, backup));
+    stops.extend(validate_envelope(&envelope));
+    stops.extend(live_target_stops(&envelope, live));
+    stops.extend(backup_stops(&envelope, backup));
     if stops.is_empty() {
-        Ok(ApplyEntryPermit {
-            plan_id: envelope.id.clone(),
-        })
+        Ok(ApplyEntryPermit { envelope })
     } else {
         Err(stops)
     }
@@ -1002,6 +1257,7 @@ fn live_target_stops(
     if !live.target_class.is_fixture_scope() {
         stops.push(StopCondition::TargetNotFixtureScope(live.target_class));
     }
+    append_trusted_parser_stops(&mut stops, envelope, &live.project_structure);
     stops
 }
 
@@ -1184,7 +1440,7 @@ mod tests {
     use super::*;
     use ot_domain::project_structure::{
         PartIndex, PatternIndex, PatternPlaybackScale, PatternScale, PatternStructure,
-        BANK_UNMODELED_DEPENDENCIES,
+        ProjectStateDocument, BANK_UNMODELED_DEPENDENCIES,
     };
 
     const PROJECT: &str = "SET/PROJECT";
@@ -1259,6 +1515,45 @@ mod tests {
         }
     }
 
+    fn structure_matching_envelope(envelope: &BankMutationEnvelope) -> ProjectStructure {
+        let project_path = project_work_path(&envelope.project_relative_path);
+        let project_state = envelope
+            .documents
+            .iter()
+            .find(|document| document.relative_path == project_path)
+            .map(|document| ProjectStateDocument {
+                role: document.role,
+                source_relative_path: document.relative_path.clone(),
+                parse_status: document.parse_status,
+                bank: None,
+                pattern: None,
+                arrangement: None,
+                master_track: None,
+            });
+        let banks = envelope
+            .documents
+            .iter()
+            .filter_map(|document| {
+                let (bank, role) =
+                    bank_slot_for_path(&envelope.project_relative_path, &document.relative_path)?;
+                Some(BankStructure {
+                    bank,
+                    role,
+                    source_relative_path: document.relative_path.clone(),
+                    parse_status: document.parse_status,
+                    patterns: Vec::new(),
+                    parts: Vec::new(),
+                    unmodeled: envelope.unmodeled.clone(),
+                })
+            })
+            .collect();
+        ProjectStructure {
+            project_relative_path: envelope.project_relative_path.clone(),
+            project_state,
+            banks,
+        }
+    }
+
     fn live_for(envelope: &BankMutationEnvelope) -> LiveTargetObservation {
         LiveTargetObservation {
             root_id: envelope.root_id.clone(),
@@ -1270,6 +1565,7 @@ mod tests {
             read_model_schema: envelope.read_model_schema.clone(),
             target_class: ApplyTargetClass::TemporaryProjectCopy,
             scope_manifest: envelope.scope_manifest.clone(),
+            project_structure: structure_matching_envelope(envelope),
         }
     }
 
@@ -1317,7 +1613,7 @@ mod tests {
         let live = live_for(&envelope);
         let backup = backup_for(&envelope);
         let stops = evaluate_apply_entry(
-            &envelope,
+            envelope.clone(),
             &live,
             Some(&backup),
             &ReadinessEvidence::current_main(),
@@ -1338,7 +1634,7 @@ mod tests {
                 ReadinessGap::ALL.into_iter().filter(|other| *other != gap),
             );
             let stops = evaluate_apply_entry(
-                &envelope,
+                envelope.clone(),
                 &live_for(&envelope),
                 Some(&backup_for(&envelope)),
                 &readiness,
@@ -1352,13 +1648,14 @@ mod tests {
     fn clean_plan_with_resolved_readiness_gets_a_permit_bound_to_its_plan() {
         let envelope = BankMutationEnvelope::seal(copy_fields());
         let permit = evaluate_apply_entry(
-            &envelope,
+            envelope.clone(),
             &live_for(&envelope),
             Some(&backup_for(&envelope)),
             &all_resolved(),
         )
         .unwrap();
         assert_eq!(permit.plan_id(), &envelope.id);
+        assert_eq!(permit.envelope(), &envelope);
         assert!(envelope.id.as_str().starts_with(PLAN_ID_PREFIX));
         assert!(!envelope.id.as_str().contains(PROJECT));
     }
@@ -1555,9 +1852,107 @@ mod tests {
         let stops = validate_envelope(&BankMutationEnvelope::seal(fields));
         assert_eq!(
             stops,
-            vec![StopCondition::ExpectedChangeOutsideProject {
-                relative_path: path("SET/PROJECT2/bank02.work")
+            vec![
+                StopCondition::ExpectedChangeOutsideProject {
+                    relative_path: path("SET/PROJECT2/bank02.work")
+                },
+                StopCondition::MissingOperatedBankChange {
+                    relative_path: path("SET/PROJECT/bank02.work")
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn change_set_is_limited_to_operated_bank_files() {
+        let mut collateral = copy_fields();
+        collateral.expected_changes.push(ExpectedChange {
+            relative_path: path("SET/PROJECT/markers.work"),
+            before: expected_file(5, 'd'),
+            after: expected_file(5, 'e'),
+        });
+        assert_eq!(
+            validate_envelope(&BankMutationEnvelope::seal(collateral)),
+            vec![StopCondition::ExpectedChangeNotBankDocument {
+                relative_path: path("SET/PROJECT/markers.work"),
             }]
+        );
+
+        let mut partial_swap = copy_fields();
+        partial_swap.kind = BankMutationKind::Swap;
+        partial_swap
+            .scope_manifest
+            .insert(path("SET/PROJECT/bank02.work"), file(20, 'f'));
+        partial_swap.documents.push(PlannedDocument {
+            relative_path: path("SET/PROJECT/bank02.work"),
+            role: StateDocumentRole::Working,
+            parse_status: StateDocumentParseStatus::Parsed,
+        });
+        partial_swap.expected_changes = vec![ExpectedChange {
+            relative_path: path("SET/PROJECT/bank02.work"),
+            before: expected_file(20, 'f'),
+            after: expected_file(20, 'b'),
+        }];
+        assert_eq!(
+            validate_envelope(&BankMutationEnvelope::seal(partial_swap)),
+            vec![StopCondition::MissingOperatedBankChange {
+                relative_path: path("SET/PROJECT/bank01.work"),
+            }]
+        );
+    }
+
+    #[test]
+    fn omitted_affected_bank_evidence_blocks_the_plan() {
+        let mut fields = copy_fields();
+        fields
+            .documents
+            .retain(|document| document.relative_path.as_str().ends_with("project.work"));
+        assert_eq!(
+            validate_envelope(&BankMutationEnvelope::seal(fields)),
+            vec![StopCondition::MissingParserEvidence {
+                relative_path: path("SET/PROJECT/bank01.work"),
+            }]
+        );
+    }
+
+    #[test]
+    fn trusted_read_model_supplies_unmodeled_blockers() {
+        let envelope = BankMutationEnvelope::seal(copy_fields());
+        let backup = backup_for(&envelope);
+        let mut live = live_for(&envelope);
+        live.project_structure.banks[0].unmodeled = BANK_UNMODELED_DEPENDENCIES.to_vec();
+        let stops =
+            evaluate_apply_entry(envelope, &live, Some(&backup), &all_resolved()).unwrap_err();
+        assert_eq!(
+            stops,
+            vec![
+                StopCondition::UnmodeledDependency(UnmodeledDependency::Scenes),
+                StopCondition::UnmodeledDependency(UnmodeledDependency::Arrangements),
+                StopCondition::UnmodeledDependency(UnmodeledDependency::RecorderSetup),
+            ]
+        );
+    }
+
+    #[test]
+    fn trusted_read_model_rejects_an_unparsed_affected_bank() {
+        let envelope = BankMutationEnvelope::seal(copy_fields());
+        let backup = backup_for(&envelope);
+        let mut live = live_for(&envelope);
+        live.project_structure.banks[0].parse_status = StateDocumentParseStatus::Malformed;
+        live.project_structure.banks[0].unmodeled = BANK_UNMODELED_DEPENDENCIES.to_vec();
+        let stops =
+            evaluate_apply_entry(envelope, &live, Some(&backup), &all_resolved()).unwrap_err();
+        assert_eq!(
+            stops,
+            vec![
+                StopCondition::DocumentNotParsed {
+                    relative_path: path("SET/PROJECT/bank01.work"),
+                    parse_status: StateDocumentParseStatus::Malformed,
+                },
+                StopCondition::UnmodeledDependency(UnmodeledDependency::Scenes),
+                StopCondition::UnmodeledDependency(UnmodeledDependency::Arrangements),
+                StopCondition::UnmodeledDependency(UnmodeledDependency::RecorderSetup),
+            ]
         );
     }
 
@@ -1621,7 +2016,7 @@ mod tests {
         live.write_enabled = false;
         live.recovery_pending = true;
         let stops = evaluate_apply_entry(
-            &envelope,
+            envelope.clone(),
             &live,
             Some(&backup_for(&envelope)),
             &all_resolved(),
@@ -1660,7 +2055,7 @@ mod tests {
             let mut live = live_for(&envelope);
             live.target_class = target;
             let stops = evaluate_apply_entry(
-                &envelope,
+                envelope.clone(),
                 &live,
                 Some(&backup_for(&envelope)),
                 &all_resolved(),
@@ -1671,7 +2066,7 @@ mod tests {
         let mut live = live_for(&envelope);
         live.target_class = ApplyTargetClass::TrackedFixtureCopy;
         assert!(evaluate_apply_entry(
-            &envelope,
+            envelope.clone(),
             &live,
             Some(&backup_for(&envelope)),
             &all_resolved()
@@ -1683,10 +2078,14 @@ mod tests {
     fn backup_must_be_complete_local_reverified_and_cover_every_changed_file() {
         let mut fields = copy_fields();
         fields.kind = BankMutationKind::Swap;
-        fields.affected_roles = vec![
-            StateDocumentRole::Working,
-            StateDocumentRole::SavedCheckpoint,
-        ];
+        fields
+            .scope_manifest
+            .insert(path("SET/PROJECT/bank02.work"), file(20, 'f'));
+        fields.documents.push(PlannedDocument {
+            relative_path: path("SET/PROJECT/bank02.work"),
+            role: StateDocumentRole::Working,
+            parse_status: StateDocumentParseStatus::Parsed,
+        });
         fields.expected_changes = vec![
             ExpectedChange {
                 relative_path: path("SET/PROJECT/bank01.work"),
@@ -1694,15 +2093,16 @@ mod tests {
                 after: expected_file(20, 'f'),
             },
             ExpectedChange {
-                relative_path: path("SET/PROJECT/bank01.strd"),
-                before: expected_file(20, 'c'),
-                after: expected_file(20, '9'),
+                relative_path: path("SET/PROJECT/bank02.work"),
+                before: expected_file(20, 'f'),
+                after: expected_file(20, 'b'),
             },
         ];
         let envelope = BankMutationEnvelope::seal(fields);
         let live = live_for(&envelope);
 
-        let stops = evaluate_apply_entry(&envelope, &live, None, &all_resolved()).unwrap_err();
+        let stops =
+            evaluate_apply_entry(envelope.clone(), &live, None, &all_resolved()).unwrap_err();
         assert_eq!(stops, vec![StopCondition::BackupMissing]);
 
         let mut backup = backup_for(&envelope);
@@ -1712,8 +2112,8 @@ mod tests {
         backup.location = BackupLocation::TargetMedia;
         backup.files[0].content_hash = hash('0');
         backup.files.pop();
-        let stops =
-            evaluate_apply_entry(&envelope, &live, Some(&backup), &all_resolved()).unwrap_err();
+        let stops = evaluate_apply_entry(envelope.clone(), &live, Some(&backup), &all_resolved())
+            .unwrap_err();
         assert_eq!(
             stops,
             vec![
@@ -1725,7 +2125,7 @@ mod tests {
                     relative_path: path("SET/PROJECT/bank01.work")
                 },
                 StopCondition::BackupDoesNotCover {
-                    relative_path: path("SET/PROJECT/bank01.strd")
+                    relative_path: path("SET/PROJECT/bank02.work")
                 },
             ]
         );
@@ -1918,6 +2318,9 @@ mod tests {
             StopCondition::ExpectedChangeOutsideProject {
                 relative_path: path(PROJECT),
             },
+            StopCondition::MissingOperatedBankChange {
+                relative_path: path(PROJECT),
+            },
             StopCondition::ExpectedChangeBeforeMismatch {
                 relative_path: path(PROJECT),
             },
@@ -1936,6 +2339,9 @@ mod tests {
             StopCondition::DocumentNotParsed {
                 relative_path: path(PROJECT),
                 parse_status: StateDocumentParseStatus::Malformed,
+            },
+            StopCondition::MissingParserEvidence {
+                relative_path: path(PROJECT),
             },
             StopCondition::UnmodeledDependency(UnmodeledDependency::Scenes),
             StopCondition::RootMismatch,

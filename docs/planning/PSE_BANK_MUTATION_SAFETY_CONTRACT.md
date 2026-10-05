@@ -41,7 +41,7 @@ APPLY_READINESS        = NOT_READY
 | `WorkingSavedCheckpointRule` | `.work` / `.strd` のどちらを動かすか、`[STATES] BANK` をどう扱うか未決 | 監査 §7C、control plane §12 |
 | `ApplyAuthorization` | PSE-3 Apply の明示承認文書がない | control plane §9 |
 
-項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_every_gap_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は契約テストで permit 経路を検証するためのものであり、製品コードから呼ばない。
+項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_every_gap_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は `#[cfg(test)]` の契約テスト専用であり、製品ビルドからは呼べない。
 
 ## 2. 既存 safety primitive の再利用監査
 
@@ -141,24 +141,28 @@ Bank 操作の `expected_changes` に入れてよい path は、project director
 
 `expected_changes[].after` は Prepare で作った staged bytes から取る。Bank internal identity が未証明なので、複製先 Bank が複製元と byte 一致すると仮定しない。
 
+変更してよい path は、操作が必ず書く Bank ファイルを過不足なく含む。Copy は複製先、Move と Swap は複製元と複製先で、それぞれ `affected_roles` の文書が change set に無いときは `MissingOperatedBankChange` になる。Copy の複製元を追加で含めることは、上の whitelist が許す。
+
 schema 慣行は #197 / #199 と同じである。rule または encode する field を変えるときは `contract_schema` と canonical prefix を上げ、v1 を in-place で拡張しない。read model の DTO schema が Plan 時点と Apply 直前で違えば STOP する（`ReadModelSchemaChanged`）。
 
 ## 6. Apply entry の STOP 条件（BMS-ENTRY）
 
-`evaluate_apply_entry(envelope, live, backup, readiness)` だけが `ApplyEntryPermit` を作る。将来の Apply 入口はこの permit を引数に取る。STOP 条件は 1 つ見つけた時点で止めず、該当するものをすべて決定的な順序で返す。各条件には `BMS_*` の安定コードがある（`stop_condition_codes_are_unique`）。
+`evaluate_apply_entry` は検査対象の envelope を消費し、通ったときだけ `ApplyEntryPermit` を作る。permit はその envelope を保持する。`fields` は `seal` のあと外から変更できない。将来の Apply は `permit.envelope()` を使い、同じ `PlanId` の別 envelope を書き込まない。STOP 条件は 1 つ見つけた時点で止めず、該当するものをすべて決定的な順序で返す。各条件には `BMS_*` の安定コードがある（`stop_condition_codes_are_unique`）。
 
 | 区分 | `StopCondition` | テスト |
 | --- | --- | --- |
 | readiness | `ReadinessGap(_)` | `current_main_withholds_the_permit_even_for_a_clean_plan` |
 | envelope | `ContractSchemaMismatch`、`PlanIntegrityMismatch`、`InvalidRootFingerprint`、`InvalidObservedRevision`、`SourceEqualsDestination`、`NoAffectedRoles`、`DuplicateAffectedRole`、`EmptyChangeSet` | `envelope_shape_fails_closed`、`sealed_plan_id_is_deterministic_and_detects_tampering` |
-| change set | `DuplicateExpectedChange`、`NoOpExpectedChange`、`ExpectedChangeOutsideProject`、`ExpectedChangeNotBankDocument`、`ExpectedChangeOutsideOperatedBanks`、`ExpectedChangeRoleNotAffected`、`ExpectedChangeBeforeMismatch` | `expected_changes_must_be_unique_real_and_inside_the_project`、`project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix`、`bank_operations_may_only_plan_changes_to_operated_bank_documents` |
-| parse / model | `DocumentNotParsed`（`Malformed`、`UnsupportedVersion`）、`UnmodeledDependency(_)`、`NonRegularEntryInScope`（symlink、FIFO など） | `unparsed_documents_unmodeled_dependencies_and_links_block_the_plan`、`a_symlink_in_the_project_scope_blocks_the_plan_without_being_followed` |
+| change set | `DuplicateExpectedChange`、`NoOpExpectedChange`、`ExpectedChangeOutsideProject`、`MissingOperatedBankChange`、`ExpectedChangeNotBankDocument`、`ExpectedChangeOutsideOperatedBanks`、`ExpectedChangeRoleNotAffected`、`ExpectedChangeBeforeMismatch` | `expected_changes_must_be_unique_real_and_inside_the_project`、`project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix`、`bank_operations_may_only_plan_changes_to_operated_bank_documents`、`change_set_is_limited_to_operated_bank_files` |
+| parse / model | `DocumentNotParsed`（`Malformed`、`UnsupportedVersion`）、`MissingParserEvidence`、`UnmodeledDependency(_)`、`NonRegularEntryInScope`（symlink、FIFO など） | `unparsed_documents_unmodeled_dependencies_and_links_block_the_plan`、`omitted_affected_bank_evidence_blocks_the_plan`、`trusted_read_model_supplies_unmodeled_blockers`、`trusted_read_model_rejects_an_unparsed_affected_bank`、`a_symlink_in_the_project_scope_blocks_the_plan_without_being_followed` |
 | stale / root | `RootMismatch`、`DeviceFingerprintChanged`、`UnstableRootIdentity`、`ObservedRevisionChanged`、`ReadModelSchemaChanged`、`StalePrecondition(_)` | `stale_live_observation_withholds_the_permit`、`a_byte_changed_after_planning_makes_the_plan_stale` |
 | 権限 / 他操作 | `WriteNotEnabled`、`RecoveryPending` | `stale_live_observation_withholds_the_permit` |
 | target | `TargetNotFixtureScope(_)` | `only_fixture_scope_targets_are_writable` |
 | backup | `BackupMissing`、`BackupPlanMismatch`、`BackupIncomplete`、`BackupNotReverified`、`BackupNotLocal(_)`、`BackupDoesNotCover`、`BackupHashMismatch` | `backup_must_be_complete_local_reverified_and_cover_every_changed_file` |
 
 stale 判定は対象ファイルだけでなく project scope 全体で行う。Plan 後に scope 内のどの entry が増減・変化しても、その Plan は使えない。
+
+parser 証拠は Plan が選んだ文書だけではなく、操作が読む Bank を覆わなければならない。`project.work` と、affected role の複製元 Bank は Parsed で plan に含まれる。Swap、および manifest に既にある複製先 Bank も同じである。unmodeled 依存は envelope の任意リストではなく、executor が Apply 直前に渡す `LiveTargetObservation.project_structure` から取る。Plan が文書を省いたり unmodeled を空にしても、read model が未解析または unmodeled なら permit は出ない。
 
 ## 7. Target（BMS-TARGET）
 
@@ -191,7 +195,7 @@ app の再起動や中断のあとも未完了 journal が残っていれば、�
 
 Apply 後は 2 つの検査を両方通す。片方だけでは Committed にしない。
 
-**byte-level**（`verify_expected_changes`）: 宣言した path だけが変わり、それぞれ `after` に一致し、project scope の他の entry はすべて不変であること。project directory 内の sample ファイルや `markers.work`、`arrNN.work` など宣言外の変更は `UnexpectedChange` になる。project directory の外にあるファイルはこの検査の範囲外である（§13）。
+**byte-level**（`verify_expected_changes`）: 宣言した path だけが変わり、それぞれ `after` に一致し、project scope の他の entry はすべて不変であること。entry の whitelist に無い path は planned write になれない。project directory 内の sample ファイルや `markers.work`、`arrNN.work` など宣言外の変更は `UnexpectedChange` になる。project directory の外にあるファイルはこの検査の範囲外である（§13）。
 
 **structure-level**（`verify_bank_structure`）: POST を read model で再読込し、PRE と比べる。
 
@@ -252,7 +256,7 @@ Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけであ
 
 | suite | package | 内容 |
 | --- | --- | --- |
-| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 24 件 |
+| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 28 件 |
 | `masterocta-bank-mutation-contract` | `masterocta --features test-seams` | 実 reader + TempDir PRE/POST 5 件、UI / command 境界 3 件、envelope の sample 非依存 1 件 |
 
 ### Gate ledger との対応
@@ -283,7 +287,7 @@ ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範�
 2. #183 では、Apply の各テストが `evaluate_apply_entry` の permit を経由していること、POST に `verify_expected_changes` と `verify_bank_structure` を適用していることを inventory の required test で固定する
 3. failure injection（#185）では、各 phase での失敗後に `BankMutationPhase::on_failure` の義務どおりになったことを `prove_no_write` または `verify_recovered_to_pre` で示す
 4. `current_main_readiness_keeps_every_gap_open` の変更を含む PR は、追跡先の証拠リンクがあるかを review gate で確認する
-5. scope: `src-tauri/crates/ot-plan/src/bank_mutation.rs`、`src-tauri/src/bank_mutation_contract.rs` は `pse-ci-scope.mjs` の in-scope に追加済み。どちらも file 名に `bank` を含むので、static guard の `RUST_WRITE_API` 走査対象にもなっている
+5. scope: `src-tauri/crates/ot-plan/src/bank_mutation.rs`、`src-tauri/crates/ot-plan/Cargo.toml`、`src-tauri/src/bank_mutation_contract.rs` は `pse-ci-scope.mjs` の in-scope に追加済み。`bank_mutation.rs` と `bank_mutation_contract.rs` は file 名に `bank` を含むので、static guard の `RUST_WRITE_API` 走査対象にもなっている
 6. 将来、汎用 change / apply command が Bank role を扱う場合（§12 BMS-ROUTE）、その command を guard の allowlist に明示的に追加し、permit を経由しているかを guard 側でも検査する
 
 ## 15. 残作業

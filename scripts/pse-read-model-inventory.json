@@ -95,6 +95,7 @@
         "backup_must_be_complete_local_reverified_and_cover_every_changed_file",
         "bank_document_target_accepts_only_direct_bank_files",
         "bank_operations_may_only_plan_changes_to_operated_bank_documents",
+        "change_set_is_limited_to_operated_bank_files",
         "clean_plan_with_resolved_readiness_gets_a_permit_bound_to_its_plan",
         "copy_structure_check_compares_content_not_file_names",
         "current_main_readiness_keeps_every_gap_open",
@@ -106,6 +107,7 @@
         "move_structure_check_stays_closed_until_the_vacated_state_is_decided",
         "only_apply_and_recovery_may_write_and_failures_have_one_disposition",
         "only_fixture_scope_targets_are_writable",
+        "omitted_affected_bank_evidence_blocks_the_plan",
         "phase_flow_cannot_skip_steps_or_cancel_mid_apply",
         "project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix",
         "recovery_must_restore_the_whole_scope_to_pre",
@@ -114,6 +116,8 @@
         "stop_condition_codes_are_unique",
         "structure_check_rejects_unparsed_banks_and_project_state_drift",
         "swap_structure_check_requires_both_directions",
+        "trusted_read_model_rejects_an_unparsed_affected_bank",
+        "trusted_read_model_supplies_unmodeled_blockers",
         "unparsed_documents_unmodeled_dependencies_and_links_block_the_plan"
       ]
     },

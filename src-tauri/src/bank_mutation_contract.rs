@@ -164,7 +164,11 @@ mod tests {
         })
     }
 
-    fn live_for(envelope: &BankMutationEnvelope, manifest: TreeManifest) -> LiveTargetObservation {
+    fn live_for(
+        envelope: &BankMutationEnvelope,
+        manifest: TreeManifest,
+        project_structure: ProjectStructure,
+    ) -> LiveTargetObservation {
         LiveTargetObservation {
             root_id: envelope.root_id.clone(),
             device_fingerprint: envelope.device_fingerprint.clone(),
@@ -175,6 +179,7 @@ mod tests {
             read_model_schema: PROJECT_STRUCTURE_SCHEMA.to_owned(),
             target_class: ApplyTargetClass::TemporaryProjectCopy,
             scope_manifest: manifest,
+            project_structure,
         }
     }
 
@@ -194,10 +199,9 @@ mod tests {
 
         let structure = read_project_structure(&root, &project_path()).unwrap();
         let envelope = copy_envelope(&structure, &pre, bank01_working_state(), true);
-        let live = live_for(&envelope, capture_manifest(&root));
-        let stops =
-            evaluate_apply_entry(&envelope, &live, None, &ReadinessEvidence::current_main())
-                .unwrap_err();
+        let live = live_for(&envelope, capture_manifest(&root), structure);
+        let stops = evaluate_apply_entry(envelope, &live, None, &ReadinessEvidence::current_main())
+            .unwrap_err();
 
         let gaps: Vec<_> = stops
             .iter()
@@ -242,10 +246,9 @@ mod tests {
         bytes[0] ^= 0x01;
         fs::write(&markers, bytes).unwrap();
 
-        let live = live_for(&envelope, capture_manifest(&root));
-        let stops =
-            evaluate_apply_entry(&envelope, &live, None, &ReadinessEvidence::current_main())
-                .unwrap_err();
+        let live = live_for(&envelope, capture_manifest(&root), structure);
+        let stops = evaluate_apply_entry(envelope, &live, None, &ReadinessEvidence::current_main())
+            .unwrap_err();
         assert!(
             stops.contains(&StopCondition::StalePrecondition(TreeChange {
                 relative_path: relative("SET/PROJECT/markers.work"),
@@ -267,10 +270,9 @@ mod tests {
         let pre = capture_manifest(&root);
         let structure = read_project_structure(&root, &project_path()).unwrap();
         let envelope = copy_envelope(&structure, &pre, bank01_working_state(), false);
-        let live = live_for(&envelope, capture_manifest(&root));
-        let stops =
-            evaluate_apply_entry(&envelope, &live, None, &ReadinessEvidence::current_main())
-                .unwrap_err();
+        let live = live_for(&envelope, capture_manifest(&root), structure);
+        let stops = evaluate_apply_entry(envelope, &live, None, &ReadinessEvidence::current_main())
+            .unwrap_err();
 
         assert!(stops.contains(&StopCondition::NonRegularEntryInScope {
             relative_path: relative("SET/PROJECT/bank03.work"),
