@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { SlotReference } from '../../api/projectStructure';
 import apiSource from '../../api/projectStructure.ts?raw';
@@ -30,8 +29,16 @@ function imports(source: string): { typeOnly: boolean; from: string }[] {
 }
 
 function resolveSpecifier(sourcePath: string, specifier: string): string {
-  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), specifier));
-  return resolved.replace(/\.(tsx?|jsx?)$/, '');
+  const stack = sourcePath.split('/').slice(0, -1);
+  for (const part of specifier.replace(/\.(tsx?|jsx?)$/, '').split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      stack.pop();
+      continue;
+    }
+    stack.push(part);
+  }
+  return stack.join('/');
 }
 
 function isSampleLineModule(resolved: string): boolean {
