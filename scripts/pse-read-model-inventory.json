@@ -159,6 +159,7 @@
         "path_rebinding_keeps_slot_identity_bank_references_and_asset_identity",
         "project_structure_dto_exposes_slot_identity_only",
         "absolute_path_guard_rejects_paths_outside_the_registered_root",
+        "function_source_ignores_braces_inside_literals_and_comments",
         "project_line_sources_do_not_name_sample_line_entities",
         "sample_line_sources_do_not_name_project_structure_entities"
       ]

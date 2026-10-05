@@ -396,7 +396,7 @@ fn path_tokens(text: &str) -> impl Iterator<Item = &str> {
         character.is_whitespace()
             || matches!(
                 character,
-                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '<' | '>'
+                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '<' | '>' | '='
             )
     })
     .map(|token| token.trim_matches(|character: char| matches!(character, '.' | ':' | '=')))
@@ -564,6 +564,7 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
     let mut inactive_slots = 0;
     let mut recorder_buffers = 0;
     let mut recorder_observations = Vec::new();
+    let mut non_sample_recorder_slots = 0;
     for part in &working.parts {
         let index = usize::from(part.index.get());
         let unsaved = &bank.parts.unsaved.0[index];
@@ -582,6 +583,20 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
                 slots.flex_slot_id,
             ) {
                 saved_differs += 1;
+            }
+            if let Some(observation) = observe_recorder_slot(
+                &library,
+                index,
+                position,
+                slots.static_slot_id,
+                slots.flex_slot_id,
+                slots.recorder_slot_id,
+                track.playback,
+            ) {
+                if !observation.sample_machine {
+                    non_sample_recorder_slots += 1;
+                }
+                recorder_observations.push(observation);
             }
             let TrackPlayback::Audio { machine, slot } = track.playback else {
                 continue;
@@ -603,38 +618,6 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
                     recorder_buffers += 1;
                 }
                 _ => {}
-            }
-            let raw_recorder = slots.recorder_slot_id;
-            if raw_recorder != slots.flex_slot_id && raw_recorder != slots.static_slot_id {
-                let active_number = bank_machine_slot_to_usage_index(active)
-                    .map(|index| u16::try_from(index + 1).unwrap());
-                let forbidden = recorder_slot_projections(raw_recorder, active, active_number);
-                assert!(
-                    !forbidden.is_empty(),
-                    "recorder_slot_id {raw_recorder} collapses into the active machine slot"
-                );
-                if let Some(modeled) = modeled_slot_number(slot) {
-                    assert!(
-                        !forbidden.contains(&modeled),
-                        "structure projects recorder_slot_id {raw_recorder} as {modeled}"
-                    );
-                }
-                for edge in library.usage_edges.iter().filter(|edge| {
-                    edge.bank_document_relative_path.as_str() == WORKING_BANK
-                        && edge.part_index == Some(part.index.get())
-                        && edge.track_index == track.index.get()
-                }) {
-                    assert!(
-                        !forbidden.contains(&edge.slot.number()),
-                        "usage projects recorder_slot_id {raw_recorder}"
-                    );
-                }
-                recorder_observations.push(RecorderSlotObservation {
-                    part: index,
-                    track: position,
-                    raw: raw_recorder,
-                    forbidden,
-                });
             }
             if bank_machine_slot_to_usage_index(inactive).is_some() && inactive != active {
                 inactive_slots += 1;
@@ -668,6 +651,10 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
         !recorder_observations.is_empty(),
         "fixture recorder_slot_id differs from flex_slot_id and static_slot_id"
     );
+    assert!(
+        non_sample_recorder_slots > 0,
+        "fixture has a distinct recorder_slot_id on a non-sample machine"
+    );
     assert_dto_omits_recorder_slot_ids(&fixture, &recorder_observations);
 }
 
@@ -675,7 +662,73 @@ struct RecorderSlotObservation {
     part: usize,
     track: usize,
     raw: u8,
+    sample_machine: bool,
     forbidden: BTreeSet<u16>,
+}
+
+fn observe_recorder_slot(
+    library: &LibrarySnapshot,
+    part: usize,
+    track: usize,
+    static_slot_id: u8,
+    flex_slot_id: u8,
+    raw_recorder: u8,
+    playback: TrackPlayback,
+) -> Option<RecorderSlotObservation> {
+    if raw_recorder == flex_slot_id || raw_recorder == static_slot_id {
+        return None;
+    }
+    let (active, modeled, sample_machine) = match playback {
+        TrackPlayback::Audio {
+            machine: MachineKind::Static,
+            slot,
+        } => (Some(static_slot_id), modeled_slot_number(slot), true),
+        TrackPlayback::Audio {
+            machine: MachineKind::Flex,
+            slot,
+        } => (Some(flex_slot_id), modeled_slot_number(slot), true),
+        TrackPlayback::Audio { slot, .. } => (None, modeled_slot_number(slot), false),
+        TrackPlayback::Master => (None, None, false),
+    };
+    let active_number = active
+        .and_then(crate::bank_validation::bank_machine_slot_to_usage_index)
+        .map(|index| u16::try_from(index + 1).unwrap());
+    let forbidden = match active {
+        Some(active) => recorder_slot_projections(raw_recorder, active, active_number),
+        None => BTreeSet::from([
+            u16::from(raw_recorder),
+            u16::from(raw_recorder).saturating_add(1),
+        ]),
+    };
+    assert!(
+        !forbidden.is_empty(),
+        "recorder_slot_id {raw_recorder} collapses into the active machine slot"
+    );
+    if let Some(modeled) = modeled {
+        assert!(
+            !forbidden.contains(&modeled),
+            "structure projects recorder_slot_id {raw_recorder} as {modeled}"
+        );
+    }
+    let part_index = u8::try_from(part).unwrap();
+    let track_index = u8::try_from(track).unwrap();
+    for edge in library.usage_edges.iter().filter(|edge| {
+        edge.bank_document_relative_path.as_str() == WORKING_BANK
+            && edge.part_index == Some(part_index)
+            && edge.track_index == track_index
+    }) {
+        assert!(
+            !forbidden.contains(&edge.slot.number()),
+            "usage projects recorder_slot_id {raw_recorder}"
+        );
+    }
+    Some(RecorderSlotObservation {
+        part,
+        track,
+        raw: raw_recorder,
+        sample_machine,
+        forbidden,
+    })
 }
 
 fn modeled_slot_number(slot: TrackSlotReference) -> Option<u16> {
@@ -718,25 +771,59 @@ fn assert_dto_omits_recorder_slot_ids(fixture: &Fixture, observations: &[Recorde
         .find(|bank| bank["sourceRelativePath"] == WORKING_BANK)
         .expect("working bank DTO");
     for observation in observations {
-        let slot =
-            &working["parts"][observation.part]["tracks"][observation.track]["playback"]["slot"];
-        let Some(map) = slot.as_object() else {
-            continue;
-        };
-        for key in ["recorderSlotId", "recorder_slot_id"] {
-            assert!(!map.contains_key(key), "DTO slot carries {key}");
-        }
-        for key in ["number", "bufferNumber", "raw"] {
-            if let Some(value) = map.get(key).and_then(serde_json::Value::as_u64) {
-                let value = u16::try_from(value).unwrap();
-                assert!(
-                    !observation.forbidden.contains(&value),
-                    "DTO {key} projects recorder_slot_id {}",
-                    observation.raw
-                );
+        let playback = &working["parts"][observation.part]["tracks"][observation.track]["playback"];
+        assert!(
+            !playback_projects_recorder(playback, &observation.forbidden),
+            "DTO projects recorder_slot_id {}",
+            observation.raw
+        );
+    }
+}
+
+fn playback_projects_recorder(playback: &serde_json::Value, forbidden: &BTreeSet<u16>) -> bool {
+    let mut stack = vec![playback];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.contains_key("recorderSlotId") || map.contains_key("recorder_slot_id") {
+                    return true;
+                }
+                match map.get("kind").and_then(serde_json::Value::as_str) {
+                    Some("slot") => {
+                        if field_projects_recorder(map, "number", forbidden) {
+                            return true;
+                        }
+                    }
+                    Some("recorderBuffer") => {
+                        if field_projects_recorder(map, "bufferNumber", forbidden) {
+                            return true;
+                        }
+                    }
+                    Some("unrecognized") => {
+                        if field_projects_recorder(map, "raw", forbidden) {
+                            return true;
+                        }
+                    }
+                    _ => {}
+                }
+                stack.extend(map.values());
             }
+            serde_json::Value::Array(items) => stack.extend(items),
+            _ => {}
         }
     }
+    false
+}
+
+fn field_projects_recorder(
+    map: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    forbidden: &BTreeSet<u16>,
+) -> bool {
+    map.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .is_some_and(|value| forbidden.contains(&value))
 }
 
 #[test]
@@ -1085,6 +1172,7 @@ fn project_structure_dto_exposes_slot_identity_only() {
     )
     .unwrap();
     let json = serde_json::to_value(&dto).unwrap();
+    let root_text = fixture.canonical_root.to_string_lossy();
     let forbidden_keys = [
         "contentHash",
         "assetId",
@@ -1118,6 +1206,10 @@ fn project_structure_dto_exposes_slot_identity_only() {
                     !contains_absolute_path(text),
                     "DTO leaks an absolute path: {text}"
                 );
+                assert!(
+                    !text.contains(root_text.as_ref()),
+                    "DTO leaks the registered root: {text}"
+                );
             }
             _ => {}
         }
@@ -1133,6 +1225,8 @@ fn absolute_path_guard_rejects_paths_outside_the_registered_root() {
     assert!(contains_absolute_path(r"C:\Users\example\AppData\cache"));
     assert!(contains_absolute_path(r"\\server\share\derived"));
     assert!(contains_absolute_path("see file:///tmp/derived.wav"));
+    assert!(contains_absolute_path("root=/tmp/catalog.sqlite"));
+    assert!(contains_absolute_path(r"path=C:\Users\example\cache"));
     assert!(!contains_absolute_path("SET/PROJECT/bank01.work"));
     assert!(!contains_absolute_path("masterocta.project-structure:v3"));
 }
@@ -1269,24 +1363,187 @@ fn function_source<'a>(source: &'a str, name: &str) -> &'a str {
         .rfind('\n')
         .map(|index| index + 1)
         .unwrap_or(0);
+    let end = rust_function_end(&source[start..]);
+    &source[start..start + end]
+}
+
+/// End offset of the function that begins at `source`, ignoring braces inside
+/// comments and string or character literals.
+fn rust_function_end(source: &str) -> usize {
+    let bytes = source.as_bytes();
+    let mut index = 0;
     let mut depth = 0;
     let mut seen_body = false;
-    for (offset, character) in source[start..].char_indices() {
-        match character {
-            '{' => {
+    while index < bytes.len() {
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index = skip_line_comment(bytes, index);
+            continue;
+        }
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            index = skip_block_comment(bytes, index);
+            continue;
+        }
+        if let Some(end) = skip_raw_string(bytes, index) {
+            index = end;
+            continue;
+        }
+        if bytes[index] == b'b' && bytes.get(index + 1) == Some(&b'"') {
+            index = skip_cooked_string(bytes, index + 1);
+            continue;
+        }
+        if bytes[index] == b'"' {
+            index = skip_cooked_string(bytes, index);
+            continue;
+        }
+        if bytes[index] == b'b' && bytes.get(index + 1) == Some(&b'\'') {
+            index = skip_char_or_lifetime(bytes, index + 1);
+            continue;
+        }
+        if bytes[index] == b'\'' {
+            index = skip_char_or_lifetime(bytes, index);
+            continue;
+        }
+        match bytes[index] {
+            b'{' => {
                 depth += 1;
                 seen_body = true;
+                index += 1;
             }
-            '}' => {
+            b'}' => {
                 depth -= 1;
+                index += 1;
                 if seen_body && depth == 0 {
-                    return &source[start..start + offset + character.len_utf8()];
+                    return index;
                 }
             }
-            _ => {}
+            _ => index += 1,
         }
     }
-    panic!("unclosed fn {name}");
+    panic!("unclosed function");
+}
+
+fn skip_line_comment(bytes: &[u8], start: usize) -> usize {
+    bytes[start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|offset| start + offset + 1)
+        .unwrap_or(bytes.len())
+}
+
+fn skip_block_comment(bytes: &[u8], start: usize) -> usize {
+    let mut index = start + 2;
+    let mut depth = 1;
+    while index + 1 < bytes.len() {
+        if bytes[index] == b'/' && bytes[index + 1] == b'*' {
+            depth += 1;
+            index += 2;
+            continue;
+        }
+        if bytes[index] == b'*' && bytes[index + 1] == b'/' {
+            depth -= 1;
+            index += 2;
+            if depth == 0 {
+                return index;
+            }
+            continue;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+fn skip_raw_string(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut index = start;
+    if bytes.get(index) == Some(&b'b') {
+        index += 1;
+    }
+    if bytes.get(index) != Some(&b'r') {
+        return None;
+    }
+    index += 1;
+    let mut hashes = 0;
+    while bytes.get(index) == Some(&b'#') {
+        hashes += 1;
+        index += 1;
+    }
+    if bytes.get(index) != Some(&b'"') {
+        return None;
+    }
+    index += 1;
+    while index < bytes.len() {
+        if bytes[index] == b'"'
+            && bytes.len() >= index + 1 + hashes
+            && bytes[index + 1..index + 1 + hashes]
+                .iter()
+                .all(|byte| *byte == b'#')
+        {
+            return Some(index + 1 + hashes);
+        }
+        index += 1;
+    }
+    Some(bytes.len())
+}
+
+fn skip_cooked_string(bytes: &[u8], start: usize) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            index += 2;
+            continue;
+        }
+        if bytes[index] == b'"' {
+            return index + 1;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+fn skip_char_or_lifetime(bytes: &[u8], start: usize) -> usize {
+    if bytes.get(start + 1) == Some(&b'\\') {
+        return skip_until_unescaped(bytes, start, b'\'');
+    }
+    if bytes.get(start + 2) == Some(&b'\'') {
+        return start + 3;
+    }
+    let mut index = start + 1;
+    while index < bytes.len() && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_') {
+        index += 1;
+    }
+    index
+}
+
+fn skip_until_unescaped(bytes: &[u8], start: usize, quote: u8) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            index += 2;
+            continue;
+        }
+        if bytes[index] == quote {
+            return index + 1;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+#[test]
+fn function_source_ignores_braces_inside_literals_and_comments() {
+    let source = r##"
+fn kept() {
+    let _ = format!("unexpected }");
+    let _ = '}';
+    // }
+    /* } /* } */ still */
+    let _ = r#" } "#;
+    let _ = AudioAsset;
+}
+fn next() {}
+"##;
+    let body = function_source(source, "kept");
+    assert!(body.contains("AudioAsset"));
+    assert!(!body.contains("fn next"));
 }
 
 const SAMPLE_LINE_TYPE_NAMES: [&str; 10] = [

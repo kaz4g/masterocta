@@ -184,7 +184,7 @@ legacy コマンドの `rename_file` / `delete_file` / `delete_audio_files` は 
 | I-7 | Project 側の操作は AudioAsset 本体、lineage、AudioAsset の hash を変えない | `project_structure_read_leaves_assets_hashes_and_lineage_unchanged` | TESTED（現行の read 面）。ChangePlan / Apply は PENDING（P-1） |
 | I-8 | パスの付け替え（M5 rename の出力）は Slot の identity、Bank 側の参照、AudioAsset の identity を保つ | `path_rebinding_keeps_slot_identity_bank_references_and_asset_identity`、既存 `ot-codec` `real_device_rewrite_changes_only_target_path_value_bytes` | TESTED |
 | I-9 | ドメインモデルを重複させない。契約が Project 側と名づけた単一所有ソース、および混在 adapter の Project 側関数は、Sample 側の型を名指ししない。逆も同じ。共有語彙（§2.1。`ContentHash` を含む）は対象外。`RootRegistry` は共有語彙に入れない | `project_line_sources_do_not_name_sample_line_entities`、`sample_line_sources_do_not_name_project_structure_entities` | TESTED（ソース文字列ガード。混在ファイルは関数単位。P-8） |
-| I-10 | 構造モデルと `usage_edges` はどちらも unsaved Part の有効 machine だけを読む。(b)–(d) はどちらにも無い。`recorder_slot_id` が `flex_slot_id` / `static_slot_id` と違う生値は、構造、usage、DTO に出ない | `structure_and_usage_cover_only_unsaved_active_machine_slots` | TESTED（範囲の固定。モデル化は P-10） |
+| I-10 | 構造モデルと `usage_edges` はどちらも unsaved Part の有効 machine だけを読む。(b)–(d) はどちらにも無い。`recorder_slot_id` が `flex_slot_id` / `static_slot_id` と違う生値は、Static / Flex だけでなく Thru / Neighbor / Pickup / Master でも、構造、usage、DTO に出ない | `structure_and_usage_cover_only_unsaved_active_machine_slots` | TESTED（範囲の固定。モデル化は P-10） |
 
 ## 6. 最小インターフェース
 
@@ -245,7 +245,7 @@ Rust（`masterocta --features test-seams`、filter `sample_slot_boundary::`）�
 | テスト | 保証すること |
 | --- | --- |
 | `slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset` | Project 構造の Slot 参照 → catalog の Slot 投影 → FileInstance → AudioAsset が一意に決まる。usage edge があれば状態が一致し、無いのは既定 Static Slot だけ（1 件以上あることも確認） |
-| `structure_and_usage_cover_only_unsaved_active_machine_slots` | 構造モデルと Machine usage edge は unsaved Part の有効 machine の Slot だけを持つ。fixture に `parts.saved` の差分、無効側 Slot、`flex_slot_id` 由来の Recorder buffer、および `flex_slot_id` / `static_slot_id` と違う `recorder_slot_id` がある。その生値は構造、usage、DTO に出ない |
+| `structure_and_usage_cover_only_unsaved_active_machine_slots` | 構造モデルと Machine usage edge は unsaved Part の有効 machine の Slot だけを持つ。fixture に `parts.saved` の差分、無効側 Slot、`flex_slot_id` 由来の Recorder buffer、および Static / Flex 以外を含む `recorder_slot_id` の生値がある。その生値は構造、usage、DTO に出ない |
 | `duplicate_content_shares_one_asset_while_each_slot_keeps_its_file_instance` | 同一内容で AudioAsset は一つ、Slot の着地先は各自のパス |
 | `missing_referenced_file_is_reported_by_the_sample_projection_only` | 欠落は `Missing` で出て、Project 構造と Project 文書は不変 |
 | `changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage` | byte size が変わる内容変更で新 AudioAsset。lineage と Project 構造は不変 |
@@ -254,7 +254,8 @@ Rust（`masterocta --features test-seams`、filter `sample_slot_boundary::`）�
 | `project_structure_read_leaves_assets_hashes_and_lineage_unchanged` | Project 側の読取が音声バイト、AudioAsset hash、lineage、catalog snapshot を変えない |
 | `path_rebinding_keeps_slot_identity_bank_references_and_asset_identity` | 同一ディレクトリ rename 後も Slot 集合、Bank バイト、Project 構造、AudioAsset が同じ |
 | `project_structure_dto_exposes_slot_identity_only` | DTO の Slot は `kind` / `slotKind` / `number` だけ。Sample 側キーが無い |
-| `absolute_path_guard_rejects_paths_outside_the_registered_root` | DTO の文字列検査は、登録 root 以外の絶対パス（Application Support、cache、Windows パス、`file://`）も拒否する |
+| `absolute_path_guard_rejects_paths_outside_the_registered_root` | DTO の文字列検査は、登録 root の部分一致に加え、空白の無いラベル付き絶対パス（`root=/tmp/...`、`path=C:\...`）と Application Support、cache、UNC、`file://` も拒否する |
+| `function_source_ignores_braces_inside_literals_and_comments` | Project 側関数の切り出しは、文字列リテラルとコメントの中の波括弧で終わらない |
 | `project_line_sources_do_not_name_sample_line_entities` | Project 側の単一所有ソースと、契約が Project 側とした関数（`ot_codec::parse_project_document` のソース、`compute_sample_usage_for_documents`、`legacy_read_adapter` の state / marker 関数）が AudioAsset、FileInstance、lineage、Slice、Waveform、catalog を名指ししない（`ContentHash` は共有語彙なので対象外） |
 | `sample_line_sources_do_not_name_project_structure_entities` | Sample 側ソースが Project 構造、Bank reader、Project reference codec を名指ししない |
 
