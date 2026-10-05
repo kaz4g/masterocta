@@ -360,6 +360,87 @@ mod tests {
         }
     }
 
+    /// Generic commands that can write media today. A new one, or Bank roles
+    /// routed through one of these, needs a reviewed contract change.
+    const GENERIC_MEDIA_MUTATION_COMMANDS: [&str; 6] = [
+        "v2_change_apply",
+        "v2_change_recover",
+        "v2_rename_apply",
+        "v2_rename_continue",
+        "v2_rename_recover",
+        "v2_slice_export_apply",
+    ];
+
+    #[test]
+    fn generic_mutation_commands_are_pinned_and_carry_no_bank_mutation() {
+        let mut mutating: Vec<_> = v2_command_names()
+            .into_iter()
+            .filter(|name| {
+                name.split('_')
+                    .any(|word| matches!(word, "apply" | "continue" | "commit" | "recover"))
+            })
+            .collect();
+        mutating.sort_unstable();
+        assert_eq!(mutating, GENERIC_MEDIA_MUTATION_COMMANDS.to_vec());
+
+        for (file, source) in [
+            ("v2_api.rs", include_str!("v2_api.rs")),
+            ("write_runtime.rs", include_str!("write_runtime.rs")),
+            (
+                "rename_write_runtime.rs",
+                include_str!("rename_write_runtime.rs"),
+            ),
+            (
+                "slice_export_apply.rs",
+                include_str!("slice_export_apply.rs"),
+            ),
+            ("mutation_gate.rs", include_str!("mutation_gate.rs")),
+        ] {
+            let touches_bank_mutation =
+                source.contains("bank_mutation") || source.contains("BankMutation");
+            assert!(
+                !touches_bank_mutation || source.contains("evaluate_apply_entry"),
+                "{file} handles Bank mutation without evaluate_apply_entry"
+            );
+        }
+    }
+
+    /// Production part of the contract module, before its test module.
+    fn contract_production_source() -> &'static str {
+        let source = include_str!("../crates/ot-plan/src/bank_mutation.rs");
+        source.split("#[cfg(test)]").next().unwrap()
+    }
+
+    #[test]
+    fn envelope_records_no_audio_asset_or_sample_identity() {
+        let source = contract_production_source();
+        let start = source
+            .find("pub struct BankMutationEnvelopeFields {")
+            .unwrap();
+        let fields = &source[start..start + source[start..].find("\n}").unwrap()];
+        for forbidden in [
+            "AudioAsset",
+            "AssetId",
+            "FileInstance",
+            "ContentHashFreshness",
+            "Lineage",
+            "Derivation",
+            "SliceDraft",
+            "sample_hash",
+            "audio",
+        ] {
+            assert!(
+                !fields.contains(forbidden),
+                "envelope field set must not carry {forbidden}"
+            );
+            assert!(
+                !source.contains(&format!("ot_domain::{forbidden}")),
+                "contract must not import {forbidden}"
+            );
+        }
+        assert!(fields.contains("scope_manifest: TreeManifest"));
+    }
+
     #[test]
     fn frontend_has_no_direct_filesystem_write_capability() {
         let capabilities = include_str!("../capabilities/default.json");

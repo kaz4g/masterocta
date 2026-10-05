@@ -93,6 +93,8 @@
       "required_tests": [
         "a_single_open_gap_withholds_the_permit",
         "backup_must_be_complete_local_reverified_and_cover_every_changed_file",
+        "bank_document_target_accepts_only_direct_bank_files",
+        "bank_operations_may_only_plan_changes_to_operated_bank_documents",
         "clean_plan_with_resolved_readiness_gets_a_permit_bound_to_its_plan",
         "copy_structure_check_compares_content_not_file_names",
         "current_main_readiness_keeps_every_gap_open",
@@ -124,7 +126,9 @@
         "a_byte_changed_after_planning_makes_the_plan_stale",
         "a_symlink_in_the_project_scope_blocks_the_plan_without_being_followed",
         "contract_evaluation_on_a_real_read_model_leaves_the_copy_byte_identical",
+        "envelope_records_no_audio_asset_or_sample_identity",
         "frontend_has_no_direct_filesystem_write_capability",
+        "generic_mutation_commands_are_pinned_and_carry_no_bank_mutation",
         "no_bank_mutation_command_is_exposed_to_the_frontend",
         "tracked_real_device_documents_are_parsed_and_unmodeled_dependencies_are_listed",
         "verifiers_check_a_simulated_post_state_and_rollback_on_a_copy"
