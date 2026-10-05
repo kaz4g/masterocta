@@ -446,10 +446,11 @@ fn slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_ass
         assert_eq!(assets[0].byte_size, entry.file.byte_size);
     }
 
-    // The structure lists every machine slot. The catalog usage projection is
-    // narrower: it leaves out an inaudible Static machine on its default slot
-    // (slot number = track number). Bank planning must count from the structure.
+    // Within Machine edges (unsaved Part, active machine) the usage projection
+    // drops only an inaudible Static machine on its default slot (slot number =
+    // track number). The structure keeps it.
     let mut listed = 0;
+    let mut omitted = 0;
     for reference in references {
         let expected = library
             .slot_assignments
@@ -479,10 +480,102 @@ fn slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_ass
                     "{:?}",
                     reference.slot
                 );
+                omitted += 1;
             }
         }
     }
     assert!(listed > 0, "usage projection lists machine slots");
+    assert!(omitted > 0, "fixture exercises the default Static omission");
+}
+
+/// Both the read model and the catalog usage projection read only the active
+/// machine of `parts.unsaved`. Inactive-side slots, `parts.saved`, and
+/// `recorder_slot_id` are in neither. Each of these must be modeled or fail
+/// closed before #181 can plan.
+#[test]
+fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
+    use crate::bank_validation::bank_machine_slot_to_usage_index;
+    use ot_tools_io::{BankFile, OctatrackFileIO};
+
+    let fixture = Fixture::new();
+    let structure = fixture.structure();
+    let library = fixture.library();
+    let bank = BankFile::from_data_file(
+        &fixture.absolute(&RootRelativePath::parse(WORKING_BANK).unwrap()),
+    )
+    .unwrap();
+    let working = working_bank_a(&structure);
+
+    let mut saved_differs = 0;
+    let mut inactive_slots = 0;
+    let mut recorder_buffers = 0;
+    for part in &working.parts {
+        let index = usize::from(part.index.get());
+        let unsaved = &bank.parts.unsaved.0[index];
+        let saved = &bank.parts.saved.0[index];
+        for track in &part.tracks {
+            let position = usize::from(track.index.get());
+            let slots = &unsaved.audio_track_machine_slots[position];
+            let saved_slots = &saved.audio_track_machine_slots[position];
+            if (
+                saved.audio_track_machine_types[position],
+                saved_slots.static_slot_id,
+                saved_slots.flex_slot_id,
+            ) != (
+                unsaved.audio_track_machine_types[position],
+                slots.static_slot_id,
+                slots.flex_slot_id,
+            ) {
+                saved_differs += 1;
+            }
+            let TrackPlayback::Audio { machine, slot } = track.playback else {
+                continue;
+            };
+            let (active, inactive) = match machine {
+                MachineKind::Static => (slots.static_slot_id, slots.flex_slot_id),
+                MachineKind::Flex => (slots.flex_slot_id, slots.static_slot_id),
+                _ => continue,
+            };
+            match slot {
+                TrackSlotReference::Slot(id) => assert_eq!(
+                    Some(usize::from(id.number()) - 1),
+                    bank_machine_slot_to_usage_index(active)
+                ),
+                TrackSlotReference::RecorderBuffer(buffer) => {
+                    assert_eq!(machine, MachineKind::Flex);
+                    assert_eq!(u16::from(active), buffer.flex_slot());
+                    recorder_buffers += 1;
+                }
+                _ => {}
+            }
+            if bank_machine_slot_to_usage_index(inactive).is_some() && inactive != active {
+                inactive_slots += 1;
+            }
+            let machine_edges: Vec<_> = library
+                .usage_edges
+                .iter()
+                .filter(|edge| {
+                    edge.bank_document_relative_path.as_str() == WORKING_BANK
+                        && edge.usage_kind == SampleUsageKind::Machine
+                        && edge.part_index == Some(part.index.get())
+                        && edge.track_index == track.index.get()
+                })
+                .collect();
+            assert!(machine_edges.len() <= 1);
+            if let (Some(edge), TrackSlotReference::Slot(id)) = (machine_edges.first(), slot) {
+                assert_eq!(edge.slot, id, "usage edge follows the active machine only");
+            }
+        }
+    }
+    assert!(
+        saved_differs > 0,
+        "fixture parts.saved differs from parts.unsaved"
+    );
+    assert!(inactive_slots > 0, "fixture has inactive-side slot values");
+    assert!(
+        recorder_buffers > 0,
+        "recorder buffers come from flex_slot_id only"
+    );
 }
 
 #[test]
@@ -876,7 +969,6 @@ fn project_line_sources_do_not_name_sample_line_entities() {
         &[
             "AudioAsset",
             "FileInstance",
-            "ContentHash",
             "asset_derivation",
             "DerivationEdge",
             "derived_audio",
