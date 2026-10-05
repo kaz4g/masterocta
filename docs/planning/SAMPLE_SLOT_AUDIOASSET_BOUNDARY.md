@@ -3,7 +3,7 @@
 - Work ID: `MO-INTEGRATION-SLOT-ASSET-BOUNDARY-1`
 - Issue: #187（関連: #181 Bank ChangePlan、#182 / #207 Bank Mutation Safety Contract、#184 Bank Reference Integrity）
 - Status: **ACCEPTED**（境界はプロジェクトリード承認済み。この文書と回帰テストで固定する）
-- Updated: 2026-10-05（Bank Editor ラインのレビュー反映）
+- Updated: 2026-10-05（#208 レビュー反映。同一 metadata の hash 再利用、marker fixture、import 解決、`recorder_slot_id`、絶対パス、Project 側ソース範囲、`RootRegistry`）
 - Canonical milestone numbers: [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md)（この文書は M5–M11 を増やさない）
 - Project 側の設計: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)、[`PSE_READ_MODEL_EXIT_AUDIT.md`](./PSE_READ_MODEL_EXIT_AUDIT.md)
 - Sample 側の設計: [`M7_DERIVED_AUDIOASSET.md`](./M7_DERIVED_AUDIOASSET.md)、[`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md)
@@ -43,13 +43,15 @@ Project Structure / Bank Editor ライン（以下 Project 側）と Sample Mana
 
 | 型 / 関数 | 役割 |
 | --- | --- |
-| `RootId`、`RootRelativePath`、`RootRegistry` | 承認済み root と root 相対パス |
+| `RootId`、`RootRelativePath` | 承認済み root の識別子と、その root からの相対パス |
 | `SampleSlotId`、`SampleSlotKind` | Slot の識別子（Static / Flex、1–128） |
 | `RecorderBufferId` | Recorder buffer（Flex 129–136）。Slot ではない |
 | `ContentHash` | バイト列の SHA-256 digest。plan / backup / executor / `TreeManifest`（#207）でも使う汎用型。AudioAsset identity としての意味だけが Sample 側の所有 |
 | `SampleReferenceStatus` | 解決結果（`Resolved` / `Missing` / `InvalidPath` / `Ambiguous` / `UnassignedSlot`） |
 | `reference_identity::resolve_against_inventory` | `PATH=` 文字列を root 相対パスと解決結果に変える純粋関数 |
 | `StateDocumentRole`、`StateDocumentParseStatus` | Working / SavedCheckpoint と parse 状態 |
+
+`RootRegistry` は `ot-domain` の語彙ではない。外側の Tauri crate にある登録境界で、canonical なファイルシステムパスとデバイス観測を持つ。内側の crate は `RootRegistry` に依存しない。両ラインが承認済み root を受け取るときは `RootId` と `RootRelativePath` だけを使う。
 
 ### 2.2 scan と catalog 上の投影
 
@@ -140,10 +142,10 @@ Track (Bank 文書, Part(unsaved), Track, 有効 machine Static/Flex)
 | `PATH=` が root の外、絶対パス、NUL | 共有関数（Project 側 scan が呼ぶ） | `InvalidPath` |
 | 解決先にファイルが無い | Project 側 scan 投影（rescan） | `Missing`。参照パスは残す。Sample 側では FileInstance が消える |
 | 大文字小文字違いの候補が複数 | 共有関数 | `Ambiguous` |
-| 同じパスの内容が変わった | Sample 側（rescan） | `reference_status` は `Resolved` のまま。FileInstance の content hash が変わり、別 AudioAsset になる。旧 AudioAsset の lineage は書き換えない |
+| 同じパスの内容が変わった | Sample 側（rescan） | `reference_status` は `Resolved` のまま。byte size または観測 mtime が変わると content hash を計算し直し、別 AudioAsset になる。byte size と観測 mtime がどちらも前回と同じ置換では、前回の content hash を再利用し、AudioAsset は増えない。旧 AudioAsset の lineage は書き換えない |
 | derived 作成時に元ファイルが catalog の hash と違う | Sample 側の Apply | `SOURCE_CHANGED` で失敗。書き込みなし |
 
-内容の変更は content hash で判定する。mtime とサイズは scan の再利用判断にだけ使い、正しさの根拠にしない。
+内容が変わったことの検出は content hash の再計算である。scan は、byte size と観測 mtime が前回の FileInstance と同じとき、その hash を再利用する（`legacy_read_adapter::can_reuse_hash`）。粗いリムーバブル媒体のタイムスタンプでは、同じ長さの置換がこの再利用に入る。byte size または観測 mtime が変わったときだけ、scan はバイトを読み直して別の AudioAsset を作る。
 
 Project 側の構造モデル（Bank / Pattern / Part / Track / Slot 参照）は、欠落や変更があっても変わらない。
 
@@ -177,12 +179,12 @@ legacy コマンドの `rename_file` / `delete_file` / `delete_audio_files` は 
 | I-2 | `Resolved` の Slot 参照は、ちょうど一つの FileInstance と一つの AudioAsset に解決する。`[SAMPLE]` ブロックが無い Slot は `UnassignedSlot`。Machine edge（unsaved、有効 machine）の中で `usage_edges` が落とすのは既定 Static Slot だけ | `slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset` | TESTED |
 | I-3 | 同一内容は一つの AudioAsset を共有し、各 Slot は自分の FileInstance に着地する | `duplicate_content_shares_one_asset_while_each_slot_keeps_its_file_instance` | TESTED |
 | I-4 | 参照先の欠落は Project 側 scan 投影の `Missing` と、Sample 側 FileInstance の消失として出る。Project 構造と Project 文書のバイトは変わらない | `missing_referenced_file_is_reported_by_the_sample_projection_only` | TESTED |
-| I-5 | 同じパスの内容変更は新しい AudioAsset になる。記録済み lineage と Project 構造は変わらない | `changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage`、既存 `slice_export_ipc_rejects_source_changed` | TESTED |
-| I-6 | Sample 側の操作は Project / Bank / Slot データを変えない | `slice_export_leaves_project_bank_and_slot_projection_unchanged` | TESTED（slice export。TRIM は同じ publisher） |
+| I-5 | 同じパスで byte size または観測 mtime が変わった内容変更は新しい AudioAsset になる。byte size と観測 mtime がどちらも同じ置換は前回の content hash を再利用する。記録済み lineage と Project 構造は変わらない | `changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage`、`same_size_and_mtime_replacement_keeps_the_previous_content_hash`、既存 `slice_export_ipc_rejects_source_changed` | TESTED |
+| I-6 | Sample 側の操作は Project / Bank / Slot データと、コピー済み `markers.work` のバイトおよびその slot-local 設定投影を変えない | `slice_export_leaves_project_bank_and_slot_projection_unchanged` | TESTED（slice export。TRIM は同じ publisher） |
 | I-7 | Project 側の操作は AudioAsset 本体、lineage、AudioAsset の hash を変えない | `project_structure_read_leaves_assets_hashes_and_lineage_unchanged` | TESTED（現行の read 面）。ChangePlan / Apply は PENDING（P-1） |
 | I-8 | パスの付け替え（M5 rename の出力）は Slot の identity、Bank 側の参照、AudioAsset の identity を保つ | `path_rebinding_keeps_slot_identity_bank_references_and_asset_identity`、既存 `ot-codec` `real_device_rewrite_changes_only_target_path_value_bytes` | TESTED |
-| I-9 | ドメインモデルを重複させない。Project 側ソースは Sample 側の型を名指ししない。逆も同じ。共有語彙（§2.1。`ContentHash` を含む）は対象外 | `project_line_sources_do_not_name_sample_line_entities`、`sample_line_sources_do_not_name_project_structure_entities` | TESTED（ソース文字列ガード。P-8） |
-| I-10 | 構造モデルと `usage_edges` はどちらも unsaved Part の有効 machine だけを読む。(b)–(d) はどちらにも無い | `structure_and_usage_cover_only_unsaved_active_machine_slots` | TESTED（範囲の固定。モデル化は P-10） |
+| I-9 | ドメインモデルを重複させない。契約が Project 側と名づけた単一所有ソース、および混在 adapter の Project 側関数は、Sample 側の型を名指ししない。逆も同じ。共有語彙（§2.1。`ContentHash` を含む）は対象外。`RootRegistry` は共有語彙に入れない | `project_line_sources_do_not_name_sample_line_entities`、`sample_line_sources_do_not_name_project_structure_entities` | TESTED（ソース文字列ガード。混在ファイルは関数単位。P-8） |
+| I-10 | 構造モデルと `usage_edges` はどちらも unsaved Part の有効 machine だけを読む。(b)–(d) はどちらにも無い。`recorder_slot_id` が `flex_slot_id` / `static_slot_id` と違う生値は、Static / Flex だけでなく Thru / Neighbor / Pickup / Master でも、構造、usage、DTO に出ない | `structure_and_usage_cover_only_unsaved_active_machine_slots` | TESTED（範囲の固定。モデル化は P-10） |
 
 ## 6. 最小インターフェース
 
@@ -243,22 +245,25 @@ Rust（`masterocta --features test-seams`、filter `sample_slot_boundary::`）�
 | テスト | 保証すること |
 | --- | --- |
 | `slot_reference_resolves_through_catalog_path_to_one_file_instance_and_one_asset` | Project 構造の Slot 参照 → catalog の Slot 投影 → FileInstance → AudioAsset が一意に決まる。usage edge があれば状態が一致し、無いのは既定 Static Slot だけ（1 件以上あることも確認） |
-| `structure_and_usage_cover_only_unsaved_active_machine_slots` | 構造モデルと Machine usage edge は unsaved Part の有効 machine の Slot だけを持つ。fixture に `parts.saved` の差分、無効側 Slot、Recorder buffer があることも確認 |
+| `structure_and_usage_cover_only_unsaved_active_machine_slots` | 構造モデルと Machine usage edge は unsaved Part の有効 machine の Slot だけを持つ。fixture に `parts.saved` の差分、無効側 Slot、`flex_slot_id` 由来の Recorder buffer、および Static / Flex 以外を含む `recorder_slot_id` の生値がある。その生値は構造、usage、DTO に出ない |
 | `duplicate_content_shares_one_asset_while_each_slot_keeps_its_file_instance` | 同一内容で AudioAsset は一つ、Slot の着地先は各自のパス |
 | `missing_referenced_file_is_reported_by_the_sample_projection_only` | 欠落は `Missing` で出て、Project 構造と Project 文書は不変 |
-| `changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage` | 内容変更で新 AudioAsset。lineage と Project 構造は不変 |
-| `slice_export_leaves_project_bank_and_slot_projection_unchanged` | Sample 側の書き込み（slice export）後も root 全体のバイト、Project 構造、Slot 投影が不変。Slot は元の AudioAsset を指したまま |
+| `changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_lineage` | byte size が変わる内容変更で新 AudioAsset。lineage と Project 構造は不変 |
+| `same_size_and_mtime_replacement_keeps_the_previous_content_hash` | 同じ byte size と観測 mtime の置換は前回の content hash を再利用する |
+| `slice_export_leaves_project_bank_and_slot_projection_unchanged` | Sample 側の書き込み（slice export）後も root 全体のバイト、コピー済み `markers.work`、その slot-local 設定、Project 構造、Slot 投影が不変。Slot は元の AudioAsset を指したまま |
 | `project_structure_read_leaves_assets_hashes_and_lineage_unchanged` | Project 側の読取が音声バイト、AudioAsset hash、lineage、catalog snapshot を変えない |
 | `path_rebinding_keeps_slot_identity_bank_references_and_asset_identity` | 同一ディレクトリ rename 後も Slot 集合、Bank バイト、Project 構造、AudioAsset が同じ |
-| `project_structure_dto_exposes_slot_identity_only` | DTO の Slot は `kind` / `slotKind` / `number` だけ。Sample 側キーと絶対パスが無い |
-| `project_line_sources_do_not_name_sample_line_entities` | Project 側ソースが AudioAsset、FileInstance、lineage、Slice、Waveform、catalog を名指ししない（`ContentHash` は共有語彙なので対象外） |
+| `project_structure_dto_exposes_slot_identity_only` | DTO の Slot は `kind` / `slotKind` / `number` だけ。Sample 側キーが無い |
+| `absolute_path_guard_rejects_paths_outside_the_registered_root` | DTO の文字列検査は、登録 root の部分一致に加え、空白の無いラベル付き絶対パス（`root=/tmp/...`、`path=C:\...`）と Application Support、cache、UNC、`file://` も拒否する |
+| `function_source_ignores_braces_inside_literals_and_comments` | Project 側関数の切り出しは、文字列リテラルとコメントの中の波括弧で終わらない |
+| `project_line_sources_do_not_name_sample_line_entities` | Project 側の単一所有ソースと、契約が Project 側とした関数（`ot_codec::parse_project_document` のソース、`compute_sample_usage_for_documents`、`legacy_read_adapter` の state / marker 関数）が AudioAsset、FileInstance、lineage、Slice、Waveform、catalog を名指ししない（`ContentHash` は共有語彙なので対象外） |
 | `sample_line_sources_do_not_name_project_structure_entities` | Sample 側ソースが Project 構造、Bank reader、Project reference codec を名指ししない |
 
 Frontend（`pnpm run test:frontend`）:
 
 | テスト | 保証すること |
 | --- | --- |
-| `sampleSlotBoundary.test.ts` | `SlotReference` の slot 変種は slot identity だけ（型検査）。Viewer と Project Structure API は Sample 側モジュールを型としてだけ import し、IPC を直接呼ばない |
+| `sampleSlotBoundary.test.ts` | `SlotReference` の slot 変種は slot identity だけ（型検査）。guard 対象ファイルからの相対 import をそのファイルのディレクトリ基準で解決し、Sample 側プレフィックスとその子孫は型としてだけ import する。IPC は直接呼ばない |
 
 fixture の安全:
 

@@ -15,7 +15,7 @@ use crate::root_registry::RootRegistry;
 use crate::slice_export_apply::slice_export_apply_sync;
 use crate::v2_api::{
     catalog_identity, gate_c_register_and_index_root, gate_c_rescan_and_store,
-    load_library_snapshot, opaque_asset_id, opaque_file_instance_id,
+    gate_c_rescan_catalog_only, load_library_snapshot, opaque_asset_id, opaque_file_instance_id,
 };
 use ot_application::ApplyTrimDerivation;
 use ot_domain::project_structure::{
@@ -25,24 +25,26 @@ use ot_domain::project_structure::{
 use ot_domain::slice_draft::{DraftMarker, SliceDraft};
 use ot_domain::slicing::{FrameRange, PcmFrame};
 use ot_domain::{
-    resolve_project_reference_syntax, slot_kind_rank, ContentHash, FileInstance, LibrarySnapshot,
-    RootId, RootRelativePath, SampleReferenceStatus, SampleSlotId, SampleUsageKind,
-    StateDocumentRole, TrimIntent,
+    resolve_project_reference_syntax, slot_kind_rank, ContentHash, ContentHashFreshness,
+    FileInstance, LibrarySnapshot, RootId, RootRelativePath, SampleReferenceStatus,
+    SampleSettingsOwner, SampleSlotId, SampleUsageKind, StateDocumentRole, TrimIntent,
 };
 use ot_storage_ports::slice_drafts::{SliceDraftBinding, SliceDraftCatalog};
 use ot_storage_ports::{AssetDerivationCatalog, CatalogRootIdentity};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
+use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 
 const PROJECT: &str = "SET/PROJECT";
 const PROJECT_WORK: &str = "SET/PROJECT/project.work";
 const WORKING_BANK: &str = "SET/PROJECT/bank01.work";
-const FIXTURE_FILES: [&str; 3] = ["project.work", "bank01.work", "bank01.strd"];
+const MARKERS_WORK: &str = "SET/PROJECT/markers.work";
+const FIXTURE_FILES: [&str; 4] = ["project.work", "bank01.work", "bank01.strd", "markers.work"];
 const FIRST_WAV_FRAMES: u32 = 2_000;
 
 type TreeDigest = BTreeMap<String, (u64, String)>;
@@ -137,6 +139,13 @@ impl Fixture {
 
     fn rescan(&self) -> LibrarySnapshot {
         gate_c_rescan_and_store(&self.registry, &self.catalog, &self.root_id).unwrap();
+        self.library()
+    }
+
+    /// Production rescan: the previous catalog `FileInstance` rows are the
+    /// hash-reuse baseline (`can_reuse_hash`).
+    fn rescan_incremental(&self) -> LibrarySnapshot {
+        gate_c_rescan_catalog_only(&self.registry, &self.catalog, &self.root_id).unwrap();
         self.library()
     }
 
@@ -354,12 +363,57 @@ fn slot_projection(library: &LibrarySnapshot) -> impl PartialEq + std::fmt::Debu
             )
         })
         .collect();
+    let slot_settings: Vec<_> = library
+        .sample_settings
+        .iter()
+        .filter(|settings| settings.owner == SampleSettingsOwner::SlotAssignment)
+        .cloned()
+        .collect();
     (
         library.state_documents.clone(),
         library.slot_assignments.clone(),
         library.usage_edges.clone(),
+        slot_settings,
         files,
     )
+}
+
+fn slot_local_settings(library: &LibrarySnapshot) -> Vec<ot_domain::SampleSettings> {
+    library
+        .sample_settings
+        .iter()
+        .filter(|settings| settings.owner == SampleSettingsOwner::SlotAssignment)
+        .cloned()
+        .collect()
+}
+
+fn contains_absolute_path(text: &str) -> bool {
+    path_tokens(text).any(is_absolute_path)
+}
+
+fn path_tokens(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|character: char| {
+        character.is_whitespace()
+            || matches!(
+                character,
+                '"' | '\'' | '`' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';' | '<' | '>' | '='
+            )
+    })
+    .map(|token| token.trim_matches(|character: char| matches!(character, '.' | ':' | '=')))
+    .filter(|token| !token.is_empty())
+}
+
+fn is_absolute_path(text: &str) -> bool {
+    let text = text
+        .strip_prefix("file://")
+        .or_else(|| text.strip_prefix("file:"))
+        .unwrap_or(text);
+    Path::new(text).is_absolute()
+        || text.starts_with(r"\\")
+        || (text.len() >= 3
+            && text.as_bytes()[0].is_ascii_alphabetic()
+            && text.as_bytes()[1] == b':'
+            && matches!(text.as_bytes()[2], b'\\' | b'/'))
 }
 
 fn wav_layout(bytes: &[u8]) -> ot_audio::pcm::WavLayout {
@@ -509,6 +563,8 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
     let mut saved_differs = 0;
     let mut inactive_slots = 0;
     let mut recorder_buffers = 0;
+    let mut recorder_observations = Vec::new();
+    let mut non_sample_recorder_slots = 0;
     for part in &working.parts {
         let index = usize::from(part.index.get());
         let unsaved = &bank.parts.unsaved.0[index];
@@ -527,6 +583,20 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
                 slots.flex_slot_id,
             ) {
                 saved_differs += 1;
+            }
+            if let Some(observation) = observe_recorder_slot(
+                &library,
+                index,
+                position,
+                slots.static_slot_id,
+                slots.flex_slot_id,
+                slots.recorder_slot_id,
+                track.playback,
+            ) {
+                if !observation.sample_machine {
+                    non_sample_recorder_slots += 1;
+                }
+                recorder_observations.push(observation);
             }
             let TrackPlayback::Audio { machine, slot } = track.playback else {
                 continue;
@@ -577,6 +647,179 @@ fn structure_and_usage_cover_only_unsaved_active_machine_slots() {
         recorder_buffers > 0,
         "recorder buffers come from flex_slot_id only"
     );
+    assert!(
+        !recorder_observations.is_empty(),
+        "fixture recorder_slot_id differs from flex_slot_id and static_slot_id"
+    );
+    assert!(
+        non_sample_recorder_slots > 0,
+        "fixture has a distinct recorder_slot_id on a non-sample machine"
+    );
+    assert_dto_omits_recorder_slot_ids(&fixture, &recorder_observations);
+}
+
+struct RecorderSlotObservation {
+    part: usize,
+    track: usize,
+    raw: u8,
+    sample_machine: bool,
+    forbidden: BTreeSet<u16>,
+}
+
+fn observe_recorder_slot(
+    library: &LibrarySnapshot,
+    part: usize,
+    track: usize,
+    static_slot_id: u8,
+    flex_slot_id: u8,
+    raw_recorder: u8,
+    playback: TrackPlayback,
+) -> Option<RecorderSlotObservation> {
+    if raw_recorder == flex_slot_id || raw_recorder == static_slot_id {
+        return None;
+    }
+    let (active, modeled, sample_machine) = match playback {
+        TrackPlayback::Audio {
+            machine: MachineKind::Static,
+            slot,
+        } => (Some(static_slot_id), modeled_slot_number(slot), true),
+        TrackPlayback::Audio {
+            machine: MachineKind::Flex,
+            slot,
+        } => (Some(flex_slot_id), modeled_slot_number(slot), true),
+        TrackPlayback::Audio { slot, .. } => (None, modeled_slot_number(slot), false),
+        TrackPlayback::Master => (None, None, false),
+    };
+    let active_number = active
+        .and_then(crate::bank_validation::bank_machine_slot_to_usage_index)
+        .map(|index| u16::try_from(index + 1).unwrap());
+    let forbidden = match active {
+        Some(active) => recorder_slot_projections(raw_recorder, active, active_number),
+        None => BTreeSet::from([
+            u16::from(raw_recorder),
+            u16::from(raw_recorder).saturating_add(1),
+        ]),
+    };
+    assert!(
+        !forbidden.is_empty(),
+        "recorder_slot_id {raw_recorder} collapses into the active machine slot"
+    );
+    if let Some(modeled) = modeled {
+        assert!(
+            !forbidden.contains(&modeled),
+            "structure projects recorder_slot_id {raw_recorder} as {modeled}"
+        );
+    }
+    let part_index = u8::try_from(part).unwrap();
+    let track_index = u8::try_from(track).unwrap();
+    for edge in library.usage_edges.iter().filter(|edge| {
+        edge.bank_document_relative_path.as_str() == WORKING_BANK
+            && edge.part_index == Some(part_index)
+            && edge.track_index == track_index
+    }) {
+        assert!(
+            !forbidden.contains(&edge.slot.number()),
+            "usage projects recorder_slot_id {raw_recorder}"
+        );
+    }
+    Some(RecorderSlotObservation {
+        part,
+        track,
+        raw: raw_recorder,
+        sample_machine,
+        forbidden,
+    })
+}
+
+fn modeled_slot_number(slot: TrackSlotReference) -> Option<u16> {
+    match slot {
+        TrackSlotReference::Slot(id) => Some(id.number()),
+        TrackSlotReference::RecorderBuffer(buffer) => Some(buffer.flex_slot()),
+        TrackSlotReference::Unrecognized(raw) => Some(u16::from(raw)),
+        TrackSlotReference::Unassigned | TrackSlotReference::NoSampleMachine => None,
+    }
+}
+
+/// Numbers a reader would emit if it projected `recorder_slot_id` as a raw
+/// machine byte or as a 1-based slot. Values that are already the active
+/// machine slot stay out of this set.
+fn recorder_slot_projections(raw: u8, active: u8, active_number: Option<u16>) -> BTreeSet<u16> {
+    let mut forbidden = BTreeSet::from([u16::from(raw), u16::from(raw).saturating_add(1)]);
+    forbidden.remove(&u16::from(active));
+    if let Some(number) = active_number {
+        forbidden.remove(&number);
+    }
+    forbidden
+}
+
+fn assert_dto_omits_recorder_slot_ids(fixture: &Fixture, observations: &[RecorderSlotObservation]) {
+    let dto = read_project_structure_dto(
+        &fixture.registry,
+        &fixture.root_id,
+        &Fixture::project_path(),
+    )
+    .unwrap();
+    let json = serde_json::to_value(&dto).unwrap();
+    assert!(
+        !json.to_string().contains("recorderSlotId"),
+        "DTO names recorder_slot_id"
+    );
+    let working = json["banks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|bank| bank["sourceRelativePath"] == WORKING_BANK)
+        .expect("working bank DTO");
+    for observation in observations {
+        let playback = &working["parts"][observation.part]["tracks"][observation.track]["playback"];
+        assert!(
+            !playback_projects_recorder(playback, &observation.forbidden),
+            "DTO projects recorder_slot_id {}",
+            observation.raw
+        );
+    }
+}
+
+fn playback_projects_recorder(playback: &serde_json::Value, forbidden: &BTreeSet<u16>) -> bool {
+    let mut stack = vec![playback];
+    while let Some(value) = stack.pop() {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.contains_key("recorderSlotId") || map.contains_key("recorder_slot_id") {
+                    return true;
+                }
+                match map.get("kind").and_then(serde_json::Value::as_str) {
+                    Some("slot") if field_projects_recorder(map, "number", forbidden) => {
+                        return true;
+                    }
+                    Some("recorderBuffer")
+                        if field_projects_recorder(map, "bufferNumber", forbidden) =>
+                    {
+                        return true;
+                    }
+                    Some("unrecognized") if field_projects_recorder(map, "raw", forbidden) => {
+                        return true;
+                    }
+                    _ => {}
+                }
+                stack.extend(map.values());
+            }
+            serde_json::Value::Array(items) => stack.extend(items),
+            _ => {}
+        }
+    }
+    false
+}
+
+fn field_projects_recorder(
+    map: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    forbidden: &BTreeSet<u16>,
+) -> bool {
+    map.get(key)
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .is_some_and(|value| forbidden.contains(&value))
 }
 
 #[test]
@@ -661,7 +904,7 @@ fn changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_li
         ot_audio::test_minimal_wav(FIRST_WAV_FRAMES + 500),
     )
     .unwrap();
-    let library = fixture.rescan();
+    let library = fixture.rescan_incremental();
 
     let (path, status) = slot_assignment_status(&library, target.slot);
     assert_eq!(status, SampleReferenceStatus::Resolved);
@@ -672,8 +915,80 @@ fn changed_referenced_file_rebinds_the_slot_to_a_new_asset_and_keeps_recorded_li
         .find(|file| file.relative_path == target.file.relative_path)
         .unwrap();
     assert_ne!(rebound.content_hash, target.file.content_hash);
+    assert_eq!(
+        rebound.hash_freshness,
+        ContentHashFreshness::ComputedThisScan
+    );
     assert_eq!(fixture.derivation_edges(), lineage_before);
     assert_eq!(fixture.structure(), structure_before);
+}
+
+/// A same-length replacement whose observed mtime is restored matches the
+/// incremental scan's reuse rule (`can_reuse_hash`). Coarse removable-media
+/// timestamps can hide that replacement, so I-5 does not promise a new
+/// AudioAsset unless size or mtime changes.
+#[test]
+fn same_size_and_mtime_replacement_keeps_the_previous_content_hash() {
+    let fixture = Fixture::new();
+    let target = first_resolved_slot(&fixture);
+    let previous_mtime = target
+        .file
+        .modified_at_unix_ns
+        .expect("indexed audio has an observed mtime");
+    let structure_before = fixture.structure();
+    let path = fixture.absolute(&target.file.relative_path);
+    let mut bytes = fs::read(&path).unwrap();
+    let flipped = bytes.len() / 2;
+    bytes[flipped] ^= 0xff;
+    assert_eq!(bytes.len() as u64, target.file.byte_size);
+    fs::write(&path, &bytes).unwrap();
+    restore_observed_mtime(&path, previous_mtime);
+    assert_eq!(observed_mtime_ns(&path), Some(previous_mtime));
+
+    let library = fixture.rescan_incremental();
+    let (resolved, status) = slot_assignment_status(&library, target.slot);
+    assert_eq!(status, SampleReferenceStatus::Resolved);
+    assert_eq!(
+        resolved.as_deref(),
+        Some(target.file.relative_path.as_str())
+    );
+    let kept = library
+        .file_instances
+        .iter()
+        .find(|file| file.relative_path == target.file.relative_path)
+        .unwrap();
+    assert_eq!(kept.byte_size, target.file.byte_size);
+    assert_eq!(kept.modified_at_unix_ns, Some(previous_mtime));
+    assert_eq!(kept.content_hash, target.file.content_hash);
+    assert_eq!(
+        kept.hash_freshness,
+        ContentHashFreshness::ReusedUnchangedMetadata
+    );
+    assert_eq!(fixture.structure(), structure_before);
+}
+
+fn restore_observed_mtime(path: &Path, unix_ns: i64) {
+    let file = File::options().write(true).open(path).unwrap();
+    file.set_modified(system_time_from_unix_ns(unix_ns))
+        .unwrap();
+}
+
+fn observed_mtime_ns(path: &Path) -> Option<i64> {
+    let modified = fs::metadata(path).unwrap().modified().ok()?;
+    match modified.duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_nanos()).ok(),
+        Err(error) => i64::try_from(error.duration().as_nanos())
+            .ok()
+            .and_then(i64::checked_neg),
+    }
+}
+
+fn system_time_from_unix_ns(unix_ns: i64) -> SystemTime {
+    if unix_ns >= 0 {
+        UNIX_EPOCH + Duration::from_nanos(u64::try_from(unix_ns).unwrap())
+    } else {
+        UNIX_EPOCH - Duration::from_nanos(unix_ns.unsigned_abs())
+    }
 }
 
 #[test]
@@ -682,6 +997,22 @@ fn slice_export_leaves_project_bank_and_slot_projection_unchanged() {
     let target = first_resolved_slot(&fixture);
     let revision = save_single_slice_draft(&fixture, &target.file);
     let tree_before = tree_digest(fixture.ot_root.path());
+    assert!(
+        tree_before.contains_key(MARKERS_WORK),
+        "boundary fixture copies markers.work"
+    );
+    let marker_bytes = tree_before.get(MARKERS_WORK).unwrap().clone();
+    let settings_before = slot_local_settings(&fixture.library());
+    assert!(
+        settings_before.iter().any(|settings| {
+            settings
+                .marker_source_relative_path
+                .as_ref()
+                .is_some_and(|path| path.as_str() == MARKERS_WORK)
+                && (settings.trim_start.is_some() || !settings.slices.is_empty())
+        }),
+        "slot settings project the copied marker document"
+    );
     let structure_before = fixture.structure();
     let projection_before = slot_projection(&fixture.library());
     let derived_runtime = open_shared_derived_audio_runtime(fixture.data.path()).unwrap();
@@ -703,6 +1034,13 @@ fn slice_export_leaves_project_bank_and_slot_projection_unchanged() {
     );
 
     assert_eq!(tree_digest(fixture.ot_root.path()), tree_before);
+    assert_eq!(
+        tree_digest(fixture.ot_root.path())
+            .get(MARKERS_WORK)
+            .cloned(),
+        Some(marker_bytes)
+    );
+    assert_eq!(slot_local_settings(&fixture.library()), settings_before);
     assert_eq!(fixture.structure(), structure_before);
     assert_eq!(slot_projection(&fixture.library()), projection_before);
     assert!(fixture
@@ -830,7 +1168,7 @@ fn project_structure_dto_exposes_slot_identity_only() {
     )
     .unwrap();
     let json = serde_json::to_value(&dto).unwrap();
-    let root_text = fixture.canonical_root.to_string_lossy().into_owned();
+    let root_text = fixture.canonical_root.to_string_lossy();
     let forbidden_keys = [
         "contentHash",
         "assetId",
@@ -860,7 +1198,14 @@ fn project_structure_dto_exposes_slot_identity_only() {
             }
             serde_json::Value::Array(items) => stack.extend(items.iter()),
             serde_json::Value::String(text) => {
-                assert!(!text.contains(&root_text), "DTO leaks an absolute path");
+                assert!(
+                    !contains_absolute_path(text),
+                    "DTO leaks an absolute path: {text}"
+                );
+                assert!(
+                    !text.contains(root_text.as_ref()),
+                    "DTO leaks the registered root: {text}"
+                );
             }
             _ => {}
         }
@@ -868,10 +1213,32 @@ fn project_structure_dto_exposes_slot_identity_only() {
     assert!(slot_objects > 0, "fixture DTO contains slot references");
 }
 
-const PROJECT_LINE_SOURCES: [(&str, &str); 3] = [
+#[test]
+fn absolute_path_guard_rejects_paths_outside_the_registered_root() {
+    assert!(contains_absolute_path(
+        "/Users/example/Library/Application Support/masterocta/catalog.sqlite"
+    ));
+    assert!(contains_absolute_path(r"C:\Users\example\AppData\cache"));
+    assert!(contains_absolute_path(r"\\server\share\derived"));
+    assert!(contains_absolute_path("see file:///tmp/derived.wav"));
+    assert!(contains_absolute_path("root=/tmp/catalog.sqlite"));
+    assert!(contains_absolute_path(r"path=C:\Users\example\cache"));
+    assert!(!contains_absolute_path("SET/PROJECT/bank01.work"));
+    assert!(!contains_absolute_path("masterocta.project-structure:v3"));
+}
+
+const PROJECT_LINE_SOURCES: [(&str, &str); 5] = [
     (
         "ot-domain/project_structure.rs",
         include_str!("../crates/ot-domain/src/project_structure.rs"),
+    ),
+    (
+        "ot-codec/project_document.rs",
+        include_str!("../crates/ot-codec/src/project_document.rs"),
+    ),
+    (
+        "ot-codec/project_structure.rs",
+        include_str!("../crates/ot-codec/src/project_structure.rs"),
     ),
     (
         "project_structure_reader.rs",
@@ -880,6 +1247,26 @@ const PROJECT_LINE_SOURCES: [(&str, &str); 3] = [
     (
         "project_structure_command.rs",
         include_str!("project_structure_command.rs"),
+    ),
+];
+
+const PROJECT_LINE_FUNCTIONS: [(&str, &str, &[&str]); 2] = [
+    (
+        "legacy_read_adapter.rs",
+        include_str!("legacy_read_adapter.rs"),
+        &[
+            "scan_state_inventory",
+            "parse_project_state",
+            "parse_bank_state",
+            "append_usage_edges",
+            "scan_slot_local_settings",
+            "read_markers_source",
+        ],
+    ),
+    (
+        "project_reader.rs",
+        include_str!("project_reader.rs"),
+        &["compute_sample_usage_for_documents"],
     ),
 ];
 
@@ -963,23 +1350,225 @@ fn assert_sources_avoid(sources: &[(&str, &str)], forbidden: &[&str]) {
     }
 }
 
+fn function_source<'a>(source: &'a str, name: &str) -> &'a str {
+    let marker = format!("fn {name}");
+    let found = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("missing fn {name}"));
+    let start = source[..found]
+        .rfind('\n')
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let end = rust_function_end(&source[start..]);
+    &source[start..start + end]
+}
+
+/// End offset of the function that begins at `source`, ignoring braces inside
+/// comments and string or character literals.
+fn rust_function_end(source: &str) -> usize {
+    let bytes = source.as_bytes();
+    let mut index = 0;
+    let mut depth = 0;
+    let mut seen_body = false;
+    while index < bytes.len() {
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index = skip_line_comment(bytes, index);
+            continue;
+        }
+        if bytes[index] == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            index = skip_block_comment(bytes, index);
+            continue;
+        }
+        if let Some(end) = skip_raw_string(bytes, index) {
+            index = end;
+            continue;
+        }
+        if bytes[index] == b'b' && bytes.get(index + 1) == Some(&b'"') {
+            index = skip_cooked_string(bytes, index + 1);
+            continue;
+        }
+        if bytes[index] == b'"' {
+            index = skip_cooked_string(bytes, index);
+            continue;
+        }
+        if bytes[index] == b'b' && bytes.get(index + 1) == Some(&b'\'') {
+            index = skip_char_or_lifetime(bytes, index + 1);
+            continue;
+        }
+        if bytes[index] == b'\'' {
+            index = skip_char_or_lifetime(bytes, index);
+            continue;
+        }
+        match bytes[index] {
+            b'{' => {
+                depth += 1;
+                seen_body = true;
+                index += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                index += 1;
+                if seen_body && depth == 0 {
+                    return index;
+                }
+            }
+            _ => index += 1,
+        }
+    }
+    panic!("unclosed function");
+}
+
+fn skip_line_comment(bytes: &[u8], start: usize) -> usize {
+    bytes[start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|offset| start + offset + 1)
+        .unwrap_or(bytes.len())
+}
+
+fn skip_block_comment(bytes: &[u8], start: usize) -> usize {
+    let mut index = start + 2;
+    let mut depth = 1;
+    while index + 1 < bytes.len() {
+        if bytes[index] == b'/' && bytes[index + 1] == b'*' {
+            depth += 1;
+            index += 2;
+            continue;
+        }
+        if bytes[index] == b'*' && bytes[index + 1] == b'/' {
+            depth -= 1;
+            index += 2;
+            if depth == 0 {
+                return index;
+            }
+            continue;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+fn skip_raw_string(bytes: &[u8], start: usize) -> Option<usize> {
+    let mut index = start;
+    if bytes.get(index) == Some(&b'b') {
+        index += 1;
+    }
+    if bytes.get(index) != Some(&b'r') {
+        return None;
+    }
+    index += 1;
+    let mut hashes = 0;
+    while bytes.get(index) == Some(&b'#') {
+        hashes += 1;
+        index += 1;
+    }
+    if bytes.get(index) != Some(&b'"') {
+        return None;
+    }
+    index += 1;
+    while index < bytes.len() {
+        if bytes[index] == b'"'
+            && bytes.len() >= index + 1 + hashes
+            && bytes[index + 1..index + 1 + hashes]
+                .iter()
+                .all(|byte| *byte == b'#')
+        {
+            return Some(index + 1 + hashes);
+        }
+        index += 1;
+    }
+    Some(bytes.len())
+}
+
+fn skip_cooked_string(bytes: &[u8], start: usize) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            index += 2;
+            continue;
+        }
+        if bytes[index] == b'"' {
+            return index + 1;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+fn skip_char_or_lifetime(bytes: &[u8], start: usize) -> usize {
+    if bytes.get(start + 1) == Some(&b'\\') {
+        return skip_until_unescaped(bytes, start, b'\'');
+    }
+    if bytes.get(start + 2) == Some(&b'\'') {
+        return start + 3;
+    }
+    let mut index = start + 1;
+    while index < bytes.len() && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_') {
+        index += 1;
+    }
+    index
+}
+
+fn skip_until_unescaped(bytes: &[u8], start: usize, quote: u8) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' {
+            index += 2;
+            continue;
+        }
+        if bytes[index] == quote {
+            return index + 1;
+        }
+        index += 1;
+    }
+    bytes.len()
+}
+
+#[test]
+fn function_source_ignores_braces_inside_literals_and_comments() {
+    let source = r##"
+fn kept() {
+    let _ = format!("unexpected }");
+    let _ = '}';
+    // }
+    /* } /* } */ still */
+    let _ = r#" } "#;
+    let _ = AudioAsset;
+}
+fn next() {}
+"##;
+    let body = function_source(source, "kept");
+    assert!(body.contains("AudioAsset"));
+    assert!(!body.contains("fn next"));
+}
+
+const SAMPLE_LINE_TYPE_NAMES: [&str; 10] = [
+    "AudioAsset",
+    "FileInstance",
+    "asset_derivation",
+    "DerivationEdge",
+    "derived_audio",
+    "SliceDraft",
+    "waveform",
+    "ot_catalog",
+    "ot_audio",
+    "ot_application",
+];
+
 #[test]
 fn project_line_sources_do_not_name_sample_line_entities() {
-    assert_sources_avoid(
-        &PROJECT_LINE_SOURCES,
-        &[
-            "AudioAsset",
-            "FileInstance",
-            "asset_derivation",
-            "DerivationEdge",
-            "derived_audio",
-            "SliceDraft",
-            "waveform",
-            "ot_catalog",
-            "ot_audio",
-            "ot_application",
-        ],
-    );
+    assert_sources_avoid(&PROJECT_LINE_SOURCES, &SAMPLE_LINE_TYPE_NAMES);
+    let mut scoped = Vec::new();
+    for (file, source, names) in PROJECT_LINE_FUNCTIONS {
+        for name in names {
+            scoped.push((format!("{file}::{name}"), function_source(source, name)));
+        }
+    }
+    let scoped_refs: Vec<(&str, &str)> = scoped
+        .iter()
+        .map(|(name, body)| (name.as_str(), *body))
+        .collect();
+    assert_sources_avoid(&scoped_refs, &SAMPLE_LINE_TYPE_NAMES);
 }
 
 #[test]
