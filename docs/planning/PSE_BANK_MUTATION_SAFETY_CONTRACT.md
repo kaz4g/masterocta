@@ -6,6 +6,8 @@
 - Code: [`ot_plan::bank_mutation`](../../src-tauri/crates/ot-plan/src/bank_mutation.rs)（pure、filesystem 非依存）
 - Contract tests on fixtures: [`src-tauri/src/bank_mutation_contract.rs`](../../src-tauri/src/bank_mutation_contract.rs)
 - Inventory: [`scripts/pse-read-model-inventory.json`](../../scripts/pse-read-model-inventory.json)（`ot-plan-bank-mutation-contract`、`masterocta-bank-mutation-contract`）
+- Gate ledger: [`scripts/pse-bank-mutation-gates.json`](../../scripts/pse-bank-mutation-gates.json)（`contract.document` がこの文書を指す。各 gate の `contract_rules` / `contract_tests` は §14）
+- Static guard: [`scripts/pse-bank-mutation-guard.mjs`](../../scripts/pse-bank-mutation-guard.mjs)（#206、CI foundation §12）
 - Related: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md) §6 / §9、[`PSE_READ_MODEL_EXIT_AUDIT.md`](./PSE_READ_MODEL_EXIT_AUDIT.md) §7C / §11、[`../testing/PSE_CI_FOUNDATION.md`](../testing/PSE_CI_FOUNDATION.md)、[`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md) P4 / P5 / §5.6–5.8
 
 ## 0. この文書の位置づけ
@@ -87,6 +89,10 @@ project directory 配下の全 entry を `TreeManifest` に取る。key は root
 - `EntryKindChanged`: file / directory / symlink / other の種別が変わった
 - `SymlinkRetargeted`: symlink の参照先テキストが変わった
 
+### `ContentHash` の意味
+
+`ContentHash`（`ot-domain`、`sha256:` + 64 桁 hex）は、ファイル 1 つの **byte 列の SHA-256 digest** という汎用の値である。plan、backup、executor、そして `TreeManifest` が同じ型を使う。**AudioAsset の identity ではない。** manifest の entry hash が等しいことは「この path の byte が変わっていない」ことだけを意味し、同じ AudioAsset であることも、Slot 参照が同じ sample に解決されることも意味しない。AudioAsset の identity と lineage は Sample management 側（#208 の sample-boundary contract）が持つ。
+
 symlink の参照先は digest だけを保持し、manifest に root 外の path を持たせない。mtime、atime、permission bit は契約に含めない。FAT 系媒体では信用できないためである。
 
 **no-write 証明**（`prove_no_write`）は PRE と POST の manifest が等しいことである。CI foundation §5 と同じく、これは byte と entry 種別が変わっていない証拠であり、write syscall が起きなかった証明ではない。no-write を主張するコードパスは、write API を持たないことと組み合わせて示す。
@@ -109,12 +115,29 @@ symlink の参照先は digest だけを保持し、manifest に root 外の pat
 | `project_relative_path` | 対象 project directory |
 | `kind`、`source`、`destination` | Copy / Move / Swap と Bank index |
 | `affected_roles` | 動かす文書 role（Working / SavedCheckpoint）。含まれない role は両 Bank とも不変 |
-| `scope_manifest` | Plan 時点の project scope 全体の manifest |
+| `scope_manifest` | Plan 時点の project scope 全体の manifest（byte digest のみ。§4） |
 | `documents` | Plan が読んだ state 文書と parse status |
 | `expected_changes` | 変更してよい path ごとの `before` / `after`（`Absent` または size + SHA-256） |
 | `unmodeled` | Plan がモデル化できなかった依存 |
 
+envelope が precondition として記録してよいのは、**Slot の identity と参照状態（read model の `TrackSlotReference` など）、および `scope_manifest`** だけである。AudioAsset id、FileInstance id、catalog の sample content hash、lineage、slice は記録しない。Slot identity は structure verify（§10）で比較し、参照状態の追跡は #184 で加える。テスト `envelope_records_no_audio_asset_or_sample_identity` が envelope の field 定義と import を検査する。
+
 `BankMutationEnvelope::seal` が全 field を canonical encoding して `PlanId` を作る。どの field を書き換えても `validate_integrity` が失敗する（`sealed_plan_id_is_deterministic_and_detects_tampering`）。
+
+### 変更してよいファイル（BMS-CHANGESET）
+
+Bank 操作の `expected_changes` に入れてよい path は、project directory 直下の **`bankNN.work` / `bankNN.strd`（`NN` = `01`–`16`）だけ**である（`bank_document_target`）。さらに、その Bank が `source` か `destination` であり、その role が `affected_roles` に含まれなければならない。違反は次の安定コードで STOP する。
+
+| 違反 | `StopCondition` | code |
+| --- | --- | --- |
+| project directory の外 | `ExpectedChangeOutsideProject` | `BMS_CHANGE_OUTSIDE_PROJECT` |
+| project 内だが Bank 文書ではない（`project.work` / `project.strd`、`markers.work`、`arrNN.work`、sample ファイル、`.ot`、サブディレクトリ内の path、大文字や桁数違いの名前など） | `ExpectedChangeNotBankDocument` | `BMS_CHANGE_NOT_BANK_DOCUMENT` |
+| 操作対象外の Bank の文書 | `ExpectedChangeOutsideOperatedBanks` | `BMS_CHANGE_OUTSIDE_OPERATED_BANKS` |
+| `affected_roles` に無い role の文書 | `ExpectedChangeRoleNotAffected` | `BMS_CHANGE_ROLE_NOT_AFFECTED` |
+
+テスト: `bank_operations_may_only_plan_changes_to_operated_bank_documents`、`bank_document_target_accepts_only_direct_bank_files`。
+
+`project.work`（`[STATES] BANK` の追従など）を変更対象に加える判断（§16-3）が出た場合は、この whitelist を広げる contract schema の更新として扱う。
 
 `expected_changes[].after` は Prepare で作った staged bytes から取る。Bank internal identity が未証明なので、複製先 Bank が複製元と byte 一致すると仮定しない。
 
@@ -128,7 +151,7 @@ schema 慣行は #197 / #199 と同じである。rule または encode する f
 | --- | --- | --- |
 | readiness | `ReadinessGap(_)` | `current_main_withholds_the_permit_even_for_a_clean_plan` |
 | envelope | `ContractSchemaMismatch`、`PlanIntegrityMismatch`、`InvalidRootFingerprint`、`InvalidObservedRevision`、`SourceEqualsDestination`、`NoAffectedRoles`、`DuplicateAffectedRole`、`EmptyChangeSet` | `envelope_shape_fails_closed`、`sealed_plan_id_is_deterministic_and_detects_tampering` |
-| change set | `DuplicateExpectedChange`、`NoOpExpectedChange`、`ExpectedChangeOutsideProject`、`ExpectedChangeBeforeMismatch` | `expected_changes_must_be_unique_real_and_inside_the_project`、`project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix` |
+| change set | `DuplicateExpectedChange`、`NoOpExpectedChange`、`ExpectedChangeOutsideProject`、`ExpectedChangeNotBankDocument`、`ExpectedChangeOutsideOperatedBanks`、`ExpectedChangeRoleNotAffected`、`ExpectedChangeBeforeMismatch` | `expected_changes_must_be_unique_real_and_inside_the_project`、`project_prefix_check_does_not_accept_a_sibling_with_the_same_prefix`、`bank_operations_may_only_plan_changes_to_operated_bank_documents` |
 | parse / model | `DocumentNotParsed`（`Malformed`、`UnsupportedVersion`）、`UnmodeledDependency(_)`、`NonRegularEntryInScope`（symlink、FIFO など） | `unparsed_documents_unmodeled_dependencies_and_links_block_the_plan`、`a_symlink_in_the_project_scope_blocks_the_plan_without_being_followed` |
 | stale / root | `RootMismatch`、`DeviceFingerprintChanged`、`UnstableRootIdentity`、`ObservedRevisionChanged`、`ReadModelSchemaChanged`、`StalePrecondition(_)` | `stale_live_observation_withholds_the_permit`、`a_byte_changed_after_planning_makes_the_plan_stale` |
 | 権限 / 他操作 | `WriteNotEnabled`、`RecoveryPending` | `stale_live_observation_withholds_the_permit` |
@@ -168,7 +191,7 @@ app の再起動や中断のあとも未完了 journal が残っていれば、�
 
 Apply 後は 2 つの検査を両方通す。片方だけでは Committed にしない。
 
-**byte-level**（`verify_expected_changes`）: 宣言した path だけが変わり、それぞれ `after` に一致し、project scope の他の entry はすべて不変であること。Project 内の sample ファイルや `markers.work`、`arrNN.work` など宣言外の変更は `UnexpectedChange` になる。
+**byte-level**（`verify_expected_changes`）: 宣言した path だけが変わり、それぞれ `after` に一致し、project scope の他の entry はすべて不変であること。project directory 内の sample ファイルや `markers.work`、`arrNN.work` など宣言外の変更は `UnexpectedChange` になる。project directory の外にあるファイルはこの検査の範囲外である（§13）。
 
 **structure-level**（`verify_bank_structure`）: POST を read model で再読込し、PRE と比べる。
 
@@ -202,9 +225,26 @@ Recovery の成功条件は、project scope 全体の manifest が Plan 時点�
 
 テスト: `frontend_has_no_direct_filesystem_write_capability`、`no_bank_mutation_command_is_exposed_to_the_frontend`。既存の `check-architecture.mjs` も v2 command 一覧を固定している。
 
+### 汎用 change / apply command（BMS-ROUTE）
+
+static guard（CI foundation §12）は command 名に `bank` / `project_structure` を含むものだけを見る。`v2_change_plan` / `v2_change_apply` のような汎用 command に Bank の intent や role を流し込む経路は、名前では検出できない。そこで次を契約とする。
+
+- Bank の Working / SavedCheckpoint 文書を書き換えうる command は、汎用 command であっても、Apply の前に必ず `evaluate_apply_entry` を通し、`ApplyEntryPermit` を受け取ってから executor を呼ぶ
+- そうした command は、guard の allowlist（`ALLOWED_PSE_IPC_COMMANDS`）と `check-architecture.mjs` の command 一覧に**明示的に**追加する。名前が Bank 系でないことを理由に guard の対象外にしない
+- 既存の汎用 command（`v2_change_*` の additive copy、`v2_rename_*`、`v2_slice_export_apply`）に Bank の role を受け付けさせない
+
+テスト `generic_mutation_commands_are_pinned_and_carry_no_bank_mutation` は、媒体を変更しうる汎用 command（名前に `apply` / `continue` / `commit` / `recover` の語を持つもの）の一覧を固定する。また、`v2_api.rs` と write runtime、`mutation_gate.rs` が Bank mutation の型を参照する場合は `evaluate_apply_entry` も参照していることを確認する。新しい汎用 mutation command を足す PR は、このテストの一覧を変更するため、BMS-ROUTE の review を必ず通る。
+
 ## 13. Sample Slot 境界（BMS-SAMPLE）
 
-Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけである。Bank mutation は AudioAsset、FileInstance、lineage、catalog、slice、`.ot` を変更しない。expected change set に sample ファイルを入れる設計は、この契約の範囲外であり、Sample management 側との合意（#187）なしに追加しない。Project 内の sample ファイルが変われば byte-level verify が `UnexpectedChange` として失敗させる。
+Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけである。Bank mutation は AudioAsset、FileInstance、lineage、catalog、slice、`.ot` を変更しない。expected change set に sample ファイルを入れることは BMS-CHANGESET が禁止する。変更が必要になった場合は、Sample management 側との合意（#187、#208）と contract schema の更新を経る。
+
+**`TreeManifest` の範囲は project directory だけである。** Octatrack の sample は多くの場合 project directory の外、Set の Audio Pool（tracked fixture でも多くの Slot の path は `../AUDIO` を指す）にある。したがって:
+
+- project directory 内の sample ファイルは、byte-level verify と recovery の比較対象に入る
+- project directory 外の sample ファイルは、この manifest の**範囲外**である。PRE/POST manifest の一致は、それらが変わっていないことの証明に**ならない**
+- 外部 sample の不変性は、#184 / #185 が **Set root 単位の manifest**、または **Slot が参照するファイルを列挙した referenced-file check**（PRE で参照先を解決し、size + SHA-256 を記録し、POST / Recovery 後に比較）で検証しなければならない。どちらも root containment と symlink 非追従を守る
+- この 2 つの検証が入るまで、「Bank 操作で sample が無傷である」ことは契約上**未証明**のまま扱う。CI 上も `mutation.unrelated-files-preserved` / `mutation.reference-integrity` は BLOCKED のまま
 
 ## 14. #191 への gate 提案（workflow は変更しない）
 
@@ -212,8 +252,30 @@ Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけであ
 
 | suite | package | 内容 |
 | --- | --- | --- |
-| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 22 件 |
-| `masterocta-bank-mutation-contract` | `masterocta --features test-seams` | 実 reader + TempDir PRE/POST 5 件、UI 境界 2 件 |
+| `ot-plan-bank-mutation-contract` | `ot-plan` | 契約の純粋検査 24 件 |
+| `masterocta-bank-mutation-contract` | `masterocta --features test-seams` | 実 reader + TempDir PRE/POST 5 件、UI / command 境界 3 件、envelope の sample 非依存 1 件 |
+
+### Gate ledger との対応
+
+`scripts/pse-bank-mutation-gates.json` の `contract.document` はこの文書を指す。各 gate には `contract_rules`（BMS ルール ID）と `contract_tests`（すでに inventory で動いている契約テスト）を記録した。これは gate の `required_tests` では**ない**。gate は全部 **BLOCKED** のままである。契約テストは検査器そのものの正しさを示すだけで、#183 の runner が fixture コピー上で実際の Apply を行うまで gate を満たしたことにはならない。guard は `contract_tests` が inventory に存在すること、`contract_rules` が `BMS-*` 形式であること、contract 文書が設定されていることを検査する。
+
+| gate | `contract_rules` |
+| --- | --- |
+| `change-plan.stale-precondition-detection` | BMS-ENTRY、BMS-PLAN |
+| `change-plan.plan-generation-no-write` | BMS-NOWRITE |
+| `mutation.pre-manifest` / `mutation.post-manifest` | BMS-WRITE |
+| `mutation.expected-changed-files-only` | BMS-CHANGESET、BMS-VERIFY-BYTES |
+| `mutation.unrelated-files-preserved` | BMS-VERIFY-BYTES、BMS-SAMPLE（project 外の sample は §13 のとおり未証明） |
+| `mutation.reference-integrity` | BMS-VERIFY-STRUCTURE、BMS-SAMPLE |
+| `recovery.backup-creation` | BMS-BACKUP |
+| `recovery.failure-injection` | BMS-FAIL |
+| `recovery.partial-apply-failure` | BMS-FAIL、BMS-RECOVER |
+| `recovery.verify-failure` | BMS-FAIL、BMS-VERIFY-BYTES、BMS-VERIFY-STRUCTURE |
+| `recovery.rollback` | BMS-RECOVER |
+| `recovery.restores-pre-state` | BMS-RECOVER、BMS-VERIFY-STRUCTURE |
+| `recovery.retry-idempotency` | BMS-FLOW（`RecoveryRequired` ⇄ `Recovery`。idempotency 自体の契約テストは #185） |
+
+ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範囲なので、契約側の対応付けは置いていない。
 
 #191 で配線してほしい gate（提案）:
 
@@ -221,7 +283,8 @@ Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけであ
 2. #183 では、Apply の各テストが `evaluate_apply_entry` の permit を経由していること、POST に `verify_expected_changes` と `verify_bank_structure` を適用していることを inventory の required test で固定する
 3. failure injection（#185）では、各 phase での失敗後に `BankMutationPhase::on_failure` の義務どおりになったことを `prove_no_write` または `verify_recovered_to_pre` で示す
 4. `current_main_readiness_keeps_every_gap_open` の変更を含む PR は、追跡先の証拠リンクがあるかを review gate で確認する
-5. scope: `src-tauri/crates/ot-plan/src/bank_mutation.rs`、`src-tauri/src/bank_mutation_contract.rs` は `pse-ci-scope.mjs` の in-scope に追加済み
+5. scope: `src-tauri/crates/ot-plan/src/bank_mutation.rs`、`src-tauri/src/bank_mutation_contract.rs` は `pse-ci-scope.mjs` の in-scope に追加済み。どちらも file 名に `bank` を含むので、static guard の `RUST_WRITE_API` 走査対象にもなっている
+6. 将来、汎用 change / apply command が Bank role を扱う場合（§12 BMS-ROUTE）、その command を guard の allowlist に明示的に追加し、permit を経由しているかを guard 側でも検査する
 
 ## 15. 残作業
 
@@ -229,8 +292,8 @@ Bank 側が持つのは Sample Slot 参照（`TrackSlotReference`）だけであ
 | --- | --- |
 | #181 | Copy / Move / Swap の ChangePlan が `BankMutationEnvelope` を出す。§1 の §7C 系 gap（#204 ほか）が先 |
 | #183 | Prepare（staged bytes）、Apply、Verify を fixture / temporary copy 上で実装する。Apply 入口は `ApplyEntryPermit` を取る。production 用の contained manifest capture（symlink 非追従、root 内）を実装する。target class を backend 証拠から決める |
-| #184 | 正常系・境界・失敗系の reference integrity。Arranger / arrangement 参照が読めるようになったら structure verify に加える |
-| #185 | Bank 用 backup manifest、journal、resume / rollback、`mutation_gate` への Bank journal 追加、failure injection、retry / idempotency |
+| #184 | 正常系・境界・失敗系の reference integrity。Arranger / arrangement 参照が読めるようになったら structure verify に加える。project 外 sample を含む Slot 参照先の referenced-file check（§13） |
+| #185 | Bank 用 backup manifest、journal、resume / rollback、`mutation_gate` への Bank journal 追加、failure injection、retry / idempotency。Recovery 後に Set root 単位または referenced-file 単位で外部 sample の不変を確認（§13） |
 | #186 | Native 受入。実機 CF 原本は別承認まで対象外 |
 | #191 | §14 の gate 配線と required-check 候補の整理 |
 
