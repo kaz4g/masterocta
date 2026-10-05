@@ -164,4 +164,90 @@ mod tests {
             Err(BankValidationError::InvalidMachineType)
         );
     }
+
+    /// #210: read-only observations from tracked real-device Bank fixtures.
+    ///
+    /// Does not change validation rules or pin `RecorderBufferId` / accepted raw range endpoints.
+    ///
+    /// - `recorder_slot_id` and `flex_slot_id` are separate fields; do not conflate them.
+    /// - Pinned ot-tools-io defaults set `recorder_slot_id` to `128 + track_index`, but that
+    ///   field is not proof of the playback Flex slot raw encoding on media.
+    /// - Project document `SLOT=129..136` (text) and Bank Part `flex_slot_id` (binary) are
+    ///   separate encodings; Project slots do not prove Bank `flex_slot_id` endpoints.
+    /// - Values not seen on Flex machines in these fixtures are **not observed**, not proven invalid
+    ///   (`NOT_OBSERVED != INVALID`); absence here is fixture coverage, not semantic rejection.
+    #[test]
+    fn real_device_recorder_buffer_raw_evidence_210() {
+        use std::collections::BTreeSet;
+
+        fn flex_machine_high_flex_slots(bank: &BankFile) -> BTreeSet<u8> {
+            let mut seen = BTreeSet::new();
+            for part in bank.parts.unsaved.0.iter().chain(bank.parts.saved.0.iter()) {
+                for (track_index, slots) in part.audio_track_machine_slots.iter().enumerate() {
+                    if part.audio_track_machine_types[track_index] != 1 {
+                        continue;
+                    }
+                    if slots.flex_slot_id >= 128 {
+                        seen.insert(slots.flex_slot_id);
+                    }
+                }
+            }
+            seen
+        }
+
+        fn assert_recorder_slot_id_is_track_index_plus_128(bank: &BankFile) {
+            for part in bank.parts.unsaved.0.iter().chain(bank.parts.saved.0.iter()) {
+                for (track_index, slots) in part.audio_track_machine_slots.iter().enumerate() {
+                    assert_eq!(
+                        slots.recorder_slot_id,
+                        128 + u8::try_from(track_index).unwrap(),
+                        "recorder_slot_id follows 128 + track_index (0-based)"
+                    );
+                }
+            }
+        }
+
+        for name in ["bank01.work", "bank01.strd"] {
+            let bank = fixture_bank(name);
+            assert_recorder_slot_id_is_track_index_plus_128(&bank);
+            let high = flex_machine_high_flex_slots(&bank);
+            // Coverage-only: missing from this fixture set does not mean invalid on device.
+            assert!(
+                !high.contains(&128),
+                "{name}: flex_slot_id 128 not in observed Flex set (fixture coverage)"
+            );
+            assert!(
+                !high.contains(&135),
+                "{name}: flex_slot_id 135 not in observed Flex set (fixture coverage)"
+            );
+            assert!(
+                !high.contains(&136),
+                "{name}: flex_slot_id 136 not in observed Flex set (fixture coverage)"
+            );
+        }
+
+        let work = fixture_bank("bank01.work");
+        assert_eq!(
+            flex_machine_high_flex_slots(&work),
+            BTreeSet::from([129, 130, 131, 134]),
+            "real_device bank01.work: Flex flex_slot_id >= 128 observed in this fixture"
+        );
+        // unsaved Part 0, audio track 4 (0-based index 3): fields differ on media.
+        let unsaved_part0_track4 = &work.parts.unsaved.0[0].audio_track_machine_slots[3];
+        assert_eq!(unsaved_part0_track4.flex_slot_id, 130);
+        assert_eq!(unsaved_part0_track4.recorder_slot_id, 131);
+        assert_ne!(
+            unsaved_part0_track4.flex_slot_id, unsaved_part0_track4.recorder_slot_id,
+            "recorder_slot_id must not be treated as flex_slot_id"
+        );
+
+        let multipart_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/multipart/bank01.work");
+        let multipart = BankFile::from_data_file(&multipart_path).expect("multipart bank");
+        assert_recorder_slot_id_is_track_index_plus_128(&multipart);
+        assert_eq!(
+            flex_machine_high_flex_slots(&multipart),
+            BTreeSet::from([129, 130, 131, 134])
+        );
+    }
 }
