@@ -170,6 +170,12 @@ mod tests {
                 Some("COMMITTED")
             );
         }
+        if capture_ready("bank_a_after_save") {
+            assert_eq!(
+                status.captures.get("bank_a_after_save").map(String::as_str),
+                Some("COMMITTED")
+            );
+        }
     }
 
     #[test]

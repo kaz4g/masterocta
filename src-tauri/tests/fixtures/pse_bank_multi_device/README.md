@@ -33,7 +33,7 @@ GitHub: [#219](https://github.com/kaz4g/masterocta/issues/219) (child of [#181](
 | Capture C | `bank_b_pattern_4/` | Bank B, Pattern 4, after Save | **COMMITTED** (`BANK=1`, `PATTERN=3`, 2026-10-06) |
 | Capture D | `bank_p_active/` (optional) | Final bank slot, Pattern 1 | **NOT_RUN** |
 | Capture E | `bank_a_working_diverged/` | T1 Hold/Release edit, **no** PROJECT SAVE | **COMMITTED** (`BANK=0`; CF `.work`==`.strd` at copy) |
-| Capture F | `bank_a_after_save/` | Same project after device Save | **PENDING** |
+| Capture F | `bank_a_after_save/` | PROJECT SAVE after E (T1 Hold/Release) | **COMMITTED** (2026-10-07) |
 
 Each committed capture must include:
 

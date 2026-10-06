@@ -24,7 +24,7 @@ CAPTURE_A = PASS (bank_a_active committed)
 CAPTURE_B = PASS (bank_b_active committed)
 CAPTURE_C = PASS (bank_b_pattern_4 committed)
 WORKING_DIVERGENCE_CAPTURE = PARTIAL (E committed; pre-save T1 edit not visible on mounted CF — `.work`==`.strd`)
-AFTER_SAVE_CAPTURE = PENDING
+AFTER_SAVE_CAPTURE = PASS (bank_a_after_save; bank01/project bytes change vs E)
 
 UI_BANK_A_RAW = 0 (BANK=0 with UI Bank A active)
 UI_BANK_B_RAW = 1 (BANK=1 with UI Bank B active)
@@ -52,7 +52,7 @@ CI = (run on PR)
 PROJECT_STRUCTURE_CI = (run on PR)
 
 RESULT = STOP_WITH_FINDINGS
-REASON = Captures A/B/C/E from P_TEST committed; F Save-after-edit still pending.
+REASON = Captures A/B/C/E/F from P_TEST committed; pre-save mounted CF still work==strd; Save updates bank01/project vs E.
 ```
 
 ## What exists today (baseline, not multi-bank proof)
@@ -82,7 +82,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 | bank_b_active | `1` | `0` | same file set as A | Saved with Bank B active; `bank02.work/strd` updated 2026-10-06 |
 | bank_b_pattern_4 | `1` | `3` | same file set as A/B | Bank B + UI Pattern 4 after Save; `project.work` differs from B only in `PATTERN` |
 | bank_a_working_diverged | `0` | `0` | same six-file set | T1 Hold/Release changed without Save; Mac read: all `.work`==`.strd`; bytes ≠ `bank_a_active` |
-| bank_a_after_save | _pending_ | _pending_ | _pending_ | |
+| bank_a_after_save | `0` | `0` | same six-file set | After PROJECT SAVE; `bank01.work/strd` and `project.work/strd` differ from E |
 
 ## Mapping conclusions (pending device evidence)
 
@@ -98,7 +98,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 
 | Observation | Status |
 | --- | --- |
-| Device Save updates `.strd` | **UNKNOWN** (needs Capture F vs E) |
+| Device Save updates `.strd` | **OBSERVED** (F vs E: `bank01.strd` and `project.strd` change with matching `.work`) |
 | Working edit without Save leaves `.work` ≠ `.strd` | **NOT_OBSERVED on mounted CF** (Capture E: T1 Hold/Release, no Save; six files still byte-matched pairs) |
 | `.strd` always present per bank | **UNKNOWN** |
 
