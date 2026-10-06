@@ -107,7 +107,10 @@ Other internal fields may differ; a full field diff is **UNKNOWN** without a ded
 Pure types in [`bank_state_documents.rs`](../../src-tauri/crates/ot-domain/src/bank_state_documents.rs):
 
 - `BankStateDocumentSet`: optional Working and optional SavedCheckpoint per `BankIndex`; neither role implies the other
-- Swap planning must keep **role-aligned** pairs (Working↔Working, SavedCheckpoint↔SavedCheckpoint); mismatched presence → `CrossRolePairRejected`
+- `swap_banks_have_symmetric_role_presence`: both banks expose the same roles (symmetric presence only)
+- `swap_aligned_role_pairings` / `validate_swap_role_pairings`: same-role swap mappings; asymmetric presence → `SwapRolePresenceAsymmetric`; cross-role mapping → `CrossRolePairRejected`
+- Observation `BankStateDocumentSet.bank` must match operation source/destination index → else `BankIdentityMismatch`
+- Move/Swap with no active bank index → `ActiveBankRetarget::SelectionUnavailable` (not `NotApplicable`)
 - Do not construct cross-mix pairs such as moving `A.work` bytes onto `D.strd`
 
 ## Missing-pair behavior (ChangePlan precondition)

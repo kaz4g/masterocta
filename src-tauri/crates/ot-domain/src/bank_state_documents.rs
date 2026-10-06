@@ -123,6 +123,8 @@ pub enum ActiveBankRetarget {
     Unknown,
     /// Operation does not involve the active bank index.
     NotApplicable,
+    /// Working `project.work` `[STATES] BANK` was not supplied (missing, unmapped, or out of range).
+    SelectionUnavailable,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,7 +137,19 @@ pub enum StateDocOperationBlockReason {
     OperationRuleBlocked,
     WorkingSavedCheckpointRuleUnresolved,
     PresenceStop(MissingPairStop),
+    /// Observed document set `bank` does not match the operation source or destination index.
+    BankIdentityMismatch,
+    /// Swap cannot pair documents when banks expose different roles.
+    SwapRolePresenceAsymmetric,
+    /// Proposed swap maps a source role to a different destination role.
     CrossRolePairRejected,
+}
+
+/// One same-role document pairing for Swap (Working↔Working, SavedCheckpoint↔SavedCheckpoint).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SwapRolePair {
+    pub source: BankStateDocumentRef,
+    pub destination: BankStateDocumentRef,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -264,7 +278,7 @@ fn active_bank_retarget_for_move_or_swap(
             ActiveBankRetarget::Unknown
         }
         Some(_) => ActiveBankRetarget::NotApplicable,
-        None => ActiveBankRetarget::NotApplicable,
+        None => ActiveBankRetarget::SelectionUnavailable,
     }
 }
 
@@ -299,20 +313,102 @@ fn finalize_verdict(
     StateDocOperationVerdict::Blocked(StateDocOperationBlockReason::OperationRuleBlocked)
 }
 
-/// Returns false when a swap plan would cross-mix roles (for example pairing
-/// source Working with destination SavedCheckpoint).
-pub fn swap_preserves_role_pairs(
+/// Both banks expose the same set of state-document roles (symmetric presence only).
+pub fn swap_banks_have_symmetric_role_presence(
     source: &BankStateDocumentSet,
     destination: &BankStateDocumentSet,
 ) -> bool {
     for role in BANK_STATE_ROLES {
-        let source_has = source.has_role(role);
-        let dest_has = destination.has_role(role);
-        if source_has != dest_has {
+        if source.has_role(role) != destination.has_role(role) {
             return false;
         }
     }
     true
+}
+
+/// Same-role pairings implied by symmetric presence. Empty when roles differ.
+pub fn swap_aligned_role_pairings(
+    source: &BankStateDocumentSet,
+    destination: &BankStateDocumentSet,
+) -> Vec<SwapRolePair> {
+    if !swap_banks_have_symmetric_role_presence(source, destination) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for role in BANK_STATE_ROLES {
+        if source.has_role(role) {
+            out.push(SwapRolePair {
+                source: BankStateDocumentRef {
+                    bank: source.bank,
+                    role,
+                },
+                destination: BankStateDocumentRef {
+                    bank: destination.bank,
+                    role,
+                },
+            });
+        }
+    }
+    out
+}
+
+/// Validates an explicit swap mapping does not cross-mix roles or bank indices.
+pub fn validate_swap_role_pairings(
+    source: BankIndex,
+    destination: BankIndex,
+    pairings: &[SwapRolePair],
+) -> bool {
+    pairings.iter().all(|pair| {
+        pair.source.bank == source
+            && pair.destination.bank == destination
+            && pair.source.role == pair.destination.role
+    })
+}
+
+fn bank_identity_matches(
+    operation: BankStateDocOperation,
+    source: BankIndex,
+    destination: BankIndex,
+    source_presence: BankStateDocumentSet,
+    destination_presence: BankStateDocumentSet,
+) -> bool {
+    if source_presence.bank != source {
+        return false;
+    }
+    if operation == BankStateDocOperation::Copy {
+        return true;
+    }
+    destination_presence.bank == destination
+}
+
+fn blocked_identity_effect(
+    operation: BankStateDocOperation,
+    source: BankIndex,
+    destination: BankIndex,
+    source_presence: BankStateDocumentSet,
+    destination_presence: BankStateDocumentSet,
+    active_bank: Option<BankIndex>,
+) -> BankOperationStateEffect {
+    let active_bank_retarget = match operation {
+        BankStateDocOperation::Copy => ActiveBankRetarget::NotApplicable,
+        BankStateDocOperation::Move | BankStateDocOperation::Swap => {
+            active_bank_retarget_for_move_or_swap(operation, source, destination, active_bank)
+        }
+    };
+    BankOperationStateEffect {
+        operation,
+        source,
+        destination,
+        source_presence,
+        destination_presence,
+        active_bank,
+        candidate_documents: Vec::new(),
+        verdict: StateDocOperationVerdict::Blocked(
+            StateDocOperationBlockReason::BankIdentityMismatch,
+        ),
+        copy_saved_checkpoint_semantics: CopySavedCheckpointSemantics::Unknown,
+        active_bank_retarget,
+    }
 }
 
 pub fn evaluate_bank_operation_state_effect(
@@ -323,23 +419,30 @@ pub fn evaluate_bank_operation_state_effect(
     destination_presence: BankStateDocumentSet,
     active_bank: Option<BankIndex>,
 ) -> BankOperationStateEffect {
-    let source_presence = BankStateDocumentSet::new(
+    if !bank_identity_matches(
+        operation,
         source,
-        source_presence.working_present,
-        source_presence.saved_checkpoint_present,
-    );
-    let destination_presence = BankStateDocumentSet::new(
         destination,
-        destination_presence.working_present,
-        destination_presence.saved_checkpoint_present,
-    );
+        source_presence,
+        destination_presence,
+    ) {
+        return blocked_identity_effect(
+            operation,
+            source,
+            destination,
+            source_presence,
+            destination_presence,
+            active_bank,
+        );
+    }
 
     let mut verdict = finalize_verdict(operation, source_presence, destination_presence);
     if operation == BankStateDocOperation::Swap
-        && !swap_preserves_role_pairs(&source_presence, &destination_presence)
+        && !swap_banks_have_symmetric_role_presence(&source_presence, &destination_presence)
     {
-        verdict =
-            StateDocOperationVerdict::Blocked(StateDocOperationBlockReason::CrossRolePairRejected);
+        verdict = StateDocOperationVerdict::Blocked(
+            StateDocOperationBlockReason::SwapRolePresenceAsymmetric,
+        );
     }
 
     let candidate_documents = match operation {

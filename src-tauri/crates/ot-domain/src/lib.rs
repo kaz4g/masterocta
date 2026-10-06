@@ -14,10 +14,11 @@ pub mod slicing;
 
 pub use bank_state_documents::{
     bank_state_document_file_name, bank_state_document_path, evaluate_bank_operation_state_effect,
-    swap_preserves_role_pairs, ActiveBankRetarget, BankOperationStateEffect, BankStateDocOperation,
-    BankStateDocumentPresence, BankStateDocumentRef, BankStateDocumentSet,
+    swap_aligned_role_pairings, swap_banks_have_symmetric_role_presence,
+    validate_swap_role_pairings, ActiveBankRetarget, BankOperationStateEffect,
+    BankStateDocOperation, BankStateDocumentPresence, BankStateDocumentRef, BankStateDocumentSet,
     CopySavedCheckpointSemantics, MissingPairStop, PresencePrecondition,
-    StateDocOperationBlockReason, StateDocOperationVerdict, StateDocRuleStatus,
+    StateDocOperationBlockReason, StateDocOperationVerdict, StateDocRuleStatus, SwapRolePair,
     ACTIVE_BANK_RETARGET_RULE, COPY_STATE_DOC_RULE, MOVE_STATE_DOC_RULE, SWAP_STATE_DOC_RULE,
 };
 
