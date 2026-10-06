@@ -1,0 +1,10 @@
+execution_sha=40ba99c4a5b1a28b1552ff98093b35684d22cfc7
+ProductName:		macOS
+ProductVersion:		26.6.2
+BuildVersion:		25G83
+arm64
+v22.18.0
+11.24.0
+cargo 1.98.0 (797e8a9bc 2026-08-05)
+rustc 1.98.0 (88d9e12ae 2026-08-18)
+open_prs=0
