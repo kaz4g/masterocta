@@ -147,7 +147,12 @@ mod tests {
                 Some("PENDING")
             );
         }
-        if status.captures.get("bank_b_active").map(String::as_str) == Some("PENDING") {
+        if capture_ready("bank_b_active") {
+            assert_eq!(
+                status.captures.get("bank_b_active").map(String::as_str),
+                Some("COMMITTED")
+            );
+        } else if status.captures.get("bank_b_active").map(String::as_str) == Some("PENDING") {
             assert_eq!(status.result, "STOP_WITH_FINDINGS");
         }
     }

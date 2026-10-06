@@ -29,7 +29,7 @@ GitHub: [#219](https://github.com/kaz4g/masterocta/issues/219) (child of [#181](
 | Label | Path | UI (expected) | Status |
 | --- | --- | --- | --- |
 | Capture A | `bank_a_active/` | Bank A, Pattern 1, after Save | **COMMITTED** (from disposable `P_TEST` on OCTA2) |
-| Capture B | `bank_b_active/` | Bank B, Pattern 1, after Save | **PENDING** |
+| Capture B | `bank_b_active/` | Bank B, Pattern 1, after Save | **COMMITTED** (`BANK=1`, 2026-10-06) |
 | Capture C | `bank_b_pattern_4/` | Bank B, Pattern 4 (or chosen), after Save | **PENDING** |
 | Capture D | `bank_p_active/` (optional) | Final bank slot, Pattern 1 | **NOT_RUN** |
 | Capture E | `bank_a_working_diverged/` | After edit without Save checkpoint | **PENDING** |
