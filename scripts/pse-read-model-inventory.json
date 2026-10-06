@@ -143,6 +143,22 @@
       ]
     },
     {
+      "id": "masterocta-pse-bank-multi-device",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "pse_bank_multi_device_fixtures::",
+      "required_tests": [
+        "acquisition_status_stop_with_findings_until_captures_land",
+        "bank_a_active_states_match_meta_when_committed",
+        "bank_b_active_states_match_meta_when_committed",
+        "multiple_bank_files_read_as_separate_slots_when_committed",
+        "bank_a_and_b_working_bytes_differ_when_both_committed",
+        "work_and_strd_are_separate_roles_when_both_present",
+        "working_diverged_and_after_save_observation_when_committed",
+        "reading_structure_leaves_capture_bytes_unchanged"
+      ]
+    },
+    {
       "id": "masterocta-sample-slot-boundary",
       "package": "masterocta",
       "features": ["test-seams"],

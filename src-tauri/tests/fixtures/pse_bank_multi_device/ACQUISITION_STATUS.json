@@ -1,0 +1,16 @@
+{
+  "schema": "masterocta-pse-bank-multi-device-acquisition:v1",
+  "work_id": "MO-PSE-BANK-REAL-DEVICE-FIXTURE-1",
+  "issue": 219,
+  "result": "STOP_WITH_FINDINGS",
+  "reason": "Device capture directories not committed; awaiting operator acquisition on disposable project.",
+  "disposable_project": "REQUIRED_NOT_YET_RECORDED",
+  "captures": {
+    "bank_a_active": "PENDING",
+    "bank_b_active": "PENDING",
+    "bank_b_pattern_4": "PENDING",
+    "bank_p_active": "NOT_RUN",
+    "bank_a_working_diverged": "PENDING",
+    "bank_a_after_save": "PENDING"
+  }
+}

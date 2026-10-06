@@ -72,6 +72,9 @@ Only `git ls-files` under `src-tauri/tests/fixtures/` (no invented rows).
 | `source_project/` | — | no | no | yes | `0` | `0` |
 | `dest_project/` | — | no | no | yes | `0` | `0` |
 | `real_device_os_1_40/` | — | no | no | yes | `0` | `0` |
+| `pse_bank_multi_device/*` | _pending captures_ | _pending_ | _pending_ | _pending_ | _pending_ | _pending_ |
+
+Multi-Bank device evidence: [#219](https://github.com/kaz4g/masterocta/issues/219) / [PSE_BANK_MULTI_DEVICE_EVIDENCE.md](./PSE_BANK_MULTI_DEVICE_EVIDENCE.md). Until captures commit, mapping and Save semantics stay **UNKNOWN** beyond single-bank `real_device` observations.
 
 Provenance:
 
