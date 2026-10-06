@@ -1,9 +1,9 @@
 # Development status (canonical)
 
-- Work ID: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`; prior stop record: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-4-STOP-RECORD`
-- Updated: 2026-10-06 (Native session 5 @ `40ba99c4`; **PASS**)
-- Product baseline: GitHub `origin/main` **`40ba99c4a5b1a28b1552ff98093b35684d22cfc7`**
-- Session 5 execution @ **`40ba99c4`**: [`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) **PASS** (A01–A15 and B01–B03). Session 4 @ **`a84433c0`** stays **STOP_WITH_FINDINGS** and is not reused. Historical session 3 **`04725cb3`** is not rewritten.
+- Work ID: `MO-M7-FINAL-EXIT-AUDIT-1`; prior: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`
+- Updated: 2026-10-06 (M7 **COMPLETE**; final audit @ `8bedd19c`)
+- Product baseline: GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
+- Integrated Native session 5 @ **`40ba99c4`**: [`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) **PASS**. Session 4 @ **`a84433c0`** and session 3 @ **`04725cb3`** stay historical **STOP** records.
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
@@ -25,10 +25,7 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-10-06)
 
-Product `main` at session 5 start is **`40ba99c4a5b1a28b1552ff98093b35684d22cfc7`**. Integrated Native **session 5**
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)
-**PASS** on that SHA. Group A and group B are **PASS**. A12 layer A and layer B both **PASS** on this SHA. Mono and stereo fixture manifests are unchanged. No session 4 PASS row was copied.
-**M7** stays **IN_PROGRESS**. Next is `MO-M7-FINAL-EXIT-AUDIT-1`. Do not set **M7 COMPLETE** from this record. #177 is **CLOSE_READY**, not closed here.
+Final audit baseline **`8bedd19c`**. Integrated Native session 5 at execution SHA **`40ba99c4`** is **PASS** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)). **M7 Exit Gate = 5/5 PASS**. **M7 = COMPLETE**. M7-07 and M7-08 remain **DEFERRED** to M11. Issue #177 closed after INT5 canonical merge (#215). **M6** stays **IN_PROGRESS** independently.
 
 ## Historical reconciliation snapshot (session 4, 2026-10-06)
 
@@ -64,7 +61,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
 | **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
-| **M7** | **IN_PROGRESS** | Integrated Native session 5 **PASS** @ `40ba99c4` (A01–A15, B01–B03). Not COMPLETE until `MO-M7-FINAL-EXIT-AUDIT-1`. Session 4 @ `a84433c0` remains historical STOP. M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
+| **M7** | **COMPLETE** | Exit Gate **5/5 PASS**; Integrated Native session 5 **PASS** @ `40ba99c4`. M7-01–M7-06 **COMPLETE**; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
 | **M10** | **PLANNED** | — |
@@ -110,14 +107,14 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | --- | --- | --- | --- | --- | --- |
 | M7-01 waveform query model | **COMPLETE** | #124 | CI + ot-audio tests | N/A | `v2_audio_waveform_query`. Audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §4 |
 | M7-02 multi-resolution cache (WFM2) | **COMPLETE** | #145 (`820183b`) | CI + `wfm2`/`waveform_v2` tests (see MO_M7_WFM2 doc) | **NOT_RUN** | Native NOT_RUN is completion quality, not Exit Gate. Fail-closed truncated header; invalid peak regen; warm path uses header/table + seek peak reads |
-| M7-03 stereo/channel representation | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #124, #145, #161 (`3379b9d`) | Tests + lane UI tests | **PASS** (session 5) | Session 5 B01–B03 **PASS**. WP COMPLETE waits for `MO-M7-FINAL-EXIT-AUDIT-1` |
+| M7-03 stereo/channel representation | **COMPLETE** | #124, #145, #161 (`3379b9d`) | Tests + lane UI tests | **PASS** (session 5) | Session 5 B01–B03 **PASS**; independent L/R lanes |
 | M7-04 zoom / range / scroll UI | **COMPLETE** | #129, #130 | CI + frontend tests + zoom E2E | PARTIAL | Button zoom/pan/drag range. **Canvas is a WAVEFORM_V2 follow-on, not v0.1 Exit Gate** |
-| M7-05 transient analysis | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #102, #131, #141/#142 | Rust/UI/E2E | **PASS** (session 5) | Session 5 A13 and A14 **PASS** (draft summary UI revision 2). Not COMPLETE until the exit audit. 100-clip / `.ot` are Auto Slice / M11 |
-| M7-06 derived AudioAsset framework | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **PASS** (session 5) | Session 5 export, lineage, idempotent retry, original SHA, and A14 relaunch **PASS**. Not COMPLETE until the exit audit |
+| M7-05 transient analysis | **COMPLETE** | #102, #131, #141/#142 | Rust/UI/E2E | **PASS** (session 5) | Session 5 A13 and A14 **PASS**. 100-clip / `.ot` are Auto Slice / M11 |
+| M7-06 derived AudioAsset framework | **COMPLETE** | #147–#154 (`37f86c9`) | ot-domain / ot-catalog v13 / lineage query IPC / Inspector Info / export E2E | **PASS** (session 5) | Session 5 export, lineage, retry, original SHA, A14 relaunch **PASS** |
 | M7-07 stem separation adapter spike | **DEFERRED** | enum `STEM` / `StemRole` only | — | — | Not in v0.1 Exit Gate; spike deferred to **M11 prep** (enum-only ≠ spike). See audit §11 |
 | M7-08 optional stem separation workflow | **DEFERRED** | — | — | — | Optional WP; production stem is **M11**. Not an M7 exit blocker |
 
-**M7 exit gate (v0.1):** Session 5 records group A and group B **PASS**, including stereo lanes and A14 relaunch. **M7 is not COMPLETE** until `MO-M7-FINAL-EXIT-AUDIT-1` reconfirms Exit Gate 5/5. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
+**M7 exit gate (v0.1):** **5/5 PASS** (final audit 2026-10-06). Integrated Native session 5 **PASS**. Full matrix: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) §13–14.
 
 ---
 
@@ -178,8 +175,7 @@ Boundary on `main` per [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_
 ```text
 M5 (COMPLETE)
   → M6 Library shell (IN_PROGRESS)
-  → M7 WF2 + analysis (IN_PROGRESS)
-  → M7-06 derived Native (IMPLEMENTED_NOT_FULLY_ACCEPTED; exit blocker)
+  → M7 WF2 + analysis (COMPLETE)
   → safe sample/slice `.ot` output (PLANNED / M11)
   → M7-07/08 stem (DEFERRED → M11)
   → M8 MockNode + protocol (PLANNED)
@@ -192,13 +188,13 @@ Aligned with v0.1 §23; stem separation does not precede M7-06 without explicit 
 
 ## Recommended next product Work ID
 
-**Primary:** `MO-M7-FINAL-EXIT-AUDIT-1`. Reconfirm Exit Gate 5/5 against session 5
-[`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)
-at **`40ba99c4`**. That session recorded A01–A15 and B01–B03 **PASS** on one SHA, with no PASS reuse and no fixture writes.
+**M7 follow-up:** none required for milestone closure.
 
-**Reason:** Integrated Native acceptance is **PASS**. **M7 COMPLETE** is decided only in the exit audit. Do not set it from this record. #177 is **CLOSE_READY**.
+**Next canonical milestone:** M8 Performance Domain & Node Protocol.
 
-**Not next:** another integrated Native session, and not a product fix. Session 4 remains historical STOP.
+**Independent active track:** Project Structure / Bank Editor (PSE).
+
+**Not M7 blockers:** Canvas renderer, dedicated WFM2 Native, 100-clip corpus, mac_derived injection, `.ot` Apply (M11 / post-M7 quality).
 
 **Historical:** session 3 remains
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md)

@@ -102,7 +102,7 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 **Exit gate (v0.1):** Width-driven high-res waveform; not limited to 640 points; stereo channels; non-blocking analysis jobs; derived assets do not mutate originals.
 
 **Current status:** [DEVELOPMENT_STATUS § M7](./DEVELOPMENT_STATUS.md#m7--waveform-v2--audio-analysis).
-**Exit audit (2026-09-21):** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
+**Exit audit (final 2026-10-06):** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 **Canonical supporting docs:**
 
@@ -117,6 +117,8 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 - [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE.md) (session 1 **NOT_RUN**)
 - [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_2.md) (session 2 **STOP_WITH_FINDINGS**, historical)
 - [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md) (session 3 **STOP_WITH_FINDINGS** @ `04725cb3`)
+- [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md) (session 4 **STOP_WITH_FINDINGS** @ `a84433c0`)
+- [`../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) (session 5 **PASS** @ `40ba99c4`; M7 completion evidence)
 
 ---
 
