@@ -1,0 +1,37 @@
+EXECUTION_SHA=40ba99c4a5b1a28b1552ff98093b35684d22cfc7
+ISOLATED_HOME_TOKEN=masterocta-m7-int5-40ba99c4-20261006T054410Z-PyhYMb
+PRODUCT_CODE_CHANGED=NO
+PASS_REUSE=NO
+
+MONO_FIXTURE=mo-ui-native-set-4pfgkE
+RANGE_SHA256=43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1
+MONO_FILES=9
+MONO_PRE_EQ_POST=YES
+
+STEREO_FIXTURE=mo-ui-native-set-saVPFJ
+STEREO_SHA256=219088198bd411f7def4db2861dc7260cce5c76fccf2de888ef2c2144e25065c
+STEREO_CHANNELS=2
+STEREO_LEFT_DISTINCT=YES
+STEREO_PRE_EQ_POST=YES
+
+PUBLISHED_WAV_SHA256=702cb25dc12fe8f6841c02ea911acca1a9e28a33f208a806bf7892851f79be5f
+PUBLISHED_WAV_COUNT=1
+PART_COUNT=0
+SYMLINK_COUNT=0
+CHILD_ASSET=asset:v1:20bc3564916be5128891103789fa2b2f080709476060a77ac244bfa1ea65de73
+PARENT_ASSET=asset:v1:98a935c8ed6dae16c803247e5a655ed50cbd15633953c99d10fc502eedd9347f
+DERIVATION_KIND=SLICE_EXPORT
+PROCESSOR=masterocta-trim
+CREATED_AT=2026-10-06T06:07:17.545Z
+EXPORT_RANGE_FRAMES=66106-110206
+
+A12_LAYER_B=PASS test slice_export_ipc_rejects_stale_revision_after_draft_advance_without_writes 1 passed 0.21s
+A12_LAYER_A=PASS revision 1 confirm visible; insert 90000; revision 2; confirm absent; derivations 1; published wav 1
+A13=PASS process gone; draft revision 2 region 44100-132300 markers 66106,90000,110206 derivations 1
+A14=PASS relaunch isolated catalog fd; re-register mo-ui-native-set-4pfgkE; RANGE.wav; UI "draft スライス 3 · revision 2"; frames [44100, 132300); same child asset id
+B02=PASS AX images "オーディオ波形 左" and "オーディオ波形 右"; zoom, pan, range [66150, 154350), fit-all; lane pixel hashes differ
+
+OPERATOR_CATALOG_SHA256=94f17898f501beaaa8a859a6bc1e4c425de7cf74e6ba146fdcbf7a8f88f848cf
+OPERATOR_CATALOG_UNCHANGED=YES
+MASTER_OCTA_RESIDUAL=NO
+PORT_1420_RESIDUAL=NO

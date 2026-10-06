@@ -11,10 +11,15 @@ This document is the **current** M7 completion map. It does not rewrite Gate C, 
 
 ## 1. Audit identity
 
-**Reconciled after Native session 4 (2026-10-06):** product `origin/main` at session start is
+**Reconciled after Native session 5 (2026-10-06):** product `origin/main` at session start is
+`40ba99c4a5b1a28b1552ff98093b35684d22cfc7`. Session 5
+[`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)
+is **PASS**. A01–A15 and B01–B03 **PASS** on that SHA. A12 layer A and layer B **PASS**. Mono and stereo manifests unchanged. A14 draft summary UI restored (`draft スライス 3 · revision 2`) with the same opaque child. B02 recorded independent Left and Right lanes. No session 4 PASS row was copied. **M7** remains **IN_PROGRESS**. Do not mark COMPLETE in this record. Next is `MO-M7-FINAL-EXIT-AUDIT-1`. #177 is **CLOSE_READY**.
+
+**Historical session 4 (2026-10-06, frozen):** product `origin/main` was
 `a84433c04e392e4463a19ae80f2c0745e8b6c59f` (PR #213). Session 4
 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md)
-is **STOP_WITH_FINDINGS**. A01–A13 and A15 **PASS**. A12 layer A and layer B **PASS** on that SHA. A14 **NOT_RUN** (draft-summary UI not captured; environmental screen lock). B01 **PASS**. B02 and B03 **NOT_RUN**. Original mono manifest **PASS**. This is not an Exit Gate 5/5 result. **M7** remains **IN_PROGRESS**. Do not mark COMPLETE in this audit. `MO-M7-FINAL-EXIT-AUDIT-1` is not started from session 4.
+is **STOP_WITH_FINDINGS**. A14 **NOT_RUN**. B02 and B03 **NOT_RUN**. That file is not rewritten.
 
 **Historical session 3 (2026-09-28, frozen):** product `origin/main` was
 `04725cb3a1942716e11f1b90a6387733f9302da4` (PR #170). Session 3
@@ -165,7 +170,7 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 
 **UI (2026-09-28):** #161 (`3379b9d`) is on `main` and adds independent L/R lanes in Library and Slice previews with shared range/zoom.
 
-**Native (session 4, 2026-10-06):** B01 **PASS** on a new stereo fixture (channels 2, left distinct from right). B02 and B03 **NOT_RUN**. Mono waveform was not used as B02.
+**Native (session 5, 2026-10-06):** B01–B03 **PASS** on a new stereo fixture (channels 2, left distinct from right). Independent Left and Right lanes were visible, zoomed, panned, and range-selected. The stereo fixture manifest was unchanged. Mono `RANGE.wav` was not used as B02. Session 4 B02/B03 **NOT_RUN** stays historical.
 
 | Axis | Evidence |
 | --- | --- |
@@ -173,10 +178,10 @@ Backend: per-channel peaks in v2 query (#124) and WFM2 (#145). Auto Slice uses p
 | Main | #124, #145, #161 |
 | Automated | **PASS** (query + lane unit tests on #161 branch) |
 | E2E | **PARTIAL** |
-| Native | **PARTIAL** | Session 4 B01 **PASS**; B02/B03 **NOT_RUN** |
+| Native | **PASS** — session 5 B01–B03. WP stays **IMPLEMENTED_NOT_FULLY_ACCEPTED** until the exit audit |
 | Hardware | **N/A** |
 
-**Exit blocker:** **yes** until Native B01–B03 are all **PASS** on one reviewed `main` SHA. Session 4 does not close this row.
+**Exit blocker:** session 5 B01–B03 are **PASS** on `40ba99c4`. Milestone **COMPLETE** is not set here. `MO-M7-FINAL-EXIT-AUDIT-1` reconfirms the row.
 
 ---
 
@@ -211,7 +216,7 @@ Implementation on main: PCM onsets, ROI, candidates, apply to draft, protected/m
 
 **Native (review fix, historical):** Post-#142 workspace native at `0f39f50` exercised range→slice A/B/D and Apply, but **step C was Partial** — draft persistence was verified via file switch, **not** post-quit SQLite.
 
-**Native (session 4):** A13 recorded post-quit `slice_drafts` on the isolated catalog (revision 2, three markers, one `SLICE_EXPORT` edge) after the process exited. A14 relaunch showed the same Inspector child id; draft summary UI text was **NOT_RUN**. Do **not** record M7-05 Native as **PASS** or this WP as **COMPLETE**.
+**Native (session 5):** A13 recorded post-quit `slice_drafts` (revision 2, region 44100–132300, three markers, one `SLICE_EXPORT`). A14 relaunch showed UI text `draft スライス 3 · revision 2`, frames [44100, 132300), and the same opaque child. Native evidence for this WP is **PASS**. Do **not** mark the WP **COMPLETE** until `MO-M7-FINAL-EXIT-AUDIT-1`. Session 4 A14 **NOT_RUN** stays historical.
 
 100-clip corpus / `.ot` remain **Auto Slice / M11**, not this WP.
 
@@ -221,10 +226,10 @@ Implementation on main: PCM onsets, ROI, candidates, apply to draft, protected/m
 | Main | #102, #131, #141, #142 |
 | Automated | Rust + frontend + E2E |
 | E2E | **PASS** |
-| Native | **PARTIAL** | Session 4 A13 **PASS**; A14 **NOT_RUN**. `0f39f50` step C remains historical |
+| Native | **PASS** — session 5 A13 and A14. `0f39f50` step C remains historical |
 | Hardware | **N/A** |
 
-**Exit blocker:** no for *implementation*; **yes** for calling M7-05 **COMPLETE** until a full integrated Native group A **PASS** (session 4 A13 is not that PASS).
+**Exit blocker:** no for *implementation*. Session 5 group A is **PASS**. Calling M7-05 **COMPLETE** waits for `MO-M7-FINAL-EXIT-AUDIT-1`.
 
 ---
 
@@ -241,17 +246,17 @@ On `main` after #147–#154:
 
 Explicit **non-goals** of the landed WPs ([`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./M7_AUTO_SLICE_DERIVED_EXPORT.md)): multi-slice batch, `.ot`, media Apply, mac_derived in `v2_library_list`, derived waveform, parent navigation. Those are **not** required to call the *framework* complete for Exit Gate item 5 (“派生Assetがoriginalを変更しない”).
 
-**Why not COMPLETE:** session 4 recorded export, Inspector lineage, idempotent retry, and original SHA **PASS**, and partial relaunch lineage, but A14 is **NOT_RUN** (draft summary UI missing). Automated tests and E2E mocks do not replace that restart row.
+**Why not COMPLETE:** session 5 recorded export, Inspector lineage, idempotent retry, original SHA, and A14 relaunch UI **PASS**. The WP stays **IMPLEMENTED_NOT_FULLY_ACCEPTED** until `MO-M7-FINAL-EXIT-AUDIT-1`. Automated tests do not replace that record.
 
 | Axis | Evidence |
 | --- | --- |
 | Implementation | #147–#154 on `37f86c9` |
 | Automated | ot-domain / ot-catalog / masterocta tests; frontend lineage tests |
 | E2E | `e2e/slice-derived-export.spec.ts` **PASS** (mock IPC) |
-| Native | **PARTIAL** | #153/#154 docs stay **NOT_RUN**. Session 4 covers export/lineage/SHA; A14 **NOT_RUN** |
+| Native | **PASS** — #153/#154 docs stay **NOT_RUN**. Session 5 covers export, lineage, SHA, and A14 |
 | Hardware | **N/A** |
 
-**Exit blocker:** **yes** — session 4 originals are unchanged (A08/A15 **PASS**), but A14 relaunch restore is **NOT_RUN**.
+**Exit blocker:** session 5 originals are unchanged (A08/A15 **PASS**) and A14 relaunch restore is **PASS**. Milestone **COMPLETE** waits for the exit audit.
 
 ---
 
@@ -262,7 +267,7 @@ Explicit **non-goals** of the landed WPs ([`M7_AUTO_SLICE_DERIVED_EXPORT.md`](./
 | #153 | `M7_SLICE_DERIVED_EXPORT_NATIVE_ACCEPTANCE.md` | **NOT_RUN** |
 | #154 | `M7_DERIVED_LINEAGE_QUERY_NATIVE_ACCEPTANCE.md` | **NOT_RUN** |
 
-**Superseding evidence:** none. Workspace native `0f39f50` does not include derived export or Inspector lineage.
+**Superseding evidence:** session 5 [`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) at `40ba99c4` (export, lineage, SHA, A14). The #153/#154 checklists stay **NOT_RUN**. Workspace native `0f39f50` does not include derived export or Inspector lineage.
 
 Do not edit those checklists to PASS in this audit.
 
@@ -296,9 +301,9 @@ WP name is **optional**. M11 purpose (v0.1): production stem separation. Exit Ga
 | --- | --- | --- | --- |
 | Width-driven high-res waveform | #129 + WFM2 #145 + query #124 | **PASS** | Native zoom matrix optional |
 | Zoom not stuck at 640 points | #129/#130; `targetPoints` 32–4096 | **PASS** | Canvas follow-on only |
-| Stereo independently displayable | #124/#145 peaks; lanes **#161** on `main`; session 4 stereo fixture | **PARTIAL** | B01 **PASS**; B02/B03 **NOT_RUN** |
-| Analysis job does not block Library UI | Job API + `0f39f50` analysis UX; session 4 A13 quit SQL | **PASS** | A14 restore **NOT_RUN** |
-| Derived assets do not mutate originals | Session 4 mono manifest + RANGE SHA **PASS** | **PARTIAL** | A14 relaunch restore **NOT_RUN** |
+| Stereo independently displayable | Session 5 B01–B03 on `40ba99c4`; lanes #161 | **PASS** | Milestone COMPLETE waits for the exit audit |
+| Analysis job does not block Library UI | Job API + session 5 A13/A14 | **PASS** | — |
+| Derived assets do not mutate originals | Session 5 mono manifest, RANGE SHA, and A14 **PASS** | **PASS** | Milestone COMPLETE waits for the exit audit |
 
 Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, prepare-job UI, mac_derived Library injection, derived waveform, navigation, batch export, stem engine, `.ot`.
 
@@ -310,10 +315,10 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | M7-01 | PASS | PASS | PASS | PASS | N/A | N/A | COMPLETE |
 | M7-02 | PASS | PASS | PASS | N/A | NOT_RUN | N/A | COMPLETE |
-| M7-03 | PARTIAL (UI) | PASS | PASS (query) | PARTIAL | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
+| M7-03 | PARTIAL (UI) | PASS | PASS (query) | PARTIAL | PASS | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-04 | PASS | PASS | PASS | PASS | PARTIAL | N/A | COMPLETE |
-| M7-05 | PASS | PASS | PASS | PASS | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
-| M7-06 | PASS | PASS | PASS | PASS | PARTIAL | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
+| M7-05 | PASS | PASS | PASS | PASS | PASS | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
+| M7-06 | PASS | PASS | PASS | PASS | PASS | N/A | IMPLEMENTED_NOT_FULLY_ACCEPTED |
 | M7-07 | PARTIAL (enum only) | N/A | N/A | N/A | N/A | N/A | DEFERRED |
 | M7-08 | N/A | N/A | N/A | N/A | N/A | N/A | DEFERRED |
 
@@ -323,7 +328,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 ### A. M7 EXIT BLOCKER
 
-1. **Integrated Native acceptance** must be a new session on one reviewed `main` SHA. Session 4 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-4`, **`a84433c0`**) is **STOP_WITH_FINDINGS** and is not reused. Session 3 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md), **`04725cb3`**) stays historical. Session 1–2, baseline `b2c7765`, historical `55eadcc`, **`af4097a`**, and **`eb40ffb`** are not completion targets. **Supersedes** #153/#154 only when every A/B row is **PASS** on one SHA.
+1. **Integrated Native acceptance** is recorded by session 5 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md), `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`, **`40ba99c4`**) with every A/B row **PASS**. Session 4 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_4.md), **`a84433c0`**) is **STOP_WITH_FINDINGS** and is not reused. The criterion below is the sequence that session satisfied: Session 3 ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_3.md), **`04725cb3`**) stays historical. Session 1–2, baseline `b2c7765`, historical `55eadcc`, **`af4097a`**, and **`eb40ffb`** are not completion targets. **Supersedes** #153/#154 only when every A/B row is **PASS** on one SHA.
 
    Required sequence (sanitized evidence):
 
@@ -344,7 +349,7 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
    - **Quit + relaunch** same isolated HOME: second catalog-binding check, then read-only fixture re-register, rescan, and `RANGE.wav` reselect before comparing the restored draft and the same lineage child
    - **Slice draft persistence:** post-quit `slice_drafts` SELECT on isolated catalog (sanitized)
 
-2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): lanes are on `main` via #161. Session 4 B01 **PASS** on a new fixture. B02 and B03 are still required in a new session: register that session’s stereo root read-only, scan, and select `SET/AUDIO/STEREO_RANGE.wav`, then compare the fixture manifest. Mono `RANGE.wav` cannot prove this criterion. Exit row 3 stays **PARTIAL**.
+2. **Stereo independently displayable** (`MO-M7-STEREO-CHANNEL-LANES-1`): session 5 B01–B03 **PASS** on `40ba99c4` (independent Left and Right lanes; fixture unchanged). Mono `RANGE.wav` was not used as that proof. Exit row 3 is **PASS** as evidence. Milestone **COMPLETE** is still the exit audit’s decision.
 
 ### B. M7 COMPLETION QUALITY (not Exit Gate)
 
@@ -365,19 +370,19 @@ Items **not** in Exit Gate (do not promote): Canvas, descriptor-relative cache, 
 
 Do **not** reopen #153/#154 Native as separate historical PASSes.
 
-**Primary next Work ID:** a new integrated Native acceptance on the then-current reviewed `main`. Do not resume session 4 and do not copy its PASS rows.
+**Primary next Work ID:** `MO-M7-FINAL-EXIT-AUDIT-1`. Do not resume session 4 and do not copy its PASS rows.
 
-Session 4 stopped with A14 **NOT_RUN** and B02/B03 **NOT_RUN** (missing canonical evidence; screen lock environmental). No product fix is queued from this record.
+Session 5 recorded group A and group B **PASS** on `40ba99c4`. No product fix is queued.
 
-Until a later session records group A and group B **PASS** on one SHA, M7-06 stays **IMPLEMENTED_NOT_FULLY_ACCEPTED**. M7 stays **IN_PROGRESS**. Do not set **COMPLETE** here.
+M7-03, M7-05, and M7-06 stay **IMPLEMENTED_NOT_FULLY_ACCEPTED** until that audit. M7 stays **IN_PROGRESS**. Do not set **COMPLETE** here.
 
 ---
 
 ## 17. Recommended next Work ID
 
-**Primary:** a new integrated Native acceptance on the then-current reviewed `main` (not session 4, not `MO-M7-FINAL-EXIT-AUDIT-1`).
+**Primary:** `MO-M7-FINAL-EXIT-AUDIT-1`.
 
-**Reason:** session 4 did not finish A14 or group B. Stereo display stays in that same future session. Do not reuse session 4 PASS rows.
+**Reason:** session 5 finished A01–A15 and B01–B03 on `40ba99c4`. That audit decides whether M7 is **COMPLETE**. Do not reuse session 4 PASS rows. Do not start another integrated Native session from this record.
 
 **Secondary (not next):**
 
@@ -398,7 +403,7 @@ Call M7 **COMPLETE** only when:
 
 Do not require Canvas, production stem engine, `.ot`, or Library injection.
 
-**Recommended milestone status now:** **IN_PROGRESS** (stereo Exit Gate **PARTIAL**; integrated Native **NOT_RUN**; M7-07 **DEFERRED**).
+**Recommended milestone status now:** **IN_PROGRESS**. Session 5 integrated Native is **PASS** (groups A and B on `40ba99c4`). **COMPLETE** is decided by `MO-M7-FINAL-EXIT-AUDIT-1`. M7-07 stays **DEFERRED**.
 
 ---
 
