@@ -15,6 +15,13 @@ mod tests {
     use tempfile::TempDir;
 
     const PROJECT: &str = "SET/PROJECT";
+    const CAPTURE_META_SCHEMA: &str = "masterocta-pse-bank-capture-meta:v1";
+    const MANIFEST_SCHEMA: &str = "masterocta-pse-bank-multi-device-manifest:v1";
+
+    /// Minimum multi-Bank / pattern mapping proof per acquisition protocol.
+    const MANDATORY_MAPPING_CAPTURES: &[&str] =
+        &["bank_a_active", "bank_b_active", "bank_b_pattern_4"];
+
     const CAPTURES: &[&str] = &[
         "bank_a_active",
         "bank_b_active",
@@ -31,11 +38,31 @@ mod tests {
 
     #[derive(Debug, Deserialize)]
     struct CaptureMeta {
+        schema: String,
+        capture_label: String,
+        capture_id: String,
+        device_generated: bool,
         ui_active_bank_letter: char,
         #[allow(dead_code)]
         ui_active_pattern_number: u8,
         expected_bank_index: u8,
         expected_pattern_index: u8,
+        save_actions: Vec<String>,
+        distinguishing_content: String,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct ManifestEntry {
+        path: String,
+        sha256: String,
+        size: u64,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct Sha256Sums {
+        schema: String,
+        capture: String,
+        files: Vec<ManifestEntry>,
     }
 
     fn fixture_root() -> PathBuf {
@@ -51,33 +78,95 @@ mod tests {
         dir.join("project.work").is_file() && dir.join("capture.meta.json").is_file()
     }
 
+    fn mandatory_mapping_ready() -> bool {
+        MANDATORY_MAPPING_CAPTURES
+            .iter()
+            .all(|name| capture_ready(name))
+    }
+
     fn load_acquisition_status() -> AcquisitionStatus {
         let path = fixture_root().join("ACQUISITION_STATUS.json");
         let text = fs::read_to_string(path).expect("ACQUISITION_STATUS.json");
         serde_json::from_str(&text).expect("acquisition status json")
     }
 
+    fn load_and_validate_meta(capture_name: &str) -> CaptureMeta {
+        let meta: CaptureMeta = serde_json::from_str(
+            &fs::read_to_string(capture_dir(capture_name).join("capture.meta.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(meta.schema, CAPTURE_META_SCHEMA);
+        assert_eq!(meta.capture_label, capture_name);
+        assert_eq!(meta.capture_id, capture_name);
+        assert!(
+            meta.device_generated,
+            "{capture_name} must be device_generated"
+        );
+        assert!(
+            !meta.save_actions.is_empty(),
+            "{capture_name} save_actions required"
+        );
+        assert!(
+            !meta.distinguishing_content.is_empty(),
+            "{capture_name} distinguishing_content required"
+        );
+        meta
+    }
+
     fn sha256_file(path: &Path) -> String {
         format!("{:x}", Sha256::digest(fs::read(path).unwrap()))
     }
 
-    fn manifest(dir: &Path) -> BTreeMap<String, String> {
+    fn manifest_tree(dir: &Path) -> BTreeMap<String, String> {
         let mut out = BTreeMap::new();
         for entry in fs::read_dir(dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
             if path.is_file() {
                 let name = path.file_name().unwrap().to_string_lossy().into_owned();
-                if name == "SHA256SUMS.json" || name == "capture.meta.json" {
-                    continue;
-                }
                 out.insert(name, sha256_file(&path));
             }
         }
         out
     }
 
-    fn copied_capture(name: &str) -> (TempDir, PathBuf) {
+    fn verify_sha256_manifest(capture_name: &str) {
+        let dir = capture_dir(capture_name);
+        let manifest_path = dir.join("SHA256SUMS.json");
+        assert!(
+            manifest_path.is_file(),
+            "{capture_name} missing SHA256SUMS.json"
+        );
+        let recorded: Sha256Sums =
+            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(recorded.schema, MANIFEST_SCHEMA);
+        assert_eq!(recorded.capture, capture_name);
+        let mut seen = BTreeMap::new();
+        for entry in &recorded.files {
+            assert!(
+                seen.insert(entry.path.clone(), entry.sha256.clone())
+                    .is_none(),
+                "duplicate manifest path {}",
+                entry.path
+            );
+            let file_path = dir.join(&entry.path);
+            assert!(file_path.is_file(), "manifest lists missing {}", entry.path);
+            assert_eq!(
+                fs::metadata(&file_path).unwrap().len(),
+                entry.size,
+                "size mismatch for {}",
+                entry.path
+            );
+            assert_eq!(
+                sha256_file(&file_path),
+                entry.sha256,
+                "hash mismatch for {}",
+                entry.path
+            );
+        }
+    }
+
+    fn copied_capture(name: &str) -> (TempDir, PathBuf, PathBuf) {
         let temp = TempDir::new().unwrap();
         let project = temp.path().join(PROJECT);
         fs::create_dir_all(&project).unwrap();
@@ -95,11 +184,12 @@ mod tests {
             fs::copy(&path, project.join(file_name)).unwrap();
         }
         let root = temp.path().canonicalize().unwrap();
-        (temp, root)
+        let project_canon = project.canonicalize().unwrap();
+        (temp, root, project_canon)
     }
 
     fn read_structure(name: &str) -> ProjectStructure {
-        let (_temp, root) = copied_capture(name);
+        let (_temp, root, _project) = copied_capture(name);
         let project = RootRelativePath::parse(PROJECT).unwrap();
         read_project_structure(&root, &project).expect("read project structure")
     }
@@ -135,16 +225,19 @@ mod tests {
     #[test]
     fn acquisition_status_stop_with_findings_until_captures_land() {
         let status = load_acquisition_status();
-        if capture_ready("bank_a_active") {
+        for name in MANDATORY_MAPPING_CAPTURES {
+            if capture_ready(name) {
+                assert_eq!(
+                    status.captures.get(*name).map(String::as_str),
+                    Some("COMMITTED"),
+                    "mandatory capture {name} on disk must be COMMITTED in status"
+                );
+            }
+        }
+        if !mandatory_mapping_ready() {
             assert_eq!(
-                status.captures.get("bank_a_active").map(String::as_str),
-                Some("COMMITTED")
-            );
-        } else {
-            assert_eq!(status.result, "STOP_WITH_FINDINGS");
-            assert_eq!(
-                status.captures.get("bank_a_active").map(String::as_str),
-                Some("PENDING")
+                status.result, "STOP_WITH_FINDINGS",
+                "missing mandatory A/B/C captures requires STOP_WITH_FINDINGS"
             );
         }
         if capture_ready("bank_b_active") {
@@ -154,12 +247,6 @@ mod tests {
             );
         } else if status.captures.get("bank_b_active").map(String::as_str) == Some("PENDING") {
             assert_eq!(status.result, "STOP_WITH_FINDINGS");
-        }
-        if capture_ready("bank_b_pattern_4") {
-            assert_eq!(
-                status.captures.get("bank_b_pattern_4").map(String::as_str),
-                Some("COMMITTED")
-            );
         }
         if capture_ready("bank_a_working_diverged") {
             assert_eq!(
@@ -179,15 +266,22 @@ mod tests {
     }
 
     #[test]
+    fn committed_captures_match_sha256_manifest() {
+        for name in CAPTURES {
+            if !capture_ready(name) {
+                continue;
+            }
+            load_and_validate_meta(name);
+            verify_sha256_manifest(name);
+        }
+    }
+
+    #[test]
     fn bank_a_working_diverged_states_match_meta_when_committed() {
         if !capture_ready("bank_a_working_diverged") {
             return;
         }
-        let meta: CaptureMeta = serde_json::from_str(
-            &fs::read_to_string(capture_dir("bank_a_working_diverged").join("capture.meta.json"))
-                .unwrap(),
-        )
-        .unwrap();
+        let meta = load_and_validate_meta("bank_a_working_diverged");
         let structure = read_structure("bank_a_working_diverged");
         assert_eq!(
             selected_bank(&structure),
@@ -204,10 +298,7 @@ mod tests {
         if !capture_ready("bank_a_active") {
             return;
         }
-        let meta: CaptureMeta = serde_json::from_str(
-            &fs::read_to_string(capture_dir("bank_a_active").join("capture.meta.json")).unwrap(),
-        )
-        .unwrap();
+        let meta = load_and_validate_meta("bank_a_active");
         let structure = read_structure("bank_a_active");
         assert_eq!(
             selected_bank(&structure),
@@ -228,10 +319,7 @@ mod tests {
         if !capture_ready("bank_b_active") {
             return;
         }
-        let meta: CaptureMeta = serde_json::from_str(
-            &fs::read_to_string(capture_dir("bank_b_active").join("capture.meta.json")).unwrap(),
-        )
-        .unwrap();
+        let meta = load_and_validate_meta("bank_b_active");
         let structure = read_structure("bank_b_active");
         assert_eq!(
             selected_bank(&structure),
@@ -251,10 +339,7 @@ mod tests {
         if !capture_ready("bank_b_pattern_4") {
             return;
         }
-        let meta: CaptureMeta = serde_json::from_str(
-            &fs::read_to_string(capture_dir("bank_b_pattern_4").join("capture.meta.json")).unwrap(),
-        )
-        .unwrap();
+        let meta = load_and_validate_meta("bank_b_pattern_4");
         let structure = read_structure("bank_b_pattern_4");
         assert_eq!(
             selected_bank(&structure),
@@ -279,14 +364,10 @@ mod tests {
 
     #[test]
     fn multiple_bank_files_read_as_separate_slots_when_committed() {
-        let capture = if capture_ready("bank_b_active") {
-            "bank_b_active"
-        } else if capture_ready("bank_a_active") {
-            "bank_a_active"
-        } else {
+        if !mandatory_mapping_ready() {
             return;
-        };
-        let structure = read_structure(capture);
+        }
+        let structure = read_structure("bank_b_active");
         let working_banks: Vec<_> = structure
             .banks
             .iter()
@@ -351,11 +432,33 @@ mod tests {
             }
             return;
         }
-        let before = manifest(&capture_dir("bank_a_working_diverged"));
-        let after = manifest(&capture_dir("bank_a_after_save"));
+        let e_dir = capture_dir("bank_a_working_diverged");
+        let f_dir = capture_dir("bank_a_after_save");
+        let e_bank01_work = fs::read(e_dir.join("bank01.work")).unwrap();
+        let e_bank01_strd = fs::read(e_dir.join("bank01.strd")).unwrap();
+        assert_eq!(
+            e_bank01_work, e_bank01_strd,
+            "Capture E: mounted CF did not show bank01.work != bank01.strd before Save"
+        );
         assert_ne!(
-            before, after,
-            "Save sequence must change at least one tracked file hash"
+            e_bank01_work,
+            fs::read(f_dir.join("bank01.work")).unwrap(),
+            "Save must update bank01.work vs Capture E"
+        );
+        assert_ne!(
+            fs::read(e_dir.join("project.work")).unwrap(),
+            fs::read(f_dir.join("project.work")).unwrap(),
+            "Save must update project.work vs Capture E"
+        );
+        assert_eq!(
+            fs::read(e_dir.join("bank02.work")).unwrap(),
+            fs::read(f_dir.join("bank02.work")).unwrap(),
+            "bank02.work unchanged across E/F on P_TEST"
+        );
+        assert_eq!(
+            fs::read(f_dir.join("bank01.work")).unwrap(),
+            fs::read(f_dir.join("bank01.strd")).unwrap(),
+            "Capture F: bank01.work and bank01.strd remain paired on mount"
         );
     }
 
@@ -365,15 +468,14 @@ mod tests {
             if !capture_ready(name) {
                 continue;
             }
-            let dir = capture_dir(name);
-            let before = manifest(&dir);
-            let (_temp, root) = copied_capture(name);
+            let (_temp, root, project_dir) = copied_capture(name);
+            let before = manifest_tree(&project_dir);
             let project = RootRelativePath::parse(PROJECT).unwrap();
             let _ = read_project_structure(&root, &project).unwrap();
             assert_eq!(
-                manifest(&dir),
+                manifest_tree(&project_dir),
                 before,
-                "capture {name} bytes must stay identical"
+                "read_project_structure must not mutate opened copy for {name}"
             );
         }
     }

@@ -3,7 +3,10 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { buildManifest } from "./pse-bank-multi-device-manifest.mjs";
+import {
+  buildManifest,
+  resolveCaptureDir,
+} from "./pse-bank-multi-device-manifest.mjs";
 
 test("buildManifest lists project.work and bank files", () => {
   const dir = mkdtempSync(path.join(tmpdir(), "pse-bank-manifest-"));
@@ -14,4 +17,14 @@ test("buildManifest lists project.work and bank files", () => {
   assert.equal(manifest.files.length, 2);
   const paths = manifest.files.map((entry) => entry.path);
   assert.deepEqual(paths, ["bank01.work", "project.work"]);
+});
+
+test("resolveCaptureDir rejects path traversal", () => {
+  assert.throws(() => resolveCaptureDir("../outside"), /Invalid capture name/);
+  assert.throws(() => resolveCaptureDir(".."), /Invalid capture name/);
+});
+
+test("resolveCaptureDir accepts bank_a_active", () => {
+  const dir = resolveCaptureDir("bank_a_active");
+  assert.match(dir, /pse_bank_multi_device[/\\]bank_a_active$/);
 });
