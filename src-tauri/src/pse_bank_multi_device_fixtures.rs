@@ -252,8 +252,7 @@ mod tests {
             return;
         }
         let meta: CaptureMeta = serde_json::from_str(
-            &fs::read_to_string(capture_dir("bank_b_pattern_4").join("capture.meta.json"))
-                .unwrap(),
+            &fs::read_to_string(capture_dir("bank_b_pattern_4").join("capture.meta.json")).unwrap(),
         )
         .unwrap();
         let structure = read_structure("bank_b_pattern_4");

@@ -1,6 +1,8 @@
 {
   "schema": "masterocta-pse-bank-capture-meta:v1",
   "capture_label": "bank_b_active",
+  "capture_id": "bank_b_active",
+  "device_generated": true,
   "source_path": "/Volumes/OCTA2/O3TC_260001/P_TEST",
   "source_project_name": "P_TEST",
   "disposable_project": true,

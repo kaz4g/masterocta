@@ -23,6 +23,7 @@ DISPOSABLE_PROJECT = YES (P_TEST on OCTA2 volume)
 CAPTURE_A = PASS (bank_a_active committed)
 CAPTURE_B = PASS (bank_b_active committed)
 CAPTURE_C = PASS (bank_b_pattern_4 committed)
+CAPTURE_D = NOT_RUN (bank_p_active optional)
 WORKING_DIVERGENCE_CAPTURE = PARTIAL (E committed; pre-save T1 edit not visible on mounted CF — `.work`==`.strd`)
 AFTER_SAVE_CAPTURE = PASS (bank_a_after_save; bank01/project bytes change vs E)
 
@@ -61,7 +62,7 @@ REASON = Captures A/B/C/E/F from P_TEST committed; pre-save mounted CF still wor
 | --- | --- | --- |
 | `real_device/` | **No** (bank01 only) | CF copy OS 1.40B; `BANK=0` / `PATTERN=0`; bank01.work ≠ bank01.strd bytes |
 | `multipart/` | **No** | Synthetic single bank |
-| `pse_bank_multi_device/` | **Pending** | Protocol in [README](../../src-tauri/tests/fixtures/pse_bank_multi_device/README.md) |
+| `pse_bank_multi_device/` | **Yes** (A/B/C/E/F) | Disposable `P_TEST`; D optional `NOT_RUN`; see [README](../../src-tauri/tests/fixtures/pse_bank_multi_device/README.md) |
 
 Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (separate files, byte difference on `real_device`) but not Save choreography or multi-slot mapping. See [PSE_BANK_STATE_DOC_SEMANTICS.md](./PSE_BANK_STATE_DOC_SEMANTICS.md).
 
@@ -84,7 +85,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 | bank_a_working_diverged | `0` | `0` | same six-file set | T1 Hold/Release changed without Save; Mac read: all `.work`==`.strd`; bytes ≠ `bank_a_active` |
 | bank_a_after_save | `0` | `0` | same six-file set | After PROJECT SAVE; `bank01.work/strd` and `project.work/strd` differ from E |
 
-## Mapping conclusions (pending device evidence)
+## Mapping conclusions (P_TEST captures A/B/C)
 
 | Claim | Status |
 | --- | --- |
@@ -94,7 +95,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 | UI Bank A → `bank01.*` filename | **NOT_OBSERVED** (active bank does not rename files; bank01 present in all captures) |
 | UI Bank B → `bank02.*` filename | **NOT_OBSERVED** (bank02 bytes change when B active; filename slot mapping not proven) |
 
-## Working / SavedCheckpoint (E/F pending)
+## Working / SavedCheckpoint (E/F committed)
 
 | Observation | Status |
 | --- | --- |
@@ -107,7 +108,7 @@ Do not generalize from a single `real_device` snapshot.
 ## #181 / #217 impact
 
 - Does **not** set `BANK_CHANGEPLAN_READINESS = READY`.
-- Does **not** close [#217](https://github.com/kaz4g/masterocta/issues/217) until labeled multi-bank captures prove Save/Working semantics beyond `real_device`.
+- Does **not** close [#217](https://github.com/kaz4g/masterocta/issues/217): E/F did not prove general pre-save `.work` ≠ `.strd` on mounted CF; `ReadinessGap::WorkingSavedCheckpointRule` stays open.
 - When `BANK_FILENAME_MAPPING` and `BANK_INTERNAL_IDENTITY` become proven, update [PSE_READ_MODEL_EXIT_AUDIT.md](./PSE_READ_MODEL_EXIT_AUDIT.md) §7C narrative and consider narrowing `ReadinessGap::BankInternalIdentity` only with reviewed evidence + pinned test changes.
 
 ## Safety
