@@ -14,8 +14,8 @@ GitHub: [#219](https://github.com/kaz4g/masterocta/issues/219) (child of [#181](
 | Field | Value |
 | --- | --- |
 | Device | Octatrack MkII |
-| DEVICE_OS | _pending_ |
-| PROJECT_NAME | _pending_ |
+| DEVICE_OS | 1.40 (R0173) |
+| PROJECT_NAME | P_TEST (`/Volumes/OCTA2/O3TC_260001/P_TEST`) |
 | Capture date | _pending_ |
 
 ## Forbidden
@@ -28,7 +28,7 @@ GitHub: [#219](https://github.com/kaz4g/masterocta/issues/219) (child of [#181](
 
 | Label | Path | UI (expected) | Status |
 | --- | --- | --- | --- |
-| Capture A | `bank_a_active/` | Bank A, Pattern 1, after Save | **PENDING** |
+| Capture A | `bank_a_active/` | Bank A, Pattern 1, after Save | **COMMITTED** (from disposable `P_TEST` on OCTA2) |
 | Capture B | `bank_b_active/` | Bank B, Pattern 1, after Save | **PENDING** |
 | Capture C | `bank_b_pattern_4/` | Bank B, Pattern 4 (or chosen), after Save | **PENDING** |
 | Capture D | `bank_p_active/` (optional) | Final bank slot, Pattern 1 | **NOT_RUN** |
@@ -62,7 +62,7 @@ Each committed capture must include:
 
 ```text
 RESULT = STOP_WITH_FINDINGS
-REASON = No device capture directories committed yet (protocol and tests only).
+REASON = Capture A committed; B/C/E/F and full Save provenance still pending.
 ```
 
 When captures land, update [ACQUISITION_STATUS.json](./ACQUISITION_STATUS.json) and [docs/planning/PSE_BANK_MULTI_DEVICE_EVIDENCE.md](../../../../docs/planning/PSE_BANK_MULTI_DEVICE_EVIDENCE.md), then regenerate manifests.

@@ -136,13 +136,19 @@ mod tests {
     fn acquisition_status_stop_with_findings_until_captures_land() {
         let status = load_acquisition_status();
         if capture_ready("bank_a_active") {
-            assert_ne!(status.result, "STOP_WITH_FINDINGS");
+            assert_eq!(
+                status.captures.get("bank_a_active").map(String::as_str),
+                Some("COMMITTED")
+            );
         } else {
             assert_eq!(status.result, "STOP_WITH_FINDINGS");
             assert_eq!(
                 status.captures.get("bank_a_active").map(String::as_str),
                 Some("PENDING")
             );
+        }
+        if status.captures.get("bank_b_active").map(String::as_str) == Some("PENDING") {
+            assert_eq!(status.result, "STOP_WITH_FINDINGS");
         }
     }
 
@@ -195,10 +201,14 @@ mod tests {
 
     #[test]
     fn multiple_bank_files_read_as_separate_slots_when_committed() {
-        if !capture_ready("bank_b_active") {
+        let capture = if capture_ready("bank_b_active") {
+            "bank_b_active"
+        } else if capture_ready("bank_a_active") {
+            "bank_a_active"
+        } else {
             return;
-        }
-        let structure = read_structure("bank_b_active");
+        };
+        let structure = read_structure(capture);
         let working_banks: Vec<_> = structure
             .banks
             .iter()

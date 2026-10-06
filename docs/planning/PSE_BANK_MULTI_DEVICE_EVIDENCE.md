@@ -14,23 +14,23 @@ BASE_SHA = 83b128d499d06f42576b21b8aee97aacdb31659f
 
 HEAD_SHA = (see branch evidence/pse-bank-real-device-fixture-1)
 
-DEVICE = Octatrack MkII (declared; capture pending)
+DEVICE = Octatrack MkII
 
-OS = PENDING
+OS = 1.40 (R0173)
 
-DISPOSABLE_PROJECT = REQUIRED_NOT_YET_RECORDED
+DISPOSABLE_PROJECT = YES (P_TEST on OCTA2 volume)
 
-CAPTURE_A = PENDING
+CAPTURE_A = PASS (bank_a_active committed)
 CAPTURE_B = PENDING
 CAPTURE_C = PENDING
 WORKING_DIVERGENCE_CAPTURE = PENDING
 AFTER_SAVE_CAPTURE = PENDING
 
-UI_BANK_A_RAW = UNKNOWN
-UI_BANK_B_RAW = UNKNOWN
-UI_PATTERN_MAPPING = UNKNOWN
+UI_BANK_A_RAW = 0 (BANK=0 with UI Bank A active)
+UI_BANK_B_RAW = UNKNOWN (needs bank_b_active capture)
+UI_PATTERN_MAPPING = 0 (PATTERN=0 with UI Pattern 1)
 
-BANK_FILENAME_MAPPING = UNKNOWN
+BANK_FILENAME_MAPPING = PARTIAL (Bank A active + distinct bank01.work vs bank02.work on device; bank02–16 template hash identical on source volume)
 
 BANK_INTERNAL_IDENTITY = NOT_OBSERVED
 
@@ -39,7 +39,7 @@ SAVED_CHECKPOINT_ROLE = PARTIAL
 
 WORK_STRD_FALLBACK = FORBIDDEN
 
-FIXTURE_NO_WRITE = PASS (protocol + tests; no capture bytes committed)
+FIXTURE_NO_WRITE = PASS
 
 ISSUE_217 = OPEN
 
@@ -52,7 +52,7 @@ CI = (run on PR)
 PROJECT_STRUCTURE_CI = (run on PR)
 
 RESULT = STOP_WITH_FINDINGS
-REASON = Device captures not committed; only acquisition protocol, manifest tooling, and gated tests landed.
+REASON = Capture A from P_TEST committed; B/C/E/F and Save choreography still pending.
 ```
 
 ## What exists today (baseline, not multi-bank proof)
@@ -78,7 +78,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 
 | Capture | `[STATES] BANK` | `[STATES] PATTERN` | bank files present | Notes |
 | --- | --- | --- | --- | --- |
-| bank_a_active | _pending_ | _pending_ | _pending_ | |
+| bank_a_active | `0` | `0` | `project.work/strd`, `bank01.work/strd`, `bank02.work/strd` | OS 1.40 R0173; `bank01.work` ≠ `bank02.work`; per-bank `.work` byte-equal to sibling `.strd` at capture time |
 | bank_b_active | _pending_ | _pending_ | _pending_ | |
 | bank_b_pattern_4 | _pending_ | _pending_ | _pending_ | |
 | bank_a_working_diverged | _pending_ | _pending_ | _pending_ | |
