@@ -155,6 +155,12 @@ mod tests {
         } else if status.captures.get("bank_b_active").map(String::as_str) == Some("PENDING") {
             assert_eq!(status.result, "STOP_WITH_FINDINGS");
         }
+        if capture_ready("bank_b_pattern_4") {
+            assert_eq!(
+                status.captures.get("bank_b_pattern_4").map(String::as_str),
+                Some("COMMITTED")
+            );
+        }
     }
 
     #[test]
@@ -200,6 +206,38 @@ mod tests {
                 selected_bank(&read_structure("bank_a_active")),
                 selected_bank(&structure),
                 "Bank A and B captures must not share the same active BANK raw"
+            );
+        }
+    }
+
+    #[test]
+    fn bank_b_pattern_4_states_match_meta_when_committed() {
+        if !capture_ready("bank_b_pattern_4") {
+            return;
+        }
+        let meta: CaptureMeta = serde_json::from_str(
+            &fs::read_to_string(capture_dir("bank_b_pattern_4").join("capture.meta.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        let structure = read_structure("bank_b_pattern_4");
+        assert_eq!(
+            selected_bank(&structure),
+            bank_index_from_letter(meta.ui_active_bank_letter)
+        );
+        assert_eq!(
+            selected_pattern(&structure),
+            PatternIndex::new(meta.expected_pattern_index).unwrap()
+        );
+        if capture_ready("bank_b_active") {
+            assert_eq!(
+                selected_bank(&read_structure("bank_b_active")),
+                selected_bank(&structure),
+                "Pattern change must not alter BANK raw when bank stays on B"
+            );
+            assert_ne!(
+                selected_pattern(&read_structure("bank_b_active")),
+                selected_pattern(&structure),
             );
         }
     }

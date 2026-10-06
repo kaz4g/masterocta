@@ -22,13 +22,13 @@ DISPOSABLE_PROJECT = YES (P_TEST on OCTA2 volume)
 
 CAPTURE_A = PASS (bank_a_active committed)
 CAPTURE_B = PASS (bank_b_active committed)
-CAPTURE_C = PENDING
+CAPTURE_C = PASS (bank_b_pattern_4 committed)
 WORKING_DIVERGENCE_CAPTURE = PENDING
 AFTER_SAVE_CAPTURE = PENDING
 
 UI_BANK_A_RAW = 0 (BANK=0 with UI Bank A active)
 UI_BANK_B_RAW = 1 (BANK=1 with UI Bank B active)
-UI_PATTERN_MAPPING = 0 (PATTERN=0 with UI Pattern 1)
+UI_PATTERN_MAPPING = PARTIAL (UI Pattern 1→`PATTERN=0`, UI Pattern 4→`PATTERN=3` on P_TEST)
 
 BANK_FILENAME_MAPPING = PARTIAL (A→BANK=0, B→BANK=1; bank01 vs bank02 content differs across captures; full bank03–16 mapping not exercised)
 
@@ -52,7 +52,7 @@ CI = (run on PR)
 PROJECT_STRUCTURE_CI = (run on PR)
 
 RESULT = STOP_WITH_FINDINGS
-REASON = Capture A from P_TEST committed; B/C/E/F and Save choreography still pending.
+REASON = Captures A/B/C from P_TEST committed; E/F Save choreography still pending.
 ```
 
 ## What exists today (baseline, not multi-bank proof)
@@ -80,7 +80,7 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 | --- | --- | --- | --- | --- |
 | bank_a_active | `0` | `0` | `project.work/strd`, `bank01.work/strd`, `bank02.work/strd` | OS 1.40 R0173; `bank01.work` ≠ `bank02.work`; per-bank `.work` byte-equal to sibling `.strd` at capture time |
 | bank_b_active | `1` | `0` | same file set as A | Saved with Bank B active; `bank02.work/strd` updated 2026-10-06 |
-| bank_b_pattern_4 | _pending_ | _pending_ | _pending_ | |
+| bank_b_pattern_4 | `1` | `3` | same file set as A/B | Bank B + UI Pattern 4 after Save; `project.work` differs from B only in `PATTERN` |
 | bank_a_working_diverged | _pending_ | _pending_ | _pending_ | |
 | bank_a_after_save | _pending_ | _pending_ | _pending_ | |
 
@@ -88,11 +88,11 @@ Prior single-bank observations support **PARTIAL** Working/SavedCheckpoint (sepa
 
 | Claim | Status |
 | --- | --- |
-| UI Bank A → zero-based `BANK` raw | **UNKNOWN** |
-| UI Bank B → zero-based `BANK` raw | **UNKNOWN** |
-| UI Pattern N → zero-based `PATTERN` raw | **UNKNOWN** (existing code assumes zero-based; only bank01 + pattern0 on `real_device`) |
-| UI Bank A → `bank01.*` filename | **UNKNOWN** |
-| UI Bank B → `bank02.*` filename | **UNKNOWN** |
+| UI Bank A → zero-based `BANK` raw | **OBSERVED** (`0` on Capture A) |
+| UI Bank B → zero-based `BANK` raw | **OBSERVED** (`1` on Captures B/C) |
+| UI Pattern N → zero-based `PATTERN` raw | **PARTIAL** (Pattern 1→`0`, Pattern 4→`3` on P_TEST) |
+| UI Bank A → `bank01.*` filename | **NOT_OBSERVED** (active bank does not rename files; bank01 present in all captures) |
+| UI Bank B → `bank02.*` filename | **NOT_OBSERVED** (bank02 bytes change when B active; filename slot mapping not proven) |
 
 ## Working / SavedCheckpoint (E/F pending)
 

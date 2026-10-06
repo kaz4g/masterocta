@@ -30,7 +30,7 @@ GitHub: [#219](https://github.com/kaz4g/masterocta/issues/219) (child of [#181](
 | --- | --- | --- | --- |
 | Capture A | `bank_a_active/` | Bank A, Pattern 1, after Save | **COMMITTED** (from disposable `P_TEST` on OCTA2) |
 | Capture B | `bank_b_active/` | Bank B, Pattern 1, after Save | **COMMITTED** (`BANK=1`, 2026-10-06) |
-| Capture C | `bank_b_pattern_4/` | Bank B, Pattern 4 (or chosen), after Save | **PENDING** |
+| Capture C | `bank_b_pattern_4/` | Bank B, Pattern 4, after Save | **COMMITTED** (`BANK=1`, `PATTERN=3`, 2026-10-06) |
 | Capture D | `bank_p_active/` (optional) | Final bank slot, Pattern 1 | **NOT_RUN** |
 | Capture E | `bank_a_working_diverged/` | After edit without Save checkpoint | **PENDING** |
 | Capture F | `bank_a_after_save/` | Same project after device Save | **PENDING** |
@@ -62,7 +62,7 @@ Each committed capture must include:
 
 ```text
 RESULT = STOP_WITH_FINDINGS
-REASON = Capture A committed; B/C/E/F and full Save provenance still pending.
+REASON = Captures A/B/C committed; E/F Save provenance still pending.
 ```
 
 When captures land, update [ACQUISITION_STATUS.json](./ACQUISITION_STATUS.json) and [docs/planning/PSE_BANK_MULTI_DEVICE_EVIDENCE.md](../../../../docs/planning/PSE_BANK_MULTI_DEVICE_EVIDENCE.md), then regenerate manifests.
