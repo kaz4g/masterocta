@@ -35,6 +35,8 @@ mod bank_mutation_contract;
 #[cfg(test)]
 mod gate_c_clone_rescan;
 #[cfg(test)]
+mod pse_bank_multi_device_fixtures;
+#[cfg(test)]
 mod sample_slot_boundary;
 
 use audio_pool::{

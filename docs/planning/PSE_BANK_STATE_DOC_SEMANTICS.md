@@ -72,6 +72,13 @@ Only `git ls-files` under `src-tauri/tests/fixtures/` (no invented rows).
 | `source_project/` | — | no | no | yes | `0` | `0` |
 | `dest_project/` | — | no | no | yes | `0` | `0` |
 | `real_device_os_1_40/` | — | no | no | yes | `0` | `0` |
+| `pse_bank_multi_device/bank_a_active/` | 01–02 | yes | yes | yes | `0` | `0` |
+| `pse_bank_multi_device/bank_b_active/` | 01–02 | yes | yes | yes | `1` | `0` |
+| `pse_bank_multi_device/bank_b_pattern_4/` | 01–02 | yes | yes | yes | `1` | `3` |
+| `pse_bank_multi_device/bank_a_working_diverged/` | 01–02 | yes | yes | yes | `0` | `0` |
+| `pse_bank_multi_device/bank_a_after_save/` | 01–02 | yes | yes | yes | `0` | `0` |
+
+Real-device follow-up ([#219](https://github.com/kaz4g/masterocta/issues/219)): A/B/C/E/F captures are committed ([PSE_BANK_MULTI_DEVICE_EVIDENCE.md](./PSE_BANK_MULTI_DEVICE_EVIDENCE.md)). The E/F sequence did not produce a proven pre-save `.work` vs `.strd` divergence on the mounted CF view. The explicit Save operation did produce observed `bank01` and `project` file updates versus E. Therefore the general Working/SavedCheckpoint operation rule remains unresolved and `ReadinessGap::WorkingSavedCheckpointRule` stays open.
 
 Provenance:
 

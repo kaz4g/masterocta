@@ -1,0 +1,37 @@
+{
+  "schema": "masterocta-pse-bank-multi-device-manifest:v1",
+  "capture": "bank_a_after_save",
+  "generated_at": "2026-10-06T21:11:12.196Z",
+  "files": [
+    {
+      "path": "bank01.strd",
+      "sha256": "573643a0f51714c1a7c8b1c4867826ef205686539a7a29c05e7f6e06876432a8",
+      "size": 636113
+    },
+    {
+      "path": "bank01.work",
+      "sha256": "573643a0f51714c1a7c8b1c4867826ef205686539a7a29c05e7f6e06876432a8",
+      "size": 636113
+    },
+    {
+      "path": "bank02.strd",
+      "sha256": "df8e24d83fb3e01ad4671a410fcdce829c9b5e67551bccfd4e854685f1d3dc15",
+      "size": 636113
+    },
+    {
+      "path": "bank02.work",
+      "sha256": "df8e24d83fb3e01ad4671a410fcdce829c9b5e67551bccfd4e854685f1d3dc15",
+      "size": 636113
+    },
+    {
+      "path": "project.strd",
+      "sha256": "2d54d127e6f9deb0109447ade46b6513db879ba9bc6224bd74e9f8678965f970",
+      "size": 3617
+    },
+    {
+      "path": "project.work",
+      "sha256": "2d54d127e6f9deb0109447ade46b6513db879ba9bc6224bd74e9f8678965f970",
+      "size": 3617
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "masterocta-pse-bank-capture-meta:v1",
+  "capture_label": "bank_a_active",
+  "capture_id": "bank_a_active",
+  "device_generated": true,
+  "source_path": "/Volumes/OCTA2/O3TC_260001/P_TEST",
+  "source_project_name": "P_TEST",
+  "disposable_project": true,
+  "device": "Octatrack MkII",
+  "device_os": "1.40 (R0173)",
+  "ui_active_bank_letter": "A",
+  "ui_active_pattern_number": 1,
+  "expected_bank_index": 0,
+  "expected_pattern_index": 0,
+  "save_actions": [
+    "Operator: project copied from disposable P_TEST on OCTA2 volume; exact UI Save sequence not yet transcribed in this meta file."
+  ],
+  "distinguishing_content": "bank01.work SHA differs from bank02.work; banks 02-16 share one template hash on source volume (only bank01 and bank02 copied into fixture)."
+}
