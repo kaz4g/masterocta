@@ -1,0 +1,12 @@
+revision|region_start|region_end|relative_path|sample_rate|frame_count
+2|44100|132300|SET/AUDIO/RANGE.wav|44100|264600
+ordinal|start_frame
+0|66106
+1|90000
+2|110206
+marker_count
+3
+kind|processor_name|processor_revision
+SLICE_EXPORT|masterocta-trim|pcm-wav-v1
+edge_count
+1

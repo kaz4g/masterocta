@@ -1,0 +1,8 @@
+pre_count=0
+post_files=1
+post_name=published/v1/702cb25dc12fe8f6841c02ea911acca1a9e28a33f208a806bf7892851f79be5f.wav
+post_size=88244
+post_sha256=702cb25dc12fe8f6841c02ea911acca1a9e28a33f208a806bf7892851f79be5f
+format=pcm wav mono 44100 Hz 16-bit 44100 frames
+part_count=0
+symlink_count=0

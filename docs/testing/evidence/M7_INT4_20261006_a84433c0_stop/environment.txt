@@ -1,0 +1,16 @@
+execution_sha=a84433c04e392e4463a19ae80f2c0745e8b6c59f
+origin_main_at_start=a84433c04e392e4463a19ae80f2c0745e8b6c59f
+worktree=.worktrees/m7-native-final-a84433c0
+macos=26.6.2 build=25G83
+arch=arm64
+node=v22.18.0
+pnpm=11.24.0
+cargo=1.98.0
+rustc=1.98.0
+open_prs=none
+ci=37284288367 success; 37284288289 success
+isolated_home=fresh mktemp prefix masterocta-m7-int4-a84433c0- (not reused)
+real_catalog_sha256=94f17898f501beaaa8a859a6bc1e4c425de7cf74e6ba146fdcbf7a8f88f848cf
+real_catalog_size=307200
+real_catalog_mtime=1789637436
+real_catalog_post_sha256=94f17898f501beaaa8a859a6bc1e4c425de7cf74e6ba146fdcbf7a8f88f848cf
