@@ -3,14 +3,14 @@
   "work_id": "MO-PSE-BANK-REAL-DEVICE-FIXTURE-1",
   "issue": 219,
   "result": "STOP_WITH_FINDINGS",
-  "reason": "Captures A/B/C committed from P_TEST; E/F Save-divergence captures still pending.",
+  "reason": "Captures A/B/C/E committed from P_TEST; F after-save capture still pending.",
   "disposable_project": "P_TEST on /Volumes/OCTA2/O3TC_260001",
   "captures": {
     "bank_a_active": "COMMITTED",
     "bank_b_active": "COMMITTED",
     "bank_b_pattern_4": "COMMITTED",
     "bank_p_active": "NOT_RUN",
-    "bank_a_working_diverged": "PENDING",
+    "bank_a_working_diverged": "COMMITTED",
     "bank_a_after_save": "PENDING"
   }
 }

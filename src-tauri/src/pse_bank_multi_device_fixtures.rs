@@ -161,6 +161,36 @@ mod tests {
                 Some("COMMITTED")
             );
         }
+        if capture_ready("bank_a_working_diverged") {
+            assert_eq!(
+                status
+                    .captures
+                    .get("bank_a_working_diverged")
+                    .map(String::as_str),
+                Some("COMMITTED")
+            );
+        }
+    }
+
+    #[test]
+    fn bank_a_working_diverged_states_match_meta_when_committed() {
+        if !capture_ready("bank_a_working_diverged") {
+            return;
+        }
+        let meta: CaptureMeta = serde_json::from_str(
+            &fs::read_to_string(capture_dir("bank_a_working_diverged").join("capture.meta.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        let structure = read_structure("bank_a_working_diverged");
+        assert_eq!(
+            selected_bank(&structure),
+            bank_index_from_letter(meta.ui_active_bank_letter)
+        );
+        assert_eq!(
+            selected_pattern(&structure),
+            PatternIndex::new(meta.expected_pattern_index).unwrap()
+        );
     }
 
     #[test]
@@ -300,13 +330,20 @@ mod tests {
     fn working_diverged_and_after_save_observation_when_committed() {
         if !(capture_ready("bank_a_working_diverged") && capture_ready("bank_a_after_save")) {
             let status = load_acquisition_status();
-            assert_eq!(
-                status
-                    .captures
-                    .get("bank_a_working_diverged")
-                    .map(String::as_str),
-                Some("PENDING")
-            );
+            if capture_ready("bank_a_working_diverged") {
+                assert_eq!(
+                    status.captures.get("bank_a_after_save").map(String::as_str),
+                    Some("PENDING")
+                );
+            } else {
+                assert_eq!(
+                    status
+                        .captures
+                        .get("bank_a_working_diverged")
+                        .map(String::as_str),
+                    Some("PENDING")
+                );
+            }
             return;
         }
         let before = manifest(&capture_dir("bank_a_working_diverged"));

@@ -1,0 +1,17 @@
+{
+  "schema": "masterocta-pse-bank-capture-meta:v1",
+  "capture_label": "bank_a_working_diverged",
+  "source_path": "/Volumes/OCTA2/O3TC_260001/P_TEST",
+  "source_project_name": "P_TEST",
+  "disposable_project": true,
+  "device": "Octatrack MkII",
+  "device_os": "1.40 (R0173)",
+  "ui_active_bank_letter": "A",
+  "ui_active_pattern_number": 1,
+  "expected_bank_index": 0,
+  "expected_pattern_index": 0,
+  "save_actions": [
+    "2026-10-07: Bank A / Pattern 1 saved to CF (BANK=0 PATTERN=0). Operator adjusted T1 Hold and Release, then copied six files without PROJECT SAVE."
+  ],
+  "distinguishing_content": "Mounted CF at copy: every bank01/bank02/project *.work byte-identical to sibling *.strd; bytes differ from bank_a_active (post B/C session re-save) but match last CF checkpoint — unsaved T1 edit not observed on Mac read."
+}
