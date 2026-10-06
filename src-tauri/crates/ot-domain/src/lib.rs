@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+pub mod bank_state_documents;
 pub mod derivation;
 pub mod derived_slice_export;
 pub mod derived_trim;
@@ -10,6 +11,15 @@ pub mod project_structure;
 pub mod reference_identity;
 pub mod slice_draft;
 pub mod slicing;
+
+pub use bank_state_documents::{
+    bank_state_document_file_name, bank_state_document_path, evaluate_bank_operation_state_effect,
+    swap_preserves_role_pairs, ActiveBankRetarget, BankOperationStateEffect, BankStateDocOperation,
+    BankStateDocumentPresence, BankStateDocumentRef, BankStateDocumentSet,
+    CopySavedCheckpointSemantics, MissingPairStop, PresencePrecondition,
+    StateDocOperationBlockReason, StateDocOperationVerdict, StateDocRuleStatus,
+    ACTIVE_BANK_RETARGET_RULE, COPY_STATE_DOC_RULE, MOVE_STATE_DOC_RULE, SWAP_STATE_DOC_RULE,
+};
 
 pub use derivation::{
     validate_new_derivation, would_create_cycle, AssetDerivation, DerivationEdge, DerivationKind,
@@ -937,4 +947,5 @@ mod tests {
     }
 
     include!("reference_identity.test.rs");
+    include!("bank_state_documents.test.rs");
 }

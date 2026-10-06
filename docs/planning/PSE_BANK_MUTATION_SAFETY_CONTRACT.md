@@ -308,8 +308,8 @@ ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範�
 ## 16. Owner への未決事項
 
 1. **Move の移動元**: Move 後の移動元 Bank は何になるべきか（空 Bank テンプレート、ファイル不在、別の初期状態）。決まるまで Move の structure verify は常に失敗する
-2. **Working / SavedCheckpoint**: Bank 操作は `.work` と `.strd` を両方動かすのか、Working だけか。片方だけだと装置の SAVE / RELOAD と食い違う（control plane §12）
-3. **`[STATES] BANK`**: active Bank が操作対象のとき、`project.work` の選択を追従させるか。現契約では project state の変更を一切認めない
+2. **Working / SavedCheckpoint**: Bank 操作は `.work` と `.strd` を両方動かすのか、Working だけか。片方だけだと装置の SAVE / RELOAD と食い違う（control plane §12）。`MO-PSE-BANK-STATE-DOC-SEMANTICS-1`（[#217](https://github.com/kaz4g/masterocta/issues/217)）は存在分類と候補 path 列挙まで記録し、**本項は未受理**（`COPY/MOVE/SWAP_STATE_DOC_RULE = BLOCKED`、`ReadinessGap::WorkingSavedCheckpointRule` は open のまま）。詳細: [`PSE_BANK_STATE_DOC_SEMANTICS.md`](./PSE_BANK_STATE_DOC_SEMANTICS.md)。
+3. **`[STATES] BANK`**: active Bank が操作対象のとき、`project.work` の選択を追従させるか。現契約では project state の変更を一切認めない。同上監査は `ACTIVE_BANK_RETARGET = UNKNOWN` とし、**本項は未受理**（whitelist に `project.work` を載せない）。
 4. **Scene / Recorder**: Bank ファイルを丸ごと動かすなら Part 内の Scene も一緒に動く、という扱いで unmodeled gap を閉じてよいか。それとも Scene の read model を先に要求するか
 5. **Backup の範囲**: 変更ファイルだけで足りるか、project directory 全体を snapshot するか
 6. **readiness の粒度**: 監査 §11 のとおり 3 操作まとめての解禁を前提にしている。Copy だけ先に fixture Apply する選択肢を残すか
