@@ -139,10 +139,32 @@ BANK_CHANGEPLAN_READINESS = NOT_READY
 
 Readiness gap remains open: one slot-correlated byte is unresolved and same-content/different-slot device evidence is absent. No internal identity rewrite can be justified yet; fail-closed until owner review or stronger device capture.
 
-Remaining blockers unchanged: #204 Arrangement mapping, Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open.
+#204 is closed. Arrangement mapping is no longer a blocker. Remaining blockers: Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open. Closing #204 does not make ChangePlan ready.
 
 ```text
 WRITE = NONE
 FIXTURE_NO_WRITE = PASS (audit reads only; PRE == POST)
 RESULT = PASS
 ```
+
+## 11. Same-content device receptacle
+
+`MO-PSE-BANK-INTERNAL-IDENTITY-DEVICE-EVIDENCE-1` adds
+`src-tauri/tests/fixtures/pse_bank_identity_device/` for a later disposable
+`P_BANK_ID` copy. The operator must use the Octatrack Bank copy, then save
+current bank A and current bank B as separate trees. Capture C is optional.
+
+Until those copies exist:
+
+```text
+DEVICE_CAPTURE = NOT_RUN
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = ABSENT
+BANK_INTERNAL_IDENTITY = UNKNOWN
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+BANK_CHANGEPLAN_READINESS = NOT_READY
+```
+
+The receptacle does not copy bank bytes, does not treat a Mac-side file copy as
+evidence, and does not promote offset 585459. A declared capture still leaves
+identity `UNKNOWN` until typed BankFile equality is proven. Matching or
+differing pinned bytes are not `PROVEN_ABSENT` or `PROVEN_PRESENT`.

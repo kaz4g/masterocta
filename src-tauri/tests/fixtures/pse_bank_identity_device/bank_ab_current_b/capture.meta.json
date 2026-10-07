@@ -1,0 +1,19 @@
+{
+  "schema": "masterocta.pse-bank-identity-capture:v1",
+  "capture_id": "2",
+  "capture_label": "bank_ab_current_b",
+  "device": "Octatrack MkII",
+  "os_version": "",
+  "project_name": "P_BANK_ID",
+  "current_bank_ui": "B",
+  "source_bank_ui": "A",
+  "destination_bank_ui": "B",
+  "copy_operation": "",
+  "save_operation": "",
+  "content_edited_after_copy": false,
+  "same_content_different_slot_evidence": false,
+  "capture_date": "",
+  "device_generated": false,
+  "synthetic_modification": false,
+  "operator_note": ""
+}
