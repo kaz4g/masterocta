@@ -157,7 +157,9 @@
         "unresolved_slot_correlated_candidate_stays_unknown",
         "candidate_offset_analysis_is_deterministic",
         "fixture_tree_hashes_unchanged_after_audit_reads",
-        "p_bank_id_copy_excludes_offset_585459_as_slot_identity"
+        "p_bank_id_copy_excludes_offset_585459_as_slot_identity",
+        "p_bank_id2_abc_equal_current_d_analysis",
+        "p_bank_id2_identity_verdict_helpers"
       ]
     },
     {

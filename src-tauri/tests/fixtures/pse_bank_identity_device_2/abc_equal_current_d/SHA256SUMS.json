@@ -1,0 +1,56 @@
+{
+  "schema": "masterocta-pse-bank-identity-device-2-capture-manifest:v1",
+  "capture": "abc_equal_current_d",
+  "files": [
+    {
+      "path": "project.work",
+      "sha256": "4d1faca72e57d643e9d85b4cb4f97aab159560a2488f2d22c8b1e12fc8e55a72",
+      "size": 3043
+    },
+    {
+      "path": "project.strd",
+      "sha256": "4d1faca72e57d643e9d85b4cb4f97aab159560a2488f2d22c8b1e12fc8e55a72",
+      "size": 3043
+    },
+    {
+      "path": "bank01.work",
+      "sha256": "d1f245100ac29fd6753e0e23be7057f488c772e756a4e1a733f271c878b489ef",
+      "size": 636113
+    },
+    {
+      "path": "bank01.strd",
+      "sha256": "d1f245100ac29fd6753e0e23be7057f488c772e756a4e1a733f271c878b489ef",
+      "size": 636113
+    },
+    {
+      "path": "bank02.work",
+      "sha256": "d977a01fe292a659e33c7b27de566bc93468ac6b45984d6a26bdae00521b1eaa",
+      "size": 636113
+    },
+    {
+      "path": "bank02.strd",
+      "sha256": "d977a01fe292a659e33c7b27de566bc93468ac6b45984d6a26bdae00521b1eaa",
+      "size": 636113
+    },
+    {
+      "path": "bank03.work",
+      "sha256": "ad88ec77ee90a6f12356546eadceab1ae3b18b20ce213a3cda2b9f3352f7175d",
+      "size": 636113
+    },
+    {
+      "path": "bank03.strd",
+      "sha256": "ad88ec77ee90a6f12356546eadceab1ae3b18b20ce213a3cda2b9f3352f7175d",
+      "size": 636113
+    },
+    {
+      "path": "bank04.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank04.strd",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    }
+  ]
+}

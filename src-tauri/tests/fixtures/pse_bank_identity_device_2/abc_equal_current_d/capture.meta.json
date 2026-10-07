@@ -1,0 +1,22 @@
+{
+  "schema": "masterocta.pse-bank-identity-device-2-capture:v1",
+  "capture_id": "1",
+  "capture_label": "abc_equal_current_d",
+  "device": "Octatrack MkII",
+  "project_name": "P_BANK_ID2",
+  "current_bank_ui": "D",
+  "source_bank_ui": "A",
+  "copied_to": ["B", "C"],
+  "comparison_banks": ["A", "B", "C"],
+  "same_content_different_slot_evidence": true,
+  "content_edited_after_copy": false,
+  "project_reloaded_after_copy": true,
+  "part_saved_before_copy": true,
+  "device_generated": true,
+  "synthetic_modification": false,
+  "os_version": "1.40 (R0173)",
+  "copy_operation": "operator note: exact menu label was not transcribed",
+  "save_operation": "operator note: exact menu label was not transcribed",
+  "capture_date": "2026-10-07",
+  "operator_note": "Current bank at capture read from [STATES] BANK=3 (UI D). Bank A copied to B and C on device; capture taken with D current. Reload performed before final save per operator. Menu labels for copy/save/part save were not transcribed."
+}
