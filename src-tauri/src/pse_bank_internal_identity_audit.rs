@@ -469,3 +469,117 @@ mod p_bank_id_device {
         }
     }
 }
+
+#[cfg(test)]
+mod p_bank_id2_device {
+    use ot_tools_io::{BankFile, OctatrackFileIO};
+    use serde_json::Value;
+    use std::path::PathBuf;
+
+    fn capture_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/pse_bank_identity_device_2/abc_equal_current_d")
+    }
+
+    fn meta_json() -> Value {
+        let text = std::fs::read_to_string(capture_root().join("capture.meta.json"))
+            .expect("capture.meta");
+        serde_json::from_str(&text).expect("capture.meta json")
+    }
+
+    fn device_generated() -> bool {
+        meta_json()
+            .get("device_generated")
+            .and_then(|v| v.as_bool())
+            == Some(true)
+    }
+
+    fn read_bank_file(name: &str) -> Vec<u8> {
+        let path = capture_root().join(name);
+        let metadata = std::fs::symlink_metadata(&path).unwrap();
+        assert!(!metadata.file_type().is_symlink());
+        assert!(metadata.is_file());
+        #[cfg(unix)]
+        {
+            use std::io::Read;
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&path)
+                .unwrap();
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            bytes
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::read(&path).unwrap()
+        }
+    }
+
+    fn decode(name: &str) -> BankFile {
+        BankFile::from_bytes(&read_bank_file(name)).unwrap()
+    }
+
+    fn assert_typed_equal(left: &BankFile, right: &BankFile, label: &str) {
+        assert_eq!(left.patterns, right.patterns, "{label} patterns");
+        assert_eq!(left.parts.saved, right.parts.saved, "{label} saved parts");
+        assert_eq!(
+            left.parts.unsaved, right.parts.unsaved,
+            "{label} unsaved parts"
+        );
+        assert_eq!(
+            left.parts_saved_state, right.parts_saved_state,
+            "{label} saved state"
+        );
+        assert_eq!(
+            left.parts_edited_bitmask, right.parts_edited_bitmask,
+            "{label} bitmask"
+        );
+        assert_eq!(left.part_names, right.part_names, "{label} part_names");
+    }
+
+    #[test]
+    fn p_bank_id2_abc_equal_current_d_analysis() {
+        let meta = meta_json();
+        assert_eq!(meta["project_name"].as_str(), Some("P_BANK_ID2"));
+        assert_eq!(meta["current_bank_ui"].as_str(), Some("D"));
+        if !device_generated() {
+            return;
+        }
+
+        let project = read_bank_file("project.work");
+        let project_text = String::from_utf8_lossy(&project);
+        assert!(
+            project_text.contains("BANK=3"),
+            "capture must keep current bank D (raw 3) in project.work"
+        );
+
+        for suffix in ["work", "strd"] {
+            let bank_a = decode(&format!("bank01.{suffix}"));
+            let bank_b = decode(&format!("bank02.{suffix}"));
+            let bank_c = decode(&format!("bank03.{suffix}"));
+            assert_typed_equal(&bank_a, &bank_b, &format!("bank01 vs bank02 .{suffix}"));
+            assert_typed_equal(&bank_a, &bank_c, &format!("bank01 vs bank03 .{suffix}"));
+
+            let bytes: Vec<_> = (1..=3)
+                .map(|slot| read_bank_file(&format!("bank0{slot}.{suffix}")))
+                .collect();
+            assert_eq!(bytes[0].len(), 636_113);
+            for left in 0..3 {
+                for right in (left + 1)..3 {
+                    for offset in 0..bytes[left].len() - 2 {
+                        assert_eq!(
+                            bytes[left][offset], bytes[right][offset],
+                            "raw byte mismatch at {offset} in .{suffix} after typed gate"
+                        );
+                    }
+                }
+            }
+            assert_eq!(bytes[0][585_459], bytes[1][585_459]);
+            assert_eq!(bytes[0][585_459], bytes[2][585_459]);
+            assert_eq!(bank_a.encode().unwrap(), bytes[0]);
+        }
+    }
+}

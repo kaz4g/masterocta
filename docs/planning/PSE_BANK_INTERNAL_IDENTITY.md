@@ -197,3 +197,28 @@ RESULT = STOP_WITH_FINDINGS
 This is not `PROVEN_ABSENT`: the bank copy left unsaved part parameters and,
 on Bank C, the edited bitmask different from Bank A. `ReadinessGap::BankInternalIdentity`
 stays open. No Bank write path was added.
+
+## 12. Same-content capture with current bank D (evidence-2)
+
+`MO-PSE-BANK-INTERNAL-IDENTITY-DEVICE-EVIDENCE-2` uses disposable `P_BANK_ID2`
+under `pse_bank_identity_device_2/abc_equal_current_d/`. Evidence-1 `P_BANK_ID`
+stays read-only.
+
+Procedure: stabilize Bank A, device-copy A → B and A → C, switch **current bank
+to D** (not A/B/C), save, reload when possible, save again, then capture once.
+Offset `585459` remains **content-dependent** from §11; do not reopen it as a
+slot-identity candidate without new reviewed evidence.
+
+Typed equality across `bank01`–`bank03` (`.work` and `.strd` separately) must
+pass before raw slot analysis. The Rust test
+`p_bank_id2_abc_equal_current_d_analysis` enforces the typed gate when
+`device_generated` is true.
+
+```text
+DEVICE_CAPTURE = NOT_RUN
+TYPED_CONTENT_EQUAL_A_B_C = NOT_RUN
+OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+BANK_CHANGEPLAN_READINESS = NOT_READY
+RESULT = STOP_FOR_DEVICE
+```

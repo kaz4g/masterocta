@@ -1,0 +1,22 @@
+{
+  "schema": "masterocta.pse-bank-identity-device-2-capture:v1",
+  "capture_id": "1",
+  "capture_label": "abc_equal_current_d",
+  "device": "Octatrack MkII",
+  "project_name": "P_BANK_ID2",
+  "current_bank_ui": "D",
+  "source_bank_ui": "A",
+  "copied_to": ["B", "C"],
+  "comparison_banks": ["A", "B", "C"],
+  "same_content_different_slot_evidence": false,
+  "content_edited_after_copy": false,
+  "project_reloaded_after_copy": false,
+  "part_saved_before_copy": false,
+  "device_generated": false,
+  "synthetic_modification": false,
+  "os_version": "",
+  "copy_operation": "",
+  "save_operation": "",
+  "capture_date": "",
+  "operator_note": "Fill after device capture. Record exact menu labels; do not invent names. Current bank at capture must be D (BANK=3); compare bank01–bank03 only."
+}
