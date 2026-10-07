@@ -109,6 +109,9 @@ SLOT_CORRELATED_CANDIDATES_UNRESOLVED = offset 585459 (0x40 vs 0x6c)
 SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = ABSENT
 ```
 
+Section 11 later records `P_BANK_ID` copies. Those copies exclude offset
+585459. They do not replace this P_TEST judgment with `PROVEN_ABSENT`.
+
 Declared per capture via `capture.meta.json` → `same_content_different_slot_evidence` (not inferred from raw `bank01.*` vs `bank02.*` equality — identity bytes would prevent byte-identical files even when musical content matches). P_TEST captures leave this flag unset / false; Bank A vs B **content** differs per operator meta.
 
 Working/SavedCheckpoint ([#217](https://github.com/kaz4g/masterocta/issues/217)) remains **OPEN**; E/F observations are not reinterpreted here.
@@ -139,10 +142,58 @@ BANK_CHANGEPLAN_READINESS = NOT_READY
 
 Readiness gap remains open: one slot-correlated byte is unresolved and same-content/different-slot device evidence is absent. No internal identity rewrite can be justified yet; fail-closed until owner review or stronger device capture.
 
-Remaining blockers unchanged: #204 Arrangement mapping, Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open.
+#204 is closed. Arrangement mapping is no longer a blocker. Remaining blockers: Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open. Closing #204 does not make ChangePlan ready.
 
 ```text
 WRITE = NONE
 FIXTURE_NO_WRITE = PASS (audit reads only; PRE == POST)
 RESULT = PASS
 ```
+
+## 11. Same-content device captures
+
+`MO-PSE-BANK-INTERNAL-IDENTITY-DEVICE-EVIDENCE-1` committed disposable
+`P_BANK_ID` copies under `pse_bank_identity_device/`. OS string in
+`project.work` is `R0173` / `1.40`. Current bank comes from `[STATES] BANK`
+with the already proven zero-based index: capture 1 is `0` (UI A), capture 2
+is `1` (UI B), capture 3 is `2` (UI C). Exact copy and save menu labels were
+not transcribed. `bank01` and `bank02` bytes are identical across the three
+saves. `bank03` changes only in capture 3. Each compared `.work` matches its
+`.strd`.
+
+Offset `585459` is `108` (`0x6c`) on `bank01`, `bank02`, copied `bank03`, and
+the untouched `bank04` template in capture 1. It does not vary by slot, so the
+§6 candidate is excluded. `BankFile::encode()` reproduces `bank01.work`, so
+the file is the typed struct.
+
+Typed comparison, checksum ignored:
+
+| Field | bank01 vs bank02 | bank01 vs copied bank03 |
+| --- | --- | --- |
+| `patterns` | equal | equal |
+| saved parts | equal | equal |
+| `part_names` | equal | equal |
+| `part_id` | 0..3 | 0..3 |
+| unsaved part 0 `audio_track_volumes` | track 7 main 108 vs 97 | equal |
+| unsaved part 0 `audio_track_params_values` | differ | differ, and bank02 matches bank03 |
+| `parts_edited_bitmask` | 1 vs 1 | 1 vs 0 |
+| checksum | differs | differs |
+
+No non-checksum byte has three distinct values across those three files.
+Track 7 main `108` is the `AudioTrackVolume` default. The copied banks share
+the unsaved parameter bytes instead of each taking a slot number.
+
+```text
+DEVICE_CAPTURE = PASS
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = INSUFFICIENT
+TYPED_CONTENT_EQUAL = NO
+OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
+BANK_INTERNAL_IDENTITY = NO_INTERNAL_IDENTITY_OBSERVED
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+BANK_CHANGEPLAN_READINESS = NOT_READY
+RESULT = STOP_WITH_FINDINGS
+```
+
+This is not `PROVEN_ABSENT`: the bank copy left unsaved part parameters and,
+on Bank C, the edited bitmask different from Bank A. `ReadinessGap::BankInternalIdentity`
+stays open. No Bank write path was added.

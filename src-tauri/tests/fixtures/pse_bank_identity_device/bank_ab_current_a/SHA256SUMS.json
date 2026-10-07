@@ -1,0 +1,51 @@
+{
+  "schema": "masterocta-pse-bank-identity-capture-manifest:v1",
+  "capture": "bank_ab_current_a",
+  "files": [
+    {
+      "path": "project.work",
+      "sha256": "9d2ee446f02cd7dff501745a87768887475ecbf2efb951a43f86b243847c0401",
+      "size": 3195
+    },
+    {
+      "path": "project.strd",
+      "sha256": "9d2ee446f02cd7dff501745a87768887475ecbf2efb951a43f86b243847c0401",
+      "size": 3195
+    },
+    {
+      "path": "bank01.work",
+      "sha256": "cd23f6adb72ea934297bd71161dda5884e56f8e4daced74d588c7555c673da48",
+      "size": 636113
+    },
+    {
+      "path": "bank01.strd",
+      "sha256": "cd23f6adb72ea934297bd71161dda5884e56f8e4daced74d588c7555c673da48",
+      "size": 636113
+    },
+    {
+      "path": "bank02.work",
+      "sha256": "95df787ab7a6262af8393ee5de8b343c2b84003003673a2f6443a5e3f5fe2154",
+      "size": 636113
+    },
+    {
+      "path": "bank02.strd",
+      "sha256": "95df787ab7a6262af8393ee5de8b343c2b84003003673a2f6443a5e3f5fe2154",
+      "size": 636113
+    },
+    {
+      "path": "bank03.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank03.strd",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank04.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "masterocta.pse-bank-identity-capture:v1",
+  "capture_id": "3",
+  "capture_label": "bank_abc_slot_c",
+  "device": "Octatrack MkII",
+  "os_version": "1.40 (R0173)",
+  "project_name": "P_BANK_ID",
+  "current_bank_ui": "C",
+  "source_bank_ui": "A",
+  "destination_bank_ui": "C",
+  "copy_operation": "operator note: exact menu label was not transcribed",
+  "save_operation": "operator note: exact menu label was not transcribed",
+  "content_edited_after_copy": false,
+  "same_content_different_slot_evidence": true,
+  "capture_date": "2026-10-07",
+  "device_generated": true,
+  "synthetic_modification": false,
+  "operator_note": "Current bank is project.work [STATES] BANK=2, read with the already proven zero-based bank index as UI C. bank03 changed in this capture. Exact copy and save menu labels were not transcribed."
+}

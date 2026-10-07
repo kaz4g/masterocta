@@ -320,3 +320,152 @@ mod tests {
         let _ = fs::remove_file(outside);
     }
 }
+
+#[cfg(test)]
+mod p_bank_id_device {
+    use ot_tools_io::{BankFile, OctatrackFileIO};
+    use std::path::PathBuf;
+
+    fn device_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pse_bank_identity_device")
+    }
+
+    fn read_bank(capture: &str, file: &str) -> Vec<u8> {
+        let path = device_root().join(capture).join(file);
+        // Reuse the multi-device reader only for symlink rejection shape.
+        // This fixture has its own root, so open it directly with the same checks.
+        let metadata = std::fs::symlink_metadata(&path).unwrap();
+        assert!(!metadata.file_type().is_symlink());
+        assert!(metadata.is_file());
+        let root = device_root().canonicalize().unwrap();
+        let parent = path.parent().unwrap().canonicalize().unwrap();
+        assert!(parent.starts_with(&root));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(&path)
+                .unwrap();
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut file, &mut bytes).unwrap();
+            bytes
+        }
+        #[cfg(not(unix))]
+        {
+            std::fs::read(&path).unwrap()
+        }
+    }
+
+    fn volume_lines(left: &BankFile, right: &BankFile) -> Vec<String> {
+        (0..8)
+            .filter_map(|index| {
+                let before = left.parts.unsaved[0].audio_track_volumes[index];
+                let after = right.parts.unsaved[0].audio_track_volumes[index];
+                (before != after).then(|| {
+                    format!(
+                        "track {index} main {}/{} cue {}/{}",
+                        before.main, after.main, before.cue, after.cue
+                    )
+                })
+            })
+            .collect()
+    }
+
+    fn decode(capture: &str, file: &str) -> BankFile {
+        BankFile::from_bytes(&read_bank(capture, file)).unwrap()
+    }
+
+    #[test]
+    fn p_bank_id_copy_excludes_offset_585459_as_slot_identity() {
+        let captures = ["bank_ab_current_a", "bank_ab_current_b", "bank_abc_slot_c"];
+        let before: Vec<_> = captures
+            .iter()
+            .map(|capture| {
+                (
+                    read_bank(capture, "bank01.work"),
+                    read_bank(capture, "bank02.work"),
+                    read_bank(capture, "bank03.work"),
+                )
+            })
+            .collect();
+        for (capture, banks) in captures.iter().zip(before.iter()) {
+            for (file, bytes) in [
+                ("bank01.work", &banks.0),
+                ("bank02.work", &banks.1),
+                ("bank03.work", &banks.2),
+            ] {
+                assert_eq!(bytes.len(), 636_113, "{capture}/{file}");
+                assert_eq!(
+                    bytes,
+                    &read_bank(capture, &file.replace(".work", ".strd")),
+                    "{capture} {file} work/strd"
+                );
+                assert_eq!(bytes[585_459], 108, "{capture}/{file} pinned offset");
+            }
+        }
+        assert_eq!(before[0].0, before[1].0);
+        assert_eq!(before[0].0, before[2].0);
+        assert_eq!(before[0].1, before[1].1);
+        assert_eq!(before[0].1, before[2].1);
+        assert_eq!(before[0].2, before[1].2);
+        assert_ne!(before[0].2, before[2].2);
+        assert_eq!(read_bank("bank_ab_current_a", "bank04.work")[585_459], 108);
+
+        let bank_a = decode("bank_ab_current_a", "bank01.work");
+        let bank_b = decode("bank_ab_current_a", "bank02.work");
+        let bank_c = decode("bank_abc_slot_c", "bank03.work");
+        assert!(bank_a.patterns == bank_b.patterns && bank_a.patterns == bank_c.patterns);
+        assert_eq!(bank_a.part_names, bank_b.part_names);
+        assert_eq!(bank_a.part_names, bank_c.part_names);
+        assert_eq!(bank_a.parts.saved, bank_b.parts.saved);
+        assert_eq!(bank_a.parts.saved, bank_c.parts.saved);
+        assert_eq!(bank_a.parts_edited_bitmask, 1);
+        assert_eq!(bank_b.parts_edited_bitmask, 1);
+        assert_eq!(bank_c.parts_edited_bitmask, 0);
+        for index in 0..4 {
+            assert_eq!(bank_a.parts.unsaved[index].part_id, index as u8);
+            assert_eq!(bank_b.parts.unsaved[index].part_id, index as u8);
+            assert_eq!(bank_c.parts.unsaved[index].part_id, index as u8);
+        }
+        assert_eq!(
+            volume_lines(&bank_a, &bank_b),
+            vec!["track 7 main 108/97 cue 108/108".to_string()]
+        );
+        assert!(volume_lines(&bank_a, &bank_c).is_empty());
+        assert_ne!(
+            bank_a.parts.unsaved[0].audio_track_params_values,
+            bank_b.parts.unsaved[0].audio_track_params_values
+        );
+        assert_eq!(
+            bank_b.parts.unsaved[0].audio_track_params_values,
+            bank_c.parts.unsaved[0].audio_track_params_values
+        );
+        assert_eq!(
+            bank_a.encode().unwrap(),
+            read_bank("bank_ab_current_a", "bank01.work")
+        );
+
+        let mut distinct_payload = Vec::new();
+        let a_bytes = &before[0].0;
+        let b_bytes = &before[0].1;
+        let c_bytes = &before[2].2;
+        for offset in 0..a_bytes.len() - 2 {
+            let values = [a_bytes[offset], b_bytes[offset], c_bytes[offset]];
+            if values[0] != values[1] && values[1] != values[2] && values[0] != values[2] {
+                distinct_payload.push(offset);
+            }
+        }
+        assert!(
+            distinct_payload.is_empty(),
+            "non-checksum bytes with three slot values: {distinct_payload:?}"
+        );
+
+        for (capture, banks) in captures.iter().zip(before.iter()) {
+            assert_eq!(read_bank(capture, "bank01.work"), banks.0);
+            assert_eq!(read_bank(capture, "bank02.work"), banks.1);
+            assert_eq!(read_bank(capture, "bank03.work"), banks.2);
+        }
+    }
+}
