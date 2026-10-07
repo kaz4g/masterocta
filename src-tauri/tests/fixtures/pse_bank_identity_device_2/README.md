@@ -8,12 +8,13 @@ Disposable project: `P_BANK_ID2`. Do not reuse or overwrite `P_BANK_ID` (evidenc
 After device Bank Copy (A → B and A → C), switch **current bank to D** (not A/B/C), save, reload if possible, save again, then copy project files into `abc_equal_current_d/` without nesting another folder.
 
 ```text
-DEVICE_CAPTURE = NOT_RUN
-TYPED_CONTENT_EQUAL_A_B_C = NOT_RUN
+DEVICE_CAPTURE = PASS
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = INSUFFICIENT
+TYPED_CONTENT_EQUAL_A_B_C = NO
 OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
 READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
-RESULT = STOP_FOR_DEVICE
+RESULT = STOP_WITH_FINDINGS
 ```
 
 See `docs/planning/PSE_BANK_INTERNAL_IDENTITY.md` §12.

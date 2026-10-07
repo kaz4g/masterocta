@@ -12,15 +12,16 @@ import {
 } from "./pse-bank-identity-device-2.mjs";
 import { projectStatesTemplate, bankRawForUi } from "./pse-bank-identity-device.mjs";
 
-test("P_BANK_ID2 receptacle waits for device capture", () => {
+test("committed P_BANK_ID2 capture stops before slot-identity raw verdict", () => {
   const status = captureStatus(FIXTURE_ROOT);
-  assert.equal(status.device_capture, "NOT_RUN");
-  assert.equal(status.typed_content_equal_a_b_c, "NOT_RUN");
+  assert.equal(status.device_capture, "PASS");
+  assert.equal(status.same_content_different_slot_device_evidence, "INSUFFICIENT");
+  assert.equal(status.typed_content_equal_a_b_c, "NO");
   assert.equal(status.offset_585459_classification, "CONTENT_DEPENDENT");
   assert.equal(status.readiness_gap_bank_internal_identity, "OPEN");
-  assert.equal(status.result, "STOP_FOR_DEVICE");
+  assert.equal(status.result, "STOP_WITH_FINDINGS");
   const analyzed = analyzeCapture(PLANNED_CAPTURE.name, FIXTURE_ROOT);
-  assert.equal(analyzed.raw_diff_class, "NOT_RUN");
+  assert.notEqual(analyzed.raw_diff_class, "NOT_RUN");
 });
 
 test("symlinked capture directory is rejected", () => {

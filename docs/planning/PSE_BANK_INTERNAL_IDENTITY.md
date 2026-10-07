@@ -214,11 +214,31 @@ pass before raw slot analysis. The Rust test
 `p_bank_id2_abc_equal_current_d_analysis` enforces the typed gate when
 `device_generated` is true.
 
+Octatrack MkII OS 1.40 (R0173). Capture has `[STATES] BANK=3` (UI D). Each
+`.work` matches its `.strd`. Offset `585459` is `108` on `bank01`–`bank03` and
+untouched `bank04`.
+
+Typed comparison (checksum ignored) across `bank01`–`bank03`:
+
+| Field | bank01 vs bank02 | bank01 vs bank03 | bank02 vs bank03 |
+| --- | --- | --- | --- |
+| saved parts | equal | equal | equal |
+| `part_names` | equal | equal | equal |
+| `parts_saved_state` | equal | equal | equal |
+| `patterns` | differ | equal | differ |
+| unsaved parts | differ | differ | equal |
+| `parts_edited_bitmask` | 1 vs 0 | 1 vs 0 | 0 vs 0 |
+
+`TYPED_CONTENT_EQUAL_A_B_C = NO`. Raw slot-identity verdict is not advanced.
+No non-checksum byte takes three distinct values across the three banks.
+
 ```text
-DEVICE_CAPTURE = NOT_RUN
-TYPED_CONTENT_EQUAL_A_B_C = NOT_RUN
+DEVICE_CAPTURE = PASS
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = INSUFFICIENT
+TYPED_CONTENT_EQUAL_A_B_C = NO
 OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
+BANK_INTERNAL_IDENTITY = NO_INTERNAL_IDENTITY_OBSERVED
 READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
-RESULT = STOP_FOR_DEVICE
+RESULT = STOP_WITH_FINDINGS
 ```

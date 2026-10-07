@@ -240,15 +240,29 @@ export function captureStatus(root = FIXTURE_ROOT) {
     row = { capture_label: planned.name, capture_status: "REJECTED", error: err.message };
   }
   const deviceCapture = row.capture_status === "PRESENT" ? "PASS" : "NOT_RUN";
+  let typedEqual = "NOT_RUN";
+  let sameContent = "NOT_RUN";
+  let result = "STOP_FOR_DEVICE";
+  if (deviceCapture === "PASS") {
+    const captureDir = resolveCaptureDir(planned.name, root);
+    const bank01 = readFileSync(path.join(captureDir, "bank01.work"));
+    const bank02 = readFileSync(path.join(captureDir, "bank02.work"));
+    const bank03 = readFileSync(path.join(captureDir, "bank03.work"));
+    const payloadEqual = bank01.equals(bank02) && bank01.equals(bank03);
+    typedEqual = payloadEqual ? "YES" : "NO";
+    sameContent = payloadEqual ? "SUFFICIENT" : "INSUFFICIENT";
+    result = payloadEqual ? "PENDING_RAW" : "STOP_WITH_FINDINGS";
+  }
   return {
     work_id: "MO-PSE-BANK-INTERNAL-IDENTITY-DEVICE-EVIDENCE-2",
     device_capture: deviceCapture,
-    typed_content_equal_a_b_c: deviceCapture === "PASS" ? "PENDING_RUST" : "NOT_RUN",
+    same_content_different_slot_device_evidence: sameContent,
+    typed_content_equal_a_b_c: typedEqual,
     offset_585459_classification: "CONTENT_DEPENDENT",
     bank_internal_identity: "NO_INTERNAL_IDENTITY_OBSERVED",
     readiness_gap_bank_internal_identity: "OPEN",
     bank_changeplan_readiness: "NOT_READY",
-    result: deviceCapture === "PASS" ? "PENDING_ANALYSIS" : "STOP_FOR_DEVICE",
+    result,
     capture: row,
   };
 }

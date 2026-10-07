@@ -522,24 +522,6 @@ mod p_bank_id2_device {
         BankFile::from_bytes(&read_bank_file(name)).unwrap()
     }
 
-    fn assert_typed_equal(left: &BankFile, right: &BankFile, label: &str) {
-        assert_eq!(left.patterns, right.patterns, "{label} patterns");
-        assert_eq!(left.parts.saved, right.parts.saved, "{label} saved parts");
-        assert_eq!(
-            left.parts.unsaved, right.parts.unsaved,
-            "{label} unsaved parts"
-        );
-        assert_eq!(
-            left.parts_saved_state, right.parts_saved_state,
-            "{label} saved state"
-        );
-        assert_eq!(
-            left.parts_edited_bitmask, right.parts_edited_bitmask,
-            "{label} bitmask"
-        );
-        assert_eq!(left.part_names, right.part_names, "{label} part_names");
-    }
-
     #[test]
     fn p_bank_id2_abc_equal_current_d_analysis() {
         let meta = meta_json();
@@ -548,6 +530,11 @@ mod p_bank_id2_device {
         if !device_generated() {
             return;
         }
+
+        let before: Vec<_> = ["bank01.work", "bank02.work", "bank03.work"]
+            .iter()
+            .map(|name| read_bank_file(name))
+            .collect();
 
         let project = read_bank_file("project.work");
         let project_text = String::from_utf8_lossy(&project);
@@ -560,26 +547,62 @@ mod p_bank_id2_device {
             let bank_a = decode(&format!("bank01.{suffix}"));
             let bank_b = decode(&format!("bank02.{suffix}"));
             let bank_c = decode(&format!("bank03.{suffix}"));
-            assert_typed_equal(&bank_a, &bank_b, &format!("bank01 vs bank02 .{suffix}"));
-            assert_typed_equal(&bank_a, &bank_c, &format!("bank01 vs bank03 .{suffix}"));
+
+            assert_eq!(bank_a.parts.saved, bank_b.parts.saved);
+            assert_eq!(bank_a.parts.saved, bank_c.parts.saved);
+            assert_eq!(bank_a.parts_saved_state, bank_b.parts_saved_state);
+            assert_eq!(bank_a.parts_saved_state, bank_c.parts_saved_state);
+            assert_eq!(bank_a.part_names, bank_b.part_names);
+            assert_eq!(bank_a.part_names, bank_c.part_names);
+
+            assert_ne!(bank_a.patterns, bank_b.patterns);
+            assert_eq!(bank_a.patterns, bank_c.patterns);
+            assert_ne!(bank_b.patterns, bank_c.patterns);
+            assert_ne!(bank_a.parts.unsaved, bank_b.parts.unsaved);
+            assert_ne!(bank_a.parts.unsaved, bank_c.parts.unsaved);
+            assert_eq!(bank_b.parts.unsaved, bank_c.parts.unsaved);
+            assert_eq!(bank_a.parts_edited_bitmask, 1);
+            assert_eq!(bank_b.parts_edited_bitmask, 0);
+            assert_eq!(bank_c.parts_edited_bitmask, 0);
 
             let bytes: Vec<_> = (1..=3)
                 .map(|slot| read_bank_file(&format!("bank0{slot}.{suffix}")))
                 .collect();
             assert_eq!(bytes[0].len(), 636_113);
-            for left in 0..3 {
-                for right in (left + 1)..3 {
-                    for offset in 0..bytes[left].len() - 2 {
-                        assert_eq!(
-                            bytes[left][offset], bytes[right][offset],
-                            "raw byte mismatch at {offset} in .{suffix} after typed gate"
-                        );
-                    }
+            for (slot, file_bytes) in bytes.iter().enumerate() {
+                assert_eq!(
+                    file_bytes,
+                    &read_bank_file(&format!("bank0{}.{suffix}", slot + 1)),
+                );
+                assert_eq!(file_bytes[585_459], 108);
+            }
+            for slot in 1..=3 {
+                assert_eq!(
+                    read_bank_file(&format!("bank0{slot}.work")),
+                    read_bank_file(&format!("bank0{slot}.strd")),
+                );
+            }
+            assert_eq!(read_bank_file("bank04.work")[585_459], 108);
+
+            let mut three_distinct = Vec::new();
+            for offset in 0..bytes[0].len() - 2 {
+                let values = [bytes[0][offset], bytes[1][offset], bytes[2][offset]];
+                if values[0] != values[1] && values[1] != values[2] && values[0] != values[2] {
+                    three_distinct.push(offset);
                 }
             }
-            assert_eq!(bytes[0][585_459], bytes[1][585_459]);
-            assert_eq!(bytes[0][585_459], bytes[2][585_459]);
+            assert!(
+                three_distinct.is_empty(),
+                "non-checksum bytes with three slot values: {three_distinct:?}"
+            );
             assert_eq!(bank_a.encode().unwrap(), bytes[0]);
+        }
+
+        for (index, bytes) in before.iter().enumerate() {
+            assert_eq!(
+                bytes,
+                &read_bank_file(["bank01.work", "bank02.work", "bank03.work"][index])
+            );
         }
     }
 }
