@@ -309,12 +309,13 @@ pub enum ProjectPatternSelection {
 }
 
 /// `project.work` `[STATES] ARRANGEMENT` uses the same zero-based index as
-/// [`ArrangementIndex`].
+/// [`ArrangementIndex`] on the evidenced firmware only.
 ///
 /// Disposable `P_ARR_TEST` on Octatrack MkII OS 1.40 (R0173) stored UI
 /// Arrangement 1 / 2 / 8 as raw `0` / `1` / `7`. The edited names `ARR1-TEST`,
 /// `ARR2-TEST`, and `ARR8-TEST` remained in `arr01.work`, `arr02.work`, and
 /// `arr08.work`. A value outside `0..8` is unrecognized and is not clamped.
+/// Any other OS revision or release, including 1.40B, stays unrecognized.
 /// `ARRANGEMENT_MODE` is not modeled.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectArrangementSelection {
@@ -351,7 +352,23 @@ pub fn project_pattern_selection(raw: u8) -> ProjectPatternSelection {
     }
 }
 
-pub fn project_arrangement_selection(raw: u8) -> ProjectArrangementSelection {
+/// Octatrack MkII revision whose arrangement slots were captured.
+pub const ARRANGEMENT_EVIDENCED_OS_REVISION: &str = "R0173";
+/// Octatrack OS release whose arrangement slots were captured. `1.40B` is not this release.
+pub const ARRANGEMENT_EVIDENCED_OS_RELEASE: &str = "1.40";
+
+/// Map `[STATES] ARRANGEMENT` only for [`ARRANGEMENT_EVIDENCED_OS_REVISION`] /
+/// [`ARRANGEMENT_EVIDENCED_OS_RELEASE`]. Other versions keep `raw` unrecognized.
+pub fn project_arrangement_selection(
+    raw: u8,
+    os_revision: &str,
+    os_release: &str,
+) -> ProjectArrangementSelection {
+    if os_revision != ARRANGEMENT_EVIDENCED_OS_REVISION
+        || os_release != ARRANGEMENT_EVIDENCED_OS_RELEASE
+    {
+        return ProjectArrangementSelection::Unrecognized(raw);
+    }
     match ArrangementIndex::new(raw) {
         Ok(index) => ProjectArrangementSelection::Selected(index),
         Err(_) => ProjectArrangementSelection::Unrecognized(raw),
@@ -512,7 +529,11 @@ mod tests {
     #[test]
     fn project_arrangement_selection_maps_zero_based_file_slots() {
         for raw in [0_u8, 1, 7] {
-            let selected = project_arrangement_selection(raw);
+            let selected = project_arrangement_selection(
+                raw,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            );
             let ProjectArrangementSelection::Selected(index) = selected else {
                 panic!("arrangement {raw} must be a file slot");
             };
@@ -524,13 +545,42 @@ mod tests {
     #[test]
     fn project_arrangement_selection_keeps_out_of_range_raw() {
         assert_eq!(
-            project_arrangement_selection(8),
+            project_arrangement_selection(
+                8,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            ),
             ProjectArrangementSelection::Unrecognized(8)
         );
         assert_eq!(
-            project_arrangement_selection(255),
+            project_arrangement_selection(
+                255,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            ),
             ProjectArrangementSelection::Unrecognized(255)
         );
+    }
+
+    #[test]
+    fn project_arrangement_selection_keeps_unevidenced_firmware_unrecognized() {
+        for (revision, release) in [
+            ("R0177", "1.40B"),
+            ("R0173", "1.40A"),
+            ("R0174", "1.40"),
+            ("", ""),
+        ] {
+            assert_eq!(
+                project_arrangement_selection(0, revision, release),
+                ProjectArrangementSelection::Unrecognized(0),
+                "{revision} {release}"
+            );
+            assert_eq!(
+                project_arrangement_selection(7, revision, release),
+                ProjectArrangementSelection::Unrecognized(7),
+                "{revision} {release}"
+            );
+        }
     }
 
     #[test]

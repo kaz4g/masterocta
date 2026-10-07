@@ -11172,8 +11172,8 @@ mod tests {
         assert_eq!(
             state.arrangement,
             Some(
-                crate::project_structure_command::ProjectArrangementSelectionDto::Selected {
-                    index: 0
+                crate::project_structure_command::ProjectArrangementSelectionDto::Unrecognized {
+                    raw: 0
                 }
             )
         );

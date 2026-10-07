@@ -34,7 +34,7 @@ APPLY_READINESS        = NOT_READY
 | `ReadinessGap` | 未解決の理由 | 追跡 |
 | --- | --- | --- |
 | `BankChangePlan` | #181 は `BANK_CHANGEPLAN_READINESS = NOT_READY` | #181 |
-| `ArrangementFileSlot` | `[STATES] ARRANGEMENT` が `arr01`–`arr08` に対応付いていない。`P_ARR_TEST` の UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08` で解決済み | #204 |
+| `ArrangementFileSlot` | `[STATES] ARRANGEMENT` のファイル対応は MkII `R0173` / OS `1.40` の `P_ARR_TEST`（UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08`）でのみ解決済み。それ以外の OS は `Unrecognized` のまま | #204 |
 | `ArrangerPatternReferences` | Arranger `pattern_id`（`n_rows == 0` を含む）の番号付けが未証明 | 監査 §7C / §8 |
 | `BankInternalIdentity` | A/B/C/E/F 監査後も `BANK_INTERNAL_IDENTITY = NOT_OBSERVED`（[`PSE_BANK_INTERNAL_IDENTITY.md`](./PSE_BANK_INTERNAL_IDENTITY.md) #221） | 監査 §7C |
 | `SceneAndRecorderDependencies` | Scene / Recorder は unmodeled。unmodeled 依存は計画を失敗で閉じる | 監査 §7C、control plane §6 |

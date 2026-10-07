@@ -119,14 +119,25 @@ fn project_state_from_bytes(
     };
     // Includes the verified VERSION=19 / R0173 / 1.40 fixture exception.
     // Upstream `check_compatible_os_version` alone rejects that file.
-    match evaluate_project_compatibility(&project).compatibility {
+    // Arrangement slots are evidenced only for that same R0173 / 1.40 pair.
+    let decision = evaluate_project_compatibility(&project);
+    let (os_revision, os_release) = decision
+        .os_version
+        .as_ref()
+        .map(|version| (version.revision.as_str(), version.release.as_str()))
+        .unwrap_or(("", ""));
+    match decision.compatibility {
         ProjectCompatibility::Supported { .. } => ProjectStateDocument {
             role: StateDocumentRole::Working,
             source_relative_path,
             parse_status: StateDocumentParseStatus::Parsed,
             bank: Some(project_bank_selection(project.states.bank)),
             pattern: Some(project_pattern_selection(project.states.pattern)),
-            arrangement: Some(project_arrangement_selection(project.states.arrangement)),
+            arrangement: Some(project_arrangement_selection(
+                project.states.arrangement,
+                os_revision,
+                os_release,
+            )),
             master_track: Some(project.settings.control.audio.master_track),
         },
         ProjectCompatibility::UnsupportedVersion => {
@@ -717,11 +728,13 @@ mod tests {
         assert_eq!(bank.file_number(), 1);
         assert_eq!(pattern, PatternIndex::new(0).unwrap());
         assert_eq!(state.master_track, Some(true));
+        // `real_device` and `multipart` are OS 1.40B. Arrangement slots are
+        // evidenced only for R0173 / 1.40, so an in-range raw stays unrecognized.
         assert_eq!(
             state.arrangement,
             Some(
-                ot_domain::project_structure::ProjectArrangementSelection::Selected(
-                    ot_domain::project_structure::ArrangementIndex::new(arrangement_raw).unwrap()
+                ot_domain::project_structure::ProjectArrangementSelection::Unrecognized(
+                    arrangement_raw
                 )
             )
         );

@@ -4,14 +4,19 @@
  *
  * status / inspect / verify-manifest do not write.
  * write-manifest writes SHA256SUMS.json only, and only when project.work
- * is a regular file. It never rewrites project.work or arrNN bytes.
+ * is a regular file. A symlink or other non-regular destination is refused
+ * and is not followed. It never rewrites project.work or arrNN bytes.
  * This script does not assign an arrangement slot in domain code.
  */
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants,
   lstatSync,
+  openSync,
   readFileSync,
   readdirSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -272,18 +277,57 @@ export function captureStatus(root = FIXTURE_ROOT) {
     }
   });
   const present = captures.filter((entry) => entry.capture_status === "PRESENT");
-  const rule = classifyArrangementRule(
-    present.map((entry) => ({ ui: entry.selected_arrangement_ui, raw: entry.arrangement })),
-  );
+  const evidence = PLANNED_CAPTURES.map((planned) => {
+    const entry = captures.find((candidate) => candidate.capture_label === planned.name);
+    if (!entry || entry.capture_status !== "PRESENT" || !Number.isInteger(entry.arrangement)) {
+      return null;
+    }
+    return {
+      ui: planned.ui,
+      raw: entry.arrangement,
+      expected: planned.index,
+    };
+  });
+  const everyCaptureHasInteger = evidence.every((row) => row !== null);
+  const rule = everyCaptureHasInteger
+    ? classifyArrangementRule(evidence.map((row) => ({ ui: row.ui, raw: row.raw })))
+    : "UNKNOWN";
+  const everyRawMatchesExpected = everyCaptureHasInteger
+    && evidence.every((row) => row.raw === row.expected);
   const capture_status = present.length === 0 ? "WAITING_FOR_REAL_DEVICE" : "PARTIAL";
   return {
-    capture_status: present.length === PLANNED_CAPTURES.length && rule !== "UNKNOWN"
+    capture_status: everyRawMatchesExpected && rule === "ZERO_BASED"
       ? "READY_FOR_REVIEW"
       : capture_status,
-    arrangement_mapping_rule: present.length >= 2 ? rule : "UNKNOWN",
+    arrangement_mapping_rule: everyCaptureHasInteger ? rule : "UNKNOWN",
     domain_changed: false,
     captures,
   };
+}
+
+function writeRegularFileNoFollow(filePath, contents) {
+  let existing = null;
+  try {
+    existing = lstatSync(filePath);
+  } catch (err) {
+    if (!err || err.code !== "ENOENT") throw err;
+  }
+  if (existing) {
+    if (existing.isSymbolicLink() || !existing.isFile()) {
+      throw new Error("Refusing non-regular manifest destination: SHA256SUMS.json");
+    }
+    unlinkSync(filePath);
+  }
+  const flags = constants.O_WRONLY
+    | constants.O_CREAT
+    | constants.O_EXCL
+    | (constants.O_NOFOLLOW ?? 0);
+  const fd = openSync(filePath, flags, 0o644);
+  try {
+    writeFileSync(fd, contents);
+  } finally {
+    closeSync(fd);
+  }
 }
 
 export function writeManifest(captureName, root = FIXTURE_ROOT) {
@@ -295,7 +339,7 @@ export function writeManifest(captureName, root = FIXTURE_ROOT) {
     throw new Error("write-manifest requires project.work");
   }
   const outPath = path.join(captureDir, "SHA256SUMS.json");
-  writeFileSync(outPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  writeRegularFileNoFollow(outPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
 }
 

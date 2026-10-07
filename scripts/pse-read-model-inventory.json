@@ -20,6 +20,7 @@
         "project_pattern_selection_keeps_out_of_range_raw",
         "project_arrangement_selection_maps_zero_based_file_slots",
         "project_arrangement_selection_keeps_out_of_range_raw",
+        "project_arrangement_selection_keeps_unevidenced_firmware_unrecognized",
         "playback_scale_keeps_unrecognized_raw",
         "per_track_master_length_keeps_inf_distinct_from_finite",
         "per_track_master_length_rejects_undocumented_multiplier"

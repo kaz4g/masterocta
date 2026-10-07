@@ -31,7 +31,7 @@ reference statuses use matching `pse.*` keys in `en.ts` and `ja.ts`. Locale
 changes re-render labels only; they do not re-read structure.
 
 Project state is a read-only observation, separate from browsing selection.
-Arrangement shows the one-based UI number when `[STATES] ARRANGEMENT` is in `0..8`, and the raw value when it is unrecognized. Absent values remain unknown. Scene says
+Arrangement shows the one-based UI number when the project OS is MkII `R0173` / `1.40` and `[STATES] ARRANGEMENT` is in `0..8`. Other OS versions, including 1.40B, and out-of-range raw values stay unrecognized. Absent values remain unknown. Scene says
 "not read". Arranger rows are not displayed. Recorder buffer references are
 shown, but Recorder setup is not inferred.
 

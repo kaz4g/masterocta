@@ -78,7 +78,7 @@ Scene is outside the original Done line. Arranger rows are not a Done line. `pro
 | Per-track scale | accuracy, now required for a correct Pattern | YES | #199; `real_device` pattern 0 lengths 12 and 64 | PASS |
 | Master length `INF` | accuracy, now required so 255 is not rounded | YES | #199; sentinel 255/255 is `Infinite`, normal-mode 255 stays finite | PASS |
 | Active Bank / Pattern from `[STATES]` | added after the original text; present | YES | #197 mapped | PASS |
-| Arrangement file slot | not an #179 Done line | YES, zero-based `0..8` | `P_ARR_TEST` UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08` | PROVEN |
+| Arrangement file slot | not an #179 Done line | YES for MkII `R0173` / OS `1.40` only, zero-based `0..8` | `P_ARR_TEST` UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08`. Other OS versions stay unrecognized | PROVEN for that OS |
 | Scene | NO until a trusted model exists | listed unmodeled | #179 body and control-plane §5 | DEFERRED |
 | Arranger rows | not an #179 Done line | not on main | #190 `STOP_WITH_FINDINGS` | BLOCKED-FUTURE |
 | Bank internal identity | not an #179 Done line | file name is the index used by the reader; bytes inside the bank are not proven as identity | #190 findings | UNKNOWN |
@@ -121,7 +121,7 @@ These can ship as an explicit unread or unmapped label. They do not stop a read-
 
 | Item | Why it does not block #180 |
 | --- | --- |
-| Arrangement file slot | The active slot is now mapped. The viewer shows the one-based arrangement number. Arranger rows are still unread. |
+| Arrangement file slot | The active slot is mapped for MkII `R0173` / OS `1.40`. The viewer shows the one-based arrangement number for that OS and the raw value when the version or the raw is unrecognized. Arranger rows are still unread. |
 | Scene | #179 and PSE-1 say not to invent Scene rows. The DTO already lists `scenes` as unmodeled. The viewer says "Scene is not read". |
 | Arranger rows | PSE-1 scope is Bank, Pattern, Part, Track, Sample Slot, parse status. |
 
@@ -131,7 +131,7 @@ These can ship as an explicit unread or unmapped label. They do not stop a read-
 
 | Gap | Why it blocks a plan |
 | --- | --- |
-| Arrangement file slot | Resolved for the active file: UI Arrangement N is raw `N - 1` and `arrNN.work`. A bank change can still retarget Arranger `pattern_id` rows, which remain unproven. |
+| Arrangement file slot | Resolved for MkII `R0173` / OS `1.40`: UI Arrangement N is raw `N - 1` and `arrNN.work`. Other OS versions stay unrecognized. A bank change can still retarget Arranger `pattern_id` rows, which remain unproven. |
 | Arranger `pattern_id` | Numbering, including `n_rows == 0`, is unproven. A move/swap cannot list Arranger rows that point at the bank. |
 | Bank internal identity | Only `bank01` is in the tracked fixtures. The reader uses the file name. Bytes inside the bank are not proven as a second identity the plan must rewrite. |
 | Scene and Recorder | Control plane §6: an unmodeled dependency closes the plan as a failure. The read model lists them. A plan that always fails is not a reviewable plan for the three operations. |
@@ -198,7 +198,7 @@ ISSUE_196 = SPLIT_RECOMMENDED
 VIEWER_READINESS = READY
 
 PROJECT_STATE_READ = COMPLETE
-ARRANGEMENT_MAPPING = PROVEN
+ARRANGEMENT_MAPPING = PROVEN (MkII R0173 / OS 1.40 only)
 ARRANGER_READ = STOP_WITH_FINDINGS
 
 BANK_CHANGEPLAN_READINESS = NOT_READY

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -131,6 +132,43 @@ test("committed device captures are zero-based and keep edited names in arrNN", 
   assert.equal(nameAt("arrangement_1", "arr08.work").trim(), "");
   assert.equal(nameAt("arrangement_2", "arr08.work").trim(), "");
   assert.equal(nameAt("arrangement_8", "arr08.work"), "ARR8-TEST");
+  for (const planned of PLANNED_CAPTURES) {
+    const verified = verifyManifest(planned.name, FIXTURE_ROOT);
+    assert.equal(verified.ok, true, planned.name);
+    assert.ok(verified.fresh_files.some((entry) => entry.path === "project.work"));
+    assert.ok(verified.fresh_files.every((entry) => Number.isInteger(entry.size) && entry.size >= 0));
+  }
+});
+
+function writeReadyCapture(root, planned, arrangement) {
+  writeFileSync(
+    path.join(root, planned.name, "capture.meta.json"),
+    JSON.stringify(readyMeta(planned)),
+    "utf8",
+  );
+  const body = arrangement === undefined
+    ? STATES(0).replace("ARRANGEMENT=0\n", "")
+    : STATES(arrangement);
+  writeFileSync(path.join(root, planned.name, "project.work"), body, "utf8");
+}
+
+test("a planned capture without integer evidence does not become ready", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-arr-gap-"));
+  scaffold(root);
+  for (const planned of PLANNED_CAPTURES) {
+    writeReadyCapture(
+      root,
+      planned,
+      planned.name === "arrangement_8" ? undefined : planned.index,
+    );
+  }
+  const status = captureStatus(root);
+  assert.deepEqual(
+    status.captures.map((entry) => entry.capture_status),
+    ["PRESENT", "PRESENT", "PRESENT"],
+  );
+  assert.equal(status.arrangement_mapping_rule, "UNKNOWN");
+  assert.equal(status.capture_status, "PARTIAL");
 });
 
 test("empty receptacle status stays waiting", () => {
@@ -220,6 +258,36 @@ test("two consistent captures classify without writing domain state", () => {
     ]),
     "UNKNOWN",
   );
+});
+
+test("write-manifest refuses a symlinked manifest destination", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-arr-manifest-link-"));
+  scaffold(root);
+  const capture = path.join(root, "arrangement_1");
+  writeFileSync(path.join(capture, "project.work"), STATES(0), "utf8");
+  const outside = path.join(root, "outside.json");
+  writeFileSync(outside, "KEEP\n", "utf8");
+  symlinkSync(outside, path.join(capture, "SHA256SUMS.json"));
+  assert.throws(
+    () => writeManifest("arrangement_1", root),
+    /Refusing non-regular manifest destination/,
+  );
+  assert.equal(readFileSync(outside, "utf8"), "KEEP\n");
+  assert.equal(lstatSync(path.join(capture, "SHA256SUMS.json")).isSymbolicLink(), true);
+});
+
+test("write-manifest refuses a directory manifest destination", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-arr-manifest-dir-"));
+  scaffold(root);
+  const capture = path.join(root, "arrangement_1");
+  writeFileSync(path.join(capture, "project.work"), STATES(0), "utf8");
+  const destination = path.join(capture, "SHA256SUMS.json");
+  mkdirSync(destination);
+  assert.throws(
+    () => writeManifest("arrangement_1", root),
+    /Refusing non-regular manifest destination/,
+  );
+  assert.equal(lstatSync(destination).isDirectory(), true);
 });
 
 test("write-manifest refuses a capture without project.work and writes nothing", () => {

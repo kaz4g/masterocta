@@ -20,7 +20,7 @@ ARRANGEMENT_MODE = UNMODELED
 | B `arrangement_2` | 2 | 1 | 1 | 0 | `arr02.work` holds `ARR2-TEST`; `arr01.work` still holds `ARR1-TEST` |
 | C `arrangement_8` | 8 | 7 | 7 | 0 | `arr08.work` holds `ARR8-TEST`; arrangements 1 and 2 keep their names |
 
-`0..=7` maps to `arr01`–`arr08`. Raw `8` and `255` stay unrecognized.
+`0..=7` maps to `arr01`–`arr08` only when the project OS is MkII `R0173` / `1.40`. Raw `8`, raw `255`, and every other OS version stay unrecognized.
 Bytes near the end of every `arrNN` file change together on each save and
 are not used as the slot identity. `ARRANGEMENT_MODE` stayed `0` and is not
 modeled. Arranger `pattern_id` is not decoded.
