@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * P_BANK_ID2 receptacle: Banks A/B/C copied on-device, current bank D at capture.
- * Typed equality is enforced before raw slot analysis (Rust test). Offset 585459
- * stays content-dependent from evidence-1; do not reopen it as slot identity.
+ * Typed equality is determined in Rust (BankFile decode). JS never infers typed
+ * equality from raw bytes. Offset 585459 stays content-dependent from evidence-1.
  */
 import { createHash } from "node:crypto";
 import {
@@ -56,7 +56,14 @@ export const PLANNED_CAPTURE = {
   optional_files: ["bank04.work", "bank04.strd"],
 };
 
+export function assertPlannedCaptureName(captureName) {
+  if (captureName !== PLANNED_CAPTURE.name) {
+    throw new Error(`Not a planned capture: ${captureName}`);
+  }
+}
+
 export function resolveCaptureDir(captureName, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
   if (!CAPTURE_NAME.test(captureName)) {
     throw new Error(`Invalid capture name (use [a-z0-9_]+): ${captureName}`);
   }
@@ -174,9 +181,25 @@ function plannedManifestFiles(captureDir, planned) {
   return names;
 }
 
+export function manifestVerified(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
+  const captureDir = resolveCaptureDir(captureName, root);
+  const sidecar = path.join(captureDir, "SHA256SUMS.json");
+  const st = assertRegularFile(sidecar, "SHA256SUMS.json");
+  if (!st) {
+    return { ok: false, error: "SHA256SUMS.json is missing" };
+  }
+  try {
+    const verified = verifyManifest(captureName, root);
+    return verified.ok ? { ok: true } : { ok: false, error: "SHA256SUMS.json is stale" };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 export function inspectCapture(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
   const planned = PLANNED_CAPTURE;
-  if (captureName !== planned.name) throw new Error(`Not a planned capture: ${captureName}`);
+  assertPlannedCaptureName(captureName);
   const captureDir = resolveCaptureDir(captureName, root);
   const meta = readMeta(captureDir);
   if (!provenanceReady(meta, planned, captureDir)) {
@@ -185,6 +208,10 @@ export function inspectCapture(captureName = PLANNED_CAPTURE.name, root = FIXTUR
       capture_status: "WAITING",
       evidence: false,
     };
+  }
+  const manifest = manifestVerified(captureName, root);
+  if (!manifest.ok) {
+    throw new Error(manifest.error);
   }
   const files = {};
   for (const name of plannedManifestFiles(captureDir, planned)) {
@@ -200,6 +227,7 @@ export function inspectCapture(captureName = PLANNED_CAPTURE.name, root = FIXTUR
     capture_status: "PRESENT",
     current_bank_ui: planned.current_bank_ui,
     comparison_banks: planned.comparison_banks,
+    manifest_verified: true,
     files,
     evidence: true,
   };
@@ -209,7 +237,6 @@ export function captureStatus(root = FIXTURE_ROOT) {
   const planned = PLANNED_CAPTURE;
   let row;
   try {
-    resolveCaptureDir(planned.name, root);
     const captureDir = resolveCaptureDir(planned.name, root);
     let meta;
     try {
@@ -230,6 +257,7 @@ export function captureStatus(root = FIXTURE_ROOT) {
             capture_label: planned.name,
             capture_status: inspectCapture(planned.name, root).capture_status,
             current_bank_ui: planned.current_bank_ui,
+            manifest_verified: true,
           };
         }
       } catch (err) {
@@ -239,20 +267,21 @@ export function captureStatus(root = FIXTURE_ROOT) {
   } catch (err) {
     row = { capture_label: planned.name, capture_status: "REJECTED", error: err.message };
   }
-  const deviceCapture = row.capture_status === "PRESENT" ? "PASS" : "NOT_RUN";
+  let deviceCapture = "NOT_RUN";
+  if (row.capture_status === "PRESENT") deviceCapture = "PASS";
+  else if (row.capture_status === "REJECTED") deviceCapture = "REJECTED";
+
   let typedEqual = "NOT_RUN";
   let sameContent = "NOT_RUN";
   let result = "STOP_FOR_DEVICE";
   if (deviceCapture === "PASS") {
-    const captureDir = resolveCaptureDir(planned.name, root);
-    const bank01 = readFileSync(path.join(captureDir, "bank01.work"));
-    const bank02 = readFileSync(path.join(captureDir, "bank02.work"));
-    const bank03 = readFileSync(path.join(captureDir, "bank03.work"));
-    const payloadEqual = bank01.equals(bank02) && bank01.equals(bank03);
-    typedEqual = payloadEqual ? "YES" : "NO";
-    sameContent = payloadEqual ? "SUFFICIENT" : "INSUFFICIENT";
-    result = payloadEqual ? "PENDING_RAW" : "STOP_WITH_FINDINGS";
+    typedEqual = "PENDING_RUST";
+    sameContent = "PENDING_RUST";
+    result = "PENDING_RUST";
+  } else if (deviceCapture === "REJECTED") {
+    result = "STOP_WITH_FINDINGS";
   }
+
   return {
     work_id: "MO-PSE-BANK-INTERNAL-IDENTITY-DEVICE-EVIDENCE-2",
     device_capture: deviceCapture,
@@ -284,37 +313,48 @@ export function rawCompareBanks(captureDir, suffix) {
   return pairwise;
 }
 
+export function deriveRawDiffClass(workDiffs, strdDiffs) {
+  const all = [...workDiffs, ...strdDiffs];
+  if (all.some((entry) => entry.same_length === false)) {
+    return "LENGTH_MISMATCH";
+  }
+  const nonChecksum = (entry) => entry.diffs.filter((diff) => diff.classification !== "CHECKSUM");
+  const payloadDiffs = all.flatMap(nonChecksum).filter(
+    (diff) => diff.classification !== "PINNED_OFFSET",
+  );
+  if (payloadDiffs.length === 0) {
+    return "checksum_only_pending_typed";
+  }
+  return "unknown_pending_typed";
+}
+
 export function analyzeCapture(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
   const status = captureStatus(root);
   if (status.device_capture !== "PASS") {
     return {
       ...status,
       raw_diff_class: "NOT_RUN",
-      typed_content_equal_a_b_c: "NOT_RUN",
     };
   }
   const captureDir = resolveCaptureDir(captureName, root);
   const workDiffs = rawCompareBanks(captureDir, "work");
   const strdDiffs = rawCompareBanks(captureDir, "strd");
-  const nonChecksum = (entry) => entry.diffs.filter((diff) => diff.classification !== "CHECKSUM");
-  const slotCorrelated = [...workDiffs, ...strdDiffs].flatMap(nonChecksum).filter(
-    (diff) => diff.classification !== "PINNED_OFFSET",
-  );
+  const rawDiffClass = deriveRawDiffClass(workDiffs, strdDiffs);
   return {
     ...status,
-    typed_content_equal_a_b_c: "PENDING_RUST",
-    raw_diff_class: slotCorrelated.length === 0 ? "checksum_only_pending_typed" : "unknown_pending_typed",
+    raw_diff_class: rawDiffClass,
     offset_585459_classification: "CONTENT_DEPENDENT",
     work_pairwise: workDiffs,
     strd_pairwise: strdDiffs,
     pinned_offset: PINNED_OFFSET,
-    note: "Run Rust p_bank_id2_abc_equal_current_d_analysis after typed gate passes.",
+    note: "Typed equality and identity verdict come from Rust BankFile analysis.",
   };
 }
 
 export function buildManifest(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
   const planned = PLANNED_CAPTURE;
-  if (captureName !== planned.name) throw new Error(`Not a planned capture: ${captureName}`);
   const captureDir = resolveCaptureDir(captureName, root);
   const files = plannedManifestFiles(captureDir, planned).flatMap((name) => {
     const full = path.join(captureDir, name);
@@ -360,6 +400,7 @@ function writeRegularFileAtomic(filePath, contents) {
 }
 
 export function writeManifest(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
   const planned = PLANNED_CAPTURE;
   const captureDir = resolveCaptureDir(captureName, root);
   for (const name of planned.files) {
@@ -375,6 +416,7 @@ export function writeManifest(captureName = PLANNED_CAPTURE.name, root = FIXTURE
 }
 
 export function verifyManifest(captureName = PLANNED_CAPTURE.name, root = FIXTURE_ROOT) {
+  assertPlannedCaptureName(captureName);
   const captureDir = resolveCaptureDir(captureName, root);
   const sidecar = path.join(captureDir, "SHA256SUMS.json");
   const st = assertRegularFile(sidecar, "SHA256SUMS.json");

@@ -476,6 +476,25 @@ mod p_bank_id2_device {
     use serde_json::Value;
     use std::path::PathBuf;
 
+    const PINNED_OFFSET: usize = 585_459;
+    const CHECKSUM_LEN: usize = 2;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct TypedBankComparison {
+        a_b_equal: bool,
+        a_c_equal: bool,
+        b_c_equal: bool,
+        abc_equal: bool,
+        differing_fields: Vec<&'static str>,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum RawIdentityVerdict {
+        NotAdvanced,
+        CandidatePresent,
+        NoIdentityObserved,
+    }
+
     fn capture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/pse_bank_identity_device_2/abc_equal_current_d")
@@ -522,6 +541,193 @@ mod p_bank_id2_device {
         BankFile::from_bytes(&read_bank_file(name)).unwrap()
     }
 
+    fn parse_states_bank_raw(project_text: &str) -> Option<u8> {
+        let lines: Vec<&str> = project_text
+            .lines()
+            .map(|line| line.trim_end_matches('\r'))
+            .collect();
+        let starts: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.trim() == "[STATES]")
+            .map(|(index, _)| index)
+            .collect();
+        if starts.len() != 1 {
+            return None;
+        }
+        let mut bank_values = Vec::new();
+        for line in lines.iter().skip(starts[0] + 1) {
+            if *line == "[/STATES]" {
+                break;
+            }
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("BANK=") {
+                if let Ok(value) = rest.parse::<u16>() {
+                    if value <= u8::MAX as u16 {
+                        bank_values.push(value as u8);
+                    }
+                }
+            }
+        }
+        if bank_values.len() == 1 {
+            Some(bank_values[0])
+        } else {
+            None
+        }
+    }
+
+    fn compare_typed(a: &BankFile, b: &BankFile, c: &BankFile) -> TypedBankComparison {
+        let fields: [(&'static str, bool, bool, bool); 6] = [
+            (
+                "patterns",
+                a.patterns == b.patterns,
+                a.patterns == c.patterns,
+                b.patterns == c.patterns,
+            ),
+            (
+                "parts.saved",
+                a.parts.saved == b.parts.saved,
+                a.parts.saved == c.parts.saved,
+                b.parts.saved == c.parts.saved,
+            ),
+            (
+                "parts.unsaved",
+                a.parts.unsaved == b.parts.unsaved,
+                a.parts.unsaved == c.parts.unsaved,
+                b.parts.unsaved == c.parts.unsaved,
+            ),
+            (
+                "parts_saved_state",
+                a.parts_saved_state == b.parts_saved_state,
+                a.parts_saved_state == c.parts_saved_state,
+                b.parts_saved_state == c.parts_saved_state,
+            ),
+            (
+                "parts_edited_bitmask",
+                a.parts_edited_bitmask == b.parts_edited_bitmask,
+                a.parts_edited_bitmask == c.parts_edited_bitmask,
+                b.parts_edited_bitmask == c.parts_edited_bitmask,
+            ),
+            (
+                "part_names",
+                a.part_names == b.part_names,
+                a.part_names == c.part_names,
+                b.part_names == c.part_names,
+            ),
+        ];
+        let mut differing_fields = Vec::new();
+        let mut a_b_equal = true;
+        let mut a_c_equal = true;
+        let mut b_c_equal = true;
+        for (name, ab, ac, bc) in fields {
+            if !ab {
+                a_b_equal = false;
+            }
+            if !ac {
+                a_c_equal = false;
+            }
+            if !bc {
+                b_c_equal = false;
+            }
+            if !(ab && ac && bc) {
+                differing_fields.push(name);
+            }
+        }
+        TypedBankComparison {
+            a_b_equal,
+            a_c_equal,
+            b_c_equal,
+            abc_equal: a_b_equal && a_c_equal && b_c_equal,
+            differing_fields,
+        }
+    }
+
+    fn collect_raw_slot_candidates(bytes: &[Vec<u8>]) -> Vec<usize> {
+        if bytes.len() < 3 {
+            return Vec::new();
+        }
+        let len = bytes[0].len();
+        if bytes.iter().any(|entry| entry.len() != len) {
+            return Vec::new();
+        }
+        let checksum_start = len.saturating_sub(CHECKSUM_LEN);
+        bytes[0]
+            .iter()
+            .take(checksum_start)
+            .enumerate()
+            .filter_map(|(offset, _)| {
+                if offset == PINNED_OFFSET {
+                    return None;
+                }
+                let values = [bytes[0][offset], bytes[1][offset], bytes[2][offset]];
+                if values[0] != values[1] || values[1] != values[2] || values[0] != values[2] {
+                    Some(offset)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn raw_identity_verdict(
+        typed: &TypedBankComparison,
+        raw_slot_candidates: &[usize],
+    ) -> RawIdentityVerdict {
+        if !typed.abc_equal {
+            return RawIdentityVerdict::NotAdvanced;
+        }
+        if raw_slot_candidates.is_empty() {
+            RawIdentityVerdict::NoIdentityObserved
+        } else {
+            RawIdentityVerdict::CandidatePresent
+        }
+    }
+
+    fn assert_encode_roundtrip(name: &str) {
+        let bytes = read_bank_file(name);
+        let decoded = BankFile::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            decoded.encode().unwrap(),
+            bytes,
+            "BankFile round-trip failed for {name}"
+        );
+    }
+
+    #[test]
+    fn p_bank_id2_identity_verdict_helpers() {
+        let typed_equal = TypedBankComparison {
+            a_b_equal: true,
+            a_c_equal: true,
+            b_c_equal: true,
+            abc_equal: true,
+            differing_fields: vec![],
+        };
+        let typed_unequal = TypedBankComparison {
+            a_b_equal: false,
+            a_c_equal: true,
+            b_c_equal: false,
+            abc_equal: false,
+            differing_fields: vec!["patterns"],
+        };
+        assert_eq!(
+            raw_identity_verdict(&typed_unequal, &[100]),
+            RawIdentityVerdict::NotAdvanced
+        );
+        assert_eq!(
+            raw_identity_verdict(&typed_equal, &[100]),
+            RawIdentityVerdict::CandidatePresent
+        );
+        assert_eq!(
+            raw_identity_verdict(&typed_equal, &[]),
+            RawIdentityVerdict::NoIdentityObserved
+        );
+
+        let mut same_len = vec![vec![0_u8; 10], vec![0_u8; 10], vec![0_u8; 10]];
+        same_len[2][3] = 9;
+        assert!(collect_raw_slot_candidates(&same_len).contains(&3));
+        assert!(collect_raw_slot_candidates(&[vec![0; 4], vec![0; 5], vec![0; 5]]).is_empty());
+    }
+
     #[test]
     fn p_bank_id2_abc_equal_current_d_analysis() {
         let meta = meta_json();
@@ -536,17 +742,34 @@ mod p_bank_id2_device {
             .map(|name| read_bank_file(name))
             .collect();
 
-        let project = read_bank_file("project.work");
-        let project_text = String::from_utf8_lossy(&project);
-        assert!(
-            project_text.contains("BANK=3"),
-            "capture must keep current bank D (raw 3) in project.work"
+        let project_bytes = read_bank_file("project.work");
+        let project_text = String::from_utf8_lossy(&project_bytes);
+        assert_eq!(parse_states_bank_raw(&project_text), Some(3));
+        assert_eq!(
+            read_bank_file("project.work"),
+            read_bank_file("project.strd")
         );
+
+        for name in [
+            "bank01.work",
+            "bank02.work",
+            "bank03.work",
+            "bank01.strd",
+            "bank02.strd",
+            "bank03.strd",
+        ] {
+            assert_encode_roundtrip(name);
+        }
 
         for suffix in ["work", "strd"] {
             let bank_a = decode(&format!("bank01.{suffix}"));
             let bank_b = decode(&format!("bank02.{suffix}"));
             let bank_c = decode(&format!("bank03.{suffix}"));
+            let typed = compare_typed(&bank_a, &bank_b, &bank_c);
+            assert!(!typed.abc_equal);
+            assert!(typed.differing_fields.contains(&"patterns"));
+            assert!(typed.differing_fields.contains(&"parts.unsaved"));
+            assert!(typed.differing_fields.contains(&"parts_edited_bitmask"));
 
             assert_eq!(bank_a.parts.saved, bank_b.parts.saved);
             assert_eq!(bank_a.parts.saved, bank_c.parts.saved);
@@ -570,11 +793,7 @@ mod p_bank_id2_device {
                 .collect();
             assert_eq!(bytes[0].len(), 636_113);
             for (slot, file_bytes) in bytes.iter().enumerate() {
-                assert_eq!(
-                    file_bytes,
-                    &read_bank_file(&format!("bank0{}.{suffix}", slot + 1)),
-                );
-                assert_eq!(file_bytes[585_459], 108);
+                assert_eq!(file_bytes[585_459], 108, "bank0{}", slot + 1);
             }
             for slot in 1..=3 {
                 assert_eq!(
@@ -584,18 +803,30 @@ mod p_bank_id2_device {
             }
             assert_eq!(read_bank_file("bank04.work")[585_459], 108);
 
-            let mut three_distinct = Vec::new();
-            for offset in 0..bytes[0].len() - 2 {
-                let values = [bytes[0][offset], bytes[1][offset], bytes[2][offset]];
-                if values[0] != values[1] && values[1] != values[2] && values[0] != values[2] {
-                    three_distinct.push(offset);
-                }
-            }
+            let raw_candidates = collect_raw_slot_candidates(&bytes);
+            assert!(
+                !raw_candidates.is_empty(),
+                "expected raw payload diffs to collect as candidates"
+            );
+            assert_eq!(
+                raw_identity_verdict(&typed, &raw_candidates),
+                RawIdentityVerdict::NotAdvanced
+            );
+
+            let three_distinct: Vec<usize> = bytes[0]
+                .iter()
+                .take(bytes[0].len() - CHECKSUM_LEN)
+                .enumerate()
+                .filter(|(offset, _)| {
+                    let values = [bytes[0][*offset], bytes[1][*offset], bytes[2][*offset]];
+                    values[0] != values[1] && values[1] != values[2] && values[0] != values[2]
+                })
+                .map(|(offset, _)| offset)
+                .collect();
             assert!(
                 three_distinct.is_empty(),
-                "non-checksum bytes with three slot values: {three_distinct:?}"
+                "P_BANK_ID2 observation: three-value payload bytes {three_distinct:?}"
             );
-            assert_eq!(bank_a.encode().unwrap(), bytes[0]);
         }
 
         for (index, bytes) in before.iter().enumerate() {
