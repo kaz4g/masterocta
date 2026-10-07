@@ -3,12 +3,14 @@
   "capture_id": "C",
   "capture_label": "arrangement_8",
   "device": "Octatrack MkII",
-  "os_version": "",
+  "os_version": "1.40 (R0173)",
   "project_name": "P_ARR_TEST",
   "selected_arrangement_ui": 8,
   "expected_arrangement_index": 7,
-  "save_actions": [],
-  "capture_date": "",
-  "device_generated": false,
+  "save_actions": [
+    "Device save after Arrangement 8 was active, then a separate directory copy. The exact save-menu label was not transcribed. os_version is the project.work OS_VERSION field."
+  ],
+  "capture_date": "2026-10-07",
+  "device_generated": true,
   "synthetic_modification": false
 }

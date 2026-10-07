@@ -1,6 +1,6 @@
 import { ipcClient, type IpcClient } from './client';
 
-/** Mirrors project_structure_command.rs v3. Indices are zero-based; slot numbers are one-based. */
+/** Mirrors project_structure_command.rs v4. Indices are zero-based; slot numbers are one-based. */
 export type DocumentRole = 'working' | 'savedCheckpoint';
 export type ParseStatus = 'parsed' | 'unsupportedVersion' | 'malformed';
 export type Selection = { kind: 'selected'; index: number } | { kind: 'unrecognized'; raw: number };
@@ -31,7 +31,7 @@ export interface StructureBank {
   unmodeledDependencies: string[];
 }
 export interface ProjectStructure {
-  schema: 'masterocta.project-structure:v3';
+  schema: 'masterocta.project-structure:v4';
   projectRelativePath: string;
   projectState: {
     role: DocumentRole;
@@ -39,7 +39,7 @@ export interface ProjectStructure {
     parseStatus: ParseStatus;
     bank: Selection | null;
     pattern: Selection | null;
-    arrangement: { kind: 'unmapped'; raw: number } | null;
+    arrangement: Selection | null;
     masterTrack: boolean | null;
   } | null;
   banks: StructureBank[];
@@ -51,7 +51,7 @@ export function createProjectStructureApi(client: IpcClient = ipcClient): Projec
   return {
     async read(rootId, projectRelativePath) {
       const result = await client.request<ProjectStructure>('v2_project_structure_read', { rootId, projectRelativePath });
-      if (result.schema !== 'masterocta.project-structure:v3' || result.projectRelativePath !== projectRelativePath) {
+      if (result.schema !== 'masterocta.project-structure:v4' || result.projectRelativePath !== projectRelativePath) {
         throw new Error('PROJECT_STRUCTURE_CONTRACT_MISMATCH');
       }
       return result;

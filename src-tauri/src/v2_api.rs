@@ -11172,14 +11172,14 @@ mod tests {
         assert_eq!(
             state.arrangement,
             Some(
-                crate::project_structure_command::ProjectArrangementSelectionDto::Unmapped {
-                    raw: 0
+                crate::project_structure_command::ProjectArrangementSelectionDto::Selected {
+                    index: 0
                 }
             )
         );
 
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v3");
+        assert_eq!(json["schema"], "masterocta.project-structure:v4");
         let json = json.to_string();
         assert!(!json.contains(canonical.to_str().unwrap()));
         assert!(!json.contains("contentHash"));
@@ -11340,7 +11340,7 @@ mod tests {
             &project,
         )
         .unwrap();
-        assert_eq!(dto.schema, "masterocta.project-structure:v3");
+        assert_eq!(dto.schema, "masterocta.project-structure:v4");
         assert!(dto.project_state.is_some());
         let state = dto.project_state.as_ref().unwrap();
         assert_eq!(state.parse_status, "malformed");

@@ -1224,7 +1224,7 @@ fn absolute_path_guard_rejects_paths_outside_the_registered_root() {
     assert!(contains_absolute_path("root=/tmp/catalog.sqlite"));
     assert!(contains_absolute_path(r"path=C:\Users\example\cache"));
     assert!(!contains_absolute_path("SET/PROJECT/bank01.work"));
-    assert!(!contains_absolute_path("masterocta.project-structure:v3"));
+    assert!(!contains_absolute_path("masterocta.project-structure:v4"));
 }
 
 const PROJECT_LINE_SOURCES: [(&str, &str); 5] = [

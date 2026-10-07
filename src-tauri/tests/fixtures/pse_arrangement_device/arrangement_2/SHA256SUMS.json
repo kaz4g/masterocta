@@ -1,0 +1,96 @@
+{
+  "schema": "masterocta-pse-arrangement-capture-manifest:v1",
+  "capture": "arrangement_2",
+  "files": [
+    {
+      "path": "arr01.strd",
+      "sha256": "63d33d4846b8bbd162d8be17cb1ffb6c111f1f5c6fa2b00a1922514aba8e2a76",
+      "size": 11336
+    },
+    {
+      "path": "arr01.work",
+      "sha256": "63d33d4846b8bbd162d8be17cb1ffb6c111f1f5c6fa2b00a1922514aba8e2a76",
+      "size": 11336
+    },
+    {
+      "path": "arr02.strd",
+      "sha256": "5ced10533bb538cfce8e612ca54831d67f06c4ae4712c0508c045da6214e4237",
+      "size": 11336
+    },
+    {
+      "path": "arr02.work",
+      "sha256": "5ced10533bb538cfce8e612ca54831d67f06c4ae4712c0508c045da6214e4237",
+      "size": 11336
+    },
+    {
+      "path": "arr03.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr03.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr04.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr04.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr05.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr05.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr06.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr06.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr07.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr07.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr08.strd",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "arr08.work",
+      "sha256": "edef5b587147c69141e5a613376b05b40b7e078a9614befa22d9f27568d99613",
+      "size": 11336
+    },
+    {
+      "path": "project.strd",
+      "sha256": "d0f1f02d5609367990da6f1c631517e1e482754d74e018b317210f329e626fd8",
+      "size": 2899
+    },
+    {
+      "path": "project.work",
+      "sha256": "d0f1f02d5609367990da6f1c631517e1e482754d74e018b317210f329e626fd8",
+      "size": 2899
+    }
+  ]
+}

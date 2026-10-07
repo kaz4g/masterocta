@@ -693,7 +693,8 @@ impl ReadinessGap {
 /// ```
 /// # use ot_plan::bank_mutation::{ReadinessEvidence, ReadinessGap};
 /// let readiness = ReadinessEvidence::current_main();
-/// assert_eq!(readiness.open_gaps(), ReadinessGap::ALL.to_vec());
+/// assert!(!readiness.open_gaps().contains(&ReadinessGap::ArrangementFileSlot));
+/// assert_eq!(readiness.open_gaps().len(), ReadinessGap::ALL.len() - 1);
 /// ```
 ///
 /// ```compile_fail,E0599
@@ -705,14 +706,23 @@ impl ReadinessGap {
 /// # use ot_plan::bank_mutation::{ReadinessEvidence, ReadinessGap};
 /// let readiness = ReadinessEvidence { resolved: ReadinessGap::ALL.into_iter().collect() };
 /// ```
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReadinessEvidence {
     resolved: BTreeSet<ReadinessGap>,
 }
 
+impl Default for ReadinessEvidence {
+    fn default() -> Self {
+        Self::current_main()
+    }
+}
+
 impl ReadinessEvidence {
     pub fn current_main() -> Self {
-        Self::default()
+        let mut resolved = BTreeSet::new();
+        // #204: UI Arrangement 1/2/8 mapped to raw 0/1/7 and arr01/arr02/arr08.
+        resolved.insert(ReadinessGap::ArrangementFileSlot);
+        Self { resolved }
     }
 
     /// Contract tests only. A production build of this crate cannot call it,
@@ -1540,7 +1550,7 @@ mod tests {
     fn copy_fields() -> BankMutationEnvelopeFields {
         BankMutationEnvelopeFields {
             contract_schema: BANK_MUTATION_CONTRACT_SCHEMA.to_owned(),
-            read_model_schema: "masterocta.project-structure:v3".to_owned(),
+            read_model_schema: "masterocta.project-structure:v4".to_owned(),
             root_id: RootId::new("root-session-1").unwrap(),
             device_fingerprint: format!("rootfp:v1:{}", "e".repeat(64)),
             base_observed_revision: 3,
@@ -1654,11 +1664,11 @@ mod tests {
     }
 
     #[test]
-    fn current_main_readiness_keeps_every_gap_open() {
-        assert_eq!(
-            ReadinessEvidence::current_main().open_gaps(),
-            ReadinessGap::ALL.to_vec()
-        );
+    fn current_main_readiness_keeps_remaining_changeplan_gaps_open() {
+        let open = ReadinessEvidence::current_main().open_gaps();
+        assert!(!open.contains(&ReadinessGap::ArrangementFileSlot));
+        assert_eq!(open.len(), ReadinessGap::ALL.len() - 1);
+        assert!(open.contains(&ReadinessGap::BankChangePlan));
         assert_eq!(ReadinessGap::BankChangePlan.tracking(), "#181");
         assert_eq!(ReadinessGap::ArrangementFileSlot.tracking(), "#204");
     }
@@ -1675,7 +1685,8 @@ mod tests {
             &ReadinessEvidence::current_main(),
         )
         .unwrap_err();
-        let expected: Vec<_> = ReadinessGap::ALL
+        let expected: Vec<_> = ReadinessEvidence::current_main()
+            .open_gaps()
             .into_iter()
             .map(StopCondition::ReadinessGap)
             .collect();
@@ -2036,7 +2047,10 @@ mod tests {
         let stops = permit
             .reverify(&live, Some(&backup), &ReadinessEvidence::current_main())
             .unwrap_err();
-        assert_eq!(stops.len(), ReadinessGap::ALL.len());
+        assert_eq!(
+            stops.len(),
+            ReadinessEvidence::current_main().open_gaps().len()
+        );
     }
 
     #[test]
@@ -2146,7 +2160,7 @@ mod tests {
         live.device_fingerprint = format!("rootfp:v1:{}", "0".repeat(64));
         live.identity_is_stable = false;
         live.observed_revision = 4;
-        live.read_model_schema = "masterocta.project-structure:v4".to_owned();
+        live.read_model_schema = "masterocta.project-structure:v5".to_owned();
         live.scope_manifest
             .insert(path("SET/PROJECT/bank01.work"), file(20, '0'));
         live.scope_manifest

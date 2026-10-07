@@ -3,15 +3,27 @@
 Work ID: `MO-PSE-PROJECT-STATE-ARRANGEMENT-EVIDENCE-1`  
 GitHub: [#204](https://github.com/kaz4g/masterocta/issues/204) (child of [#181](https://github.com/kaz4g/masterocta/issues/181))
 
-This directory is a waiting receptacle. It does not contain a device copy.
-`project.work` `[STATES] ARRANGEMENT` stays `Unmapped(raw)` until labeled
-copies are inspected. Do not infer a slot mapping from this harness.
+Disposable `P_ARR_TEST` copies from Octatrack MkII OS 1.40 (R0173), captured
+2026-10-07. Bank and markers files from those copies stay on disk and are
+gitignored. The tracked evidence is `project.work`, `project.strd`, and
+`arr01.work`–`arr08.work` plus their `.strd` twins.
 
 ```text
-CAPTURE_STATUS = WAITING_FOR_REAL_DEVICE
-ARRANGEMENT_MAPPING = UNKNOWN
-DOMAIN_CHANGED = NO
+ARRANGEMENT_MAPPING_RULE = ZERO_BASED
+ARRANGEMENT_MAPPING = PROVEN
+ARRANGEMENT_MODE = UNMODELED
 ```
+
+| Capture | UI Arrangement | expected index | raw ARRANGEMENT | raw ARRANGEMENT_MODE | edited name |
+| --- | ---: | ---: | ---: | ---: | --- |
+| A `arrangement_1` | 1 | 0 | 0 | 0 | `arr01.work` holds `ARR1-TEST` |
+| B `arrangement_2` | 2 | 1 | 1 | 0 | `arr02.work` holds `ARR2-TEST`; `arr01.work` still holds `ARR1-TEST` |
+| C `arrangement_8` | 8 | 7 | 7 | 0 | `arr08.work` holds `ARR8-TEST`; arrangements 1 and 2 keep their names |
+
+`0..=7` maps to `arr01`–`arr08`. Raw `8` and `255` stay unrecognized.
+Bytes near the end of every `arrNN` file change together on each save and
+are not used as the slot identity. `ARRANGEMENT_MODE` stayed `0` and is not
+modeled. Arranger `pattern_id` is not decoded.
 
 ## Disposable project declaration
 

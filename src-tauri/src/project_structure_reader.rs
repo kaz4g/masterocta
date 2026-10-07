@@ -720,8 +720,8 @@ mod tests {
         assert_eq!(
             state.arrangement,
             Some(
-                ot_domain::project_structure::ProjectArrangementSelection::Unmapped(
-                    arrangement_raw
+                ot_domain::project_structure::ProjectArrangementSelection::Selected(
+                    ot_domain::project_structure::ArrangementIndex::new(arrangement_raw).unwrap()
                 )
             )
         );
@@ -831,6 +831,31 @@ mod tests {
     }
 
     #[test]
+    fn device_arrangement_captures_map_ui_selection_to_arr_files() {
+        for (fixture, raw) in [
+            ("pse_arrangement_device/arrangement_1", 0_u8),
+            ("pse_arrangement_device/arrangement_2", 1),
+            ("pse_arrangement_device/arrangement_8", 7),
+        ] {
+            let fixture_file = fixture_dir(fixture).join("project.work");
+            let tracked_before = fs::read(&fixture_file).unwrap();
+            let (_temp, root) = copied_project(fixture, &["project.work"]);
+            let before = tree_digest(&root);
+            let structure = read_project_structure(&root, &project_path()).unwrap();
+            let state = structure.project_state.as_ref().unwrap();
+            let ot_domain::project_structure::ProjectArrangementSelection::Selected(index) =
+                state.arrangement.unwrap()
+            else {
+                panic!("{fixture} arrangement must be selected");
+            };
+            assert_eq!(index.get(), raw, "{fixture}");
+            assert_eq!(index.file_number(), raw + 1, "{fixture}");
+            assert_eq!(tree_digest(&root), before);
+            assert_eq!(fs::read(&fixture_file).unwrap(), tracked_before);
+        }
+    }
+
+    #[test]
     fn out_of_range_bank_and_pattern_stay_unrecognized() {
         let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
         replace_states_assignment(&root, "BANK", 16);
@@ -849,7 +874,7 @@ mod tests {
         );
         assert_eq!(
             state.arrangement,
-            Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(8))
+            Some(ot_domain::project_structure::ProjectArrangementSelection::Unrecognized(8))
         );
     }
 
@@ -921,7 +946,11 @@ mod tests {
         );
         assert_eq!(
             state.arrangement,
-            Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(0))
+            Some(
+                ot_domain::project_structure::ProjectArrangementSelection::Selected(
+                    ot_domain::project_structure::ArrangementIndex::new(0).unwrap()
+                )
+            )
         );
         assert_eq!(state.master_track, Some(true));
         assert_eq!(tree_digest(&root), before);

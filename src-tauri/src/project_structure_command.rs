@@ -19,10 +19,9 @@ use ot_domain::{
 use ot_storage_ports::StorageError;
 use serde::Serialize;
 
-/// Payload discriminator for this DTO. `v3` adds Track 8's master role,
-/// pattern scale mode, per-track scale, and finite/infinite master length.
-/// `v2` is not extended in place. Arranger rows are still absent.
-pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v3";
+/// Payload discriminator for this DTO. `v4` maps `[STATES] ARRANGEMENT` to
+/// `arr01`–`arr08`. `v3` is not extended in place. Arranger rows are still absent.
+pub(crate) const PROJECT_STRUCTURE_SCHEMA: &str = "masterocta.project-structure:v4";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,7 +73,8 @@ pub(crate) enum ProjectPatternSelectionDto {
     rename_all_fields = "camelCase"
 )]
 pub(crate) enum ProjectArrangementSelectionDto {
-    Unmapped { raw: u8 },
+    Selected { index: u8 },
+    Unrecognized { raw: u8 },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -358,8 +358,11 @@ fn arrangement_selection_dto(
     selection: ProjectArrangementSelection,
 ) -> ProjectArrangementSelectionDto {
     match selection {
-        ProjectArrangementSelection::Unmapped(raw) => {
-            ProjectArrangementSelectionDto::Unmapped { raw }
+        ProjectArrangementSelection::Selected(index) => {
+            ProjectArrangementSelectionDto::Selected { index: index.get() }
+        }
+        ProjectArrangementSelection::Unrecognized(raw) => {
+            ProjectArrangementSelectionDto::Unrecognized { raw }
         }
     }
 }
@@ -538,7 +541,7 @@ mod tests {
             banks: Vec::new(),
         };
         let json = serde_json::to_value(&dto).unwrap();
-        assert_eq!(json["schema"], "masterocta.project-structure:v3");
+        assert_eq!(json["schema"], "masterocta.project-structure:v4");
         assert_eq!(json["projectRelativePath"], "SET/PROJECT");
         assert!(json["banks"].as_array().unwrap().is_empty());
     }

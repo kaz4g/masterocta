@@ -102,15 +102,35 @@ test("resolveCaptureDir rejects path traversal", () => {
   assert.throws(() => resolveCaptureDir(".."), /Invalid capture name/);
 });
 
-test("committed scaffold is waiting and is not device evidence", () => {
+test("committed device captures are zero-based and keep edited names in arrNN", () => {
   const status = captureStatus(FIXTURE_ROOT);
-  assert.equal(status.capture_status, "WAITING_FOR_REAL_DEVICE");
-  assert.equal(status.arrangement_mapping_rule, "UNKNOWN");
+  assert.equal(status.capture_status, "READY_FOR_REVIEW");
+  assert.equal(status.arrangement_mapping_rule, "ZERO_BASED");
   assert.equal(status.domain_changed, false);
   assert.deepEqual(
-    status.captures.map((entry) => entry.capture_status),
-    ["WAITING", "WAITING", "WAITING"],
+    status.captures.map((entry) => [entry.capture_label, entry.arrangement, entry.arrangement_mode]),
+    [
+      ["arrangement_1", 0, 0],
+      ["arrangement_2", 1, 0],
+      ["arrangement_8", 7, 0],
+    ],
   );
+  const root = FIXTURE_ROOT;
+  const nameAt = (capture, file) => {
+    const bytes = readFileSync(path.join(root, capture, file)).subarray(24, 33);
+    const end = bytes.indexOf(0);
+    return bytes.subarray(0, end === -1 ? bytes.length : end).toString("ascii");
+  };
+  for (const capture of ["arrangement_1", "arrangement_2", "arrangement_8"]) {
+    assert.equal(nameAt(capture, "arr01.work"), "ARR1-TEST");
+    assert.equal(nameAt(capture, "arr03.work").trim(), "");
+  }
+  assert.equal(nameAt("arrangement_1", "arr02.work").trim(), "");
+  assert.equal(nameAt("arrangement_2", "arr02.work"), "ARR2-TEST");
+  assert.equal(nameAt("arrangement_8", "arr02.work"), "ARR2-TEST");
+  assert.equal(nameAt("arrangement_1", "arr08.work").trim(), "");
+  assert.equal(nameAt("arrangement_2", "arr08.work").trim(), "");
+  assert.equal(nameAt("arrangement_8", "arr08.work"), "ARR8-TEST");
 });
 
 test("empty receptacle status stays waiting", () => {

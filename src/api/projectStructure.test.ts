@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createProjectStructureApi, type ProjectStructure } from './projectStructure';
-const empty: ProjectStructure = { schema: 'masterocta.project-structure:v3', projectRelativePath: 'SET/PROJECT', projectState: null, banks: [] };
+const empty: ProjectStructure = { schema: 'masterocta.project-structure:v4', projectRelativePath: 'SET/PROJECT', projectState: null, banks: [] };
 describe('Project Structure IPC contract', () => {
   it('uses only the registered root and relative project with one read command', async () => {
     const request = vi.fn().mockResolvedValue(empty);

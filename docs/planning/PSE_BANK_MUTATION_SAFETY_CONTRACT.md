@@ -34,14 +34,14 @@ APPLY_READINESS        = NOT_READY
 | `ReadinessGap` | 未解決の理由 | 追跡 |
 | --- | --- | --- |
 | `BankChangePlan` | #181 は `BANK_CHANGEPLAN_READINESS = NOT_READY` | #181 |
-| `ArrangementFileSlot` | `[STATES] ARRANGEMENT` が `arr01`–`arr08` に対応付いていない | #204 |
+| `ArrangementFileSlot` | `[STATES] ARRANGEMENT` が `arr01`–`arr08` に対応付いていない。`P_ARR_TEST` の UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08` で解決済み | #204 |
 | `ArrangerPatternReferences` | Arranger `pattern_id`（`n_rows == 0` を含む）の番号付けが未証明 | 監査 §7C / §8 |
 | `BankInternalIdentity` | A/B/C/E/F 監査後も `BANK_INTERNAL_IDENTITY = NOT_OBSERVED`（[`PSE_BANK_INTERNAL_IDENTITY.md`](./PSE_BANK_INTERNAL_IDENTITY.md) #221） | 監査 §7C |
 | `SceneAndRecorderDependencies` | Scene / Recorder は unmodeled。unmodeled 依存は計画を失敗で閉じる | 監査 §7C、control plane §6 |
 | `WorkingSavedCheckpointRule` | `.work` / `.strd` のどちらを動かすか、`[STATES] BANK` をどう扱うか未決 | 監査 §7C、control plane §12 |
 | `ApplyAuthorization` | PSE-3 Apply の明示承認文書がない | control plane §9 |
 
-項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_every_gap_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は `#[cfg(test)]` の契約テスト専用であり、製品ビルドからは呼べない。`ReadinessEvidence` の field は private で、製品から得られる値は `current_main()`（と同値の `Default` / `Clone`）だけである。証拠: `ot-plan` の doctest（`current_main()` は compile でき、`assume_resolved` の呼び出しと struct literal は compile できない）と、inventory 内のテスト `production_cannot_resolve_readiness_or_forge_a_permit`（`#[cfg(test)]` の位置、`-> Self` を返す公開関数が 2 つだけであること、field が private であることを source で検査）。stable の rustdoc は `compile_fail` の error code を照合しないため、各 snippet が意図した error（E0599 / E0451 など）だけで失敗することは手元で個別に compile して確認した。
+項目を解決済みにするには、`ReadinessEvidence::current_main()` とそれを固定するテスト `current_main_readiness_keeps_remaining_changeplan_gaps_open` を、追跡先の証拠を添えたレビュー済み PR で変更する。`ReadinessEvidence::assume_resolved` は `#[cfg(test)]` の契約テスト専用であり、製品ビルドからは呼べない。`ReadinessEvidence` の field は private で、製品から得られる値は `current_main()`（と同値の `Default` / `Clone`）だけである。証拠: `ot-plan` の doctest（`current_main()` は compile でき、`assume_resolved` の呼び出しと struct literal は compile できない）と、inventory 内のテスト `production_cannot_resolve_readiness_or_forge_a_permit`（`#[cfg(test)]` の位置、`-> Self` を返す公開関数が 2 つだけであること、field が private であることを source で検査）。stable の rustdoc は `compile_fail` の error code を照合しないため、各 snippet が意図した error（E0599 / E0451 など）だけで失敗することは手元で個別に compile して確認した。
 
 ## 2. 既存 safety primitive の再利用監査
 
@@ -110,7 +110,7 @@ symlink の参照先は digest だけを保持し、manifest に root 外の pat
 | field | 意味 |
 | --- | --- |
 | `contract_schema` | `masterocta.bank-mutation-contract:v1` |
-| `read_model_schema` | Plan を計算した read model の DTO schema（現行 `masterocta.project-structure:v3`） |
+| `read_model_schema` | Plan を計算した read model の DTO schema（現行 `masterocta.project-structure:v4`） |
 | `root_id`、`device_fingerprint`、`base_observed_revision` | root の identity と観測 revision |
 | `project_relative_path` | 対象 project directory |
 | `kind`、`source`、`destination` | Copy / Move / Swap と Bank index |
@@ -290,7 +290,7 @@ ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範�
 1. `Bank Mutation Safety` は #183 の Apply 実装が入るまで **BLOCKED** のまま。空テストや `continue-on-error` で PASS にしない（CI foundation §4）
 2. #183 では、Apply の各テストが `evaluate_apply_entry` の permit を経由していること、POST に `verify_expected_changes` と `verify_bank_structure` を適用していることを inventory の required test で固定する
 3. failure injection（#185）では、各 phase での失敗後に `BankMutationPhase::on_failure` の義務どおりになったことを `prove_no_write` または `verify_recovered_to_pre` で示す
-4. `current_main_readiness_keeps_every_gap_open` の変更を含む PR は、追跡先の証拠リンクがあるかを review gate で確認する
+4. `current_main_readiness_keeps_remaining_changeplan_gaps_open` の変更を含む PR は、追跡先の証拠リンクがあるかを review gate で確認する
 5. scope: `src-tauri/crates/ot-plan/src/bank_mutation.rs`、`src-tauri/crates/ot-plan/Cargo.toml`、`src-tauri/src/bank_mutation_contract.rs` は `pse-ci-scope.mjs` の in-scope に追加済み。`bank_mutation.rs` と `bank_mutation_contract.rs` は file 名に `bank` を含むので、static guard の `RUST_WRITE_API` 走査対象にもなっている
 6. 将来、汎用 change / apply command が Bank role を扱う場合（§12 BMS-ROUTE）、その command を guard の allowlist に明示的に追加し、permit を経由しているかを guard 側でも検査する
 
@@ -320,7 +320,7 @@ ChangePlan の deterministic / reference enumeration の 4 gate は #181 の範�
 ```text
 BANK_MUTATION_CONTRACT   = DEFINED (masterocta.bank-mutation-contract:v1)
 CONTRACT_TESTS           = IN_INVENTORY (Project Structure CI)
-BANK_CHANGEPLAN_READINESS = NOT_READY (#181, #204, §7C)
+BANK_CHANGEPLAN_READINESS = NOT_READY (#181, §7C except ArrangementFileSlot)
 APPLY_READINESS          = NOT_READY
 APPLY_AUTHORIZATION      = NOT_GRANTED (PSE-3)
 ```

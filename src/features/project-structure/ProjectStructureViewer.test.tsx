@@ -10,7 +10,7 @@ function bank(role: StructureBank['role'] = 'working'): StructureBank {
     patterns: [ { index: 0, partIndex: 0, scale: { kind: 'perTrack', masterLength: { kind: 'infinite' }, masterScale: { kind: 'times1' }, tracks: [{ track: 0, length: 12, scale: { kind: 'times1Over2' } }] } }, { index: 1, partIndex: 1, scale: { kind: 'normal', masterLength: 255, masterScale: { kind: 'times2' } } } ],
     parts: [{ index: 0, tracks: [...slots.map((slot, index) => ({ index, playback: { kind: 'audio' as const, machine: { kind: 'flex' as const }, slot } })), { index: 7, playback: { kind: 'master' } }] }, { index: 1, tracks: [{ index: 0, playback: { kind: 'audio', machine: { kind: 'thru' }, slot: { kind: 'noSampleMachine' } } }] }] };
 }
-const data: ProjectStructure = { schema: 'masterocta.project-structure:v3', projectRelativePath: 'SET/PROJECT', projectState: { role: 'working', sourceRelativePath: 'SET/PROJECT/project.work', parseStatus: 'parsed', bank: { kind: 'selected', index: 0 }, pattern: { kind: 'selected', index: 1 }, arrangement: { kind: 'unmapped', raw: 7 }, masterTrack: true }, banks: [bank(), bank('savedCheckpoint')] };
+const data: ProjectStructure = { schema: 'masterocta.project-structure:v4', projectRelativePath: 'SET/PROJECT', projectState: { role: 'working', sourceRelativePath: 'SET/PROJECT/project.work', parseStatus: 'parsed', bank: { kind: 'selected', index: 0 }, pattern: { kind: 'selected', index: 1 }, arrangement: { kind: 'selected', index: 7 }, masterTrack: true }, banks: [bank(), bank('savedCheckpoint')] };
 function view(read = vi.fn().mockResolvedValue(data), usageEdges: SampleUsageEdge[] = []) {
   return render(<LocaleProvider initialLocaleId="en"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read }} usageEdges={usageEdges} /></LocaleProvider>);
 }
@@ -24,7 +24,7 @@ describe('Project Structure Viewer', () => {
     expect(screen.getByText(/INF · 1×/)).toBeInTheDocument();
     expect(screen.getByText('12 · 1/2×')).toBeInTheDocument();
     for (const label of ['Static 3', 'Flex 128', 'Recorder 2', 'Unread / unknown (250)', 'Master']) expect(screen.getByText(label)).toBeInTheDocument();
-    expect(screen.getByText(/Arrangement: Unmapped \(7\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Arrangement 8/)).toBeInTheDocument();
     expect(screen.getByText('Scene: not read · Arranger: out of scope')).toBeInTheDocument();
     const masterRow = screen.getByText('Master').closest('tr')!;
     expect(within(masterRow).queryByText(/Flex|Static|Recorder/)).toBeNull();
@@ -91,7 +91,7 @@ describe('Project Structure Viewer', () => {
     expect(screen.getByText('レコーダー 2')).toBeInTheDocument();
     expect(screen.getByText('スタティック 3')).toBeInTheDocument();
     expect(screen.getByText(/パターン A01 → パート 1 · トラックごと/)).toBeInTheDocument();
-    expect(screen.getByText(/アレンジメント: 未マッピング \(7\)/)).toBeInTheDocument();
+    expect(screen.getByText(/アレンジメント 8/)).toBeInTheDocument();
     expect(screen.getAllByText(/解析済み/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Sample Slot Reference')).toBeNull();
     expect(screen.queryByText('Master')).toBeNull();
