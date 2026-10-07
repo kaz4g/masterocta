@@ -1,0 +1,17 @@
+{
+  "schema": "masterocta.pse-bank-identity-crossover-capture:v1",
+  "run_id": "B",
+  "phase": "PRE",
+  "project_name": "P_BANK_XB",
+  "device": "Octatrack MkII",
+  "os_version": "",
+  "device_generated": false,
+  "synthetic_modification": false,
+  "source_bank_ui": "A",
+  "comparison_banks": ["A", "B", "C"],
+  "current_bank_ui": "D",
+  "copy_order": [],
+  "project_reloaded": null,
+  "capture_date": "",
+  "operator_note": "TEMPLATE. Replace after the real-device capture. Keep device_generated false until the copied files and the operator note are in place."
+}

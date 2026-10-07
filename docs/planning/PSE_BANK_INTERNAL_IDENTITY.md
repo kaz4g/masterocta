@@ -242,3 +242,26 @@ READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
 RESULT = STOP_WITH_FINDINGS
 ```
+
+## 13. Crossover harness (evidence, not yet captured)
+
+`MO-PSE-BANK-INTERNAL-IDENTITY-CROSSOVER-1` adds a read-only receptacle at
+`pse_bank_identity_crossover/` for disposable `P_BANK_XA` and `P_BANK_XB`.
+Run A copies A→B then A→C. Run B copies A→C then A→B. Both end on current
+bank D. The comparison is each run's PRE→POST delta, not absolute equality
+across runs.
+
+The four capture directories are templates (`device_generated: false`).
+Offset 585459 stays **content-dependent** and is not promoted from a
+slot-shaped byte. `BANK_CHANGEPLAN_READINESS` stays `NOT_READY`. `#221`
+stays open until a real capture is classified. No Bank write path was added.
+
+```text
+CROSSOVER_HARNESS = READY
+DEVICE_CAPTURE = WAITING_FOR_REAL_DEVICE
+OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
+BANK_INTERNAL_IDENTITY = UNKNOWN
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+BANK_CHANGEPLAN_READINESS = NOT_READY
+RESULT = WAITING_FOR_REAL_DEVICE
+```
