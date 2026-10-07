@@ -11,7 +11,7 @@ Select a catalog Project in Sources. Its Project workspace has a separate
 Project Structure panel, above the sample list. Both shell and inline catalog
 entry points use the same Viewer. The API accepts a registered opaque RootId
 and project-relative path, invokes only `v2_project_structure_read`, and checks
-`masterocta.project-structure:v3` and response target identity.
+`masterocta.project-structure:v4` and response target identity.
 
 Bank documents are selected by full root-relative source document identity.
 Working and SavedCheckpoint are separate options; they are never merged.
@@ -31,7 +31,7 @@ reference statuses use matching `pse.*` keys in `en.ts` and `ja.ts`. Locale
 changes re-render labels only; they do not re-read structure.
 
 Project state is a read-only observation, separate from browsing selection.
-Arrangement stays `Unmapped(raw)`; absent values remain unknown. Scene says
+Arrangement shows the one-based UI number when the project OS is MkII `R0173` / `1.40` and `[STATES] ARRANGEMENT` is in `0..8`. Other OS versions, including 1.40B, and out-of-range raw values stay unrecognized. Absent values remain unknown. Scene says
 "not read". Arranger rows are not displayed. Recorder buffer references are
 shown, but Recorder setup is not inferred.
 

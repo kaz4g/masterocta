@@ -17,8 +17,8 @@ mod tests {
         evaluate_apply_entry, prove_no_write, verify_bank_structure, verify_expected_changes,
         verify_recovered_to_pre, ApplyTargetClass, BankMutationEnvelope,
         BankMutationEnvelopeFields, BankMutationKind, ExpectedChange, ExpectedState,
-        LiveTargetObservation, ManifestEntry, PlannedDocument, ReadinessEvidence, ReadinessGap,
-        StopCondition, TreeChange, TreeChangeKind, TreeManifest, BANK_MUTATION_CONTRACT_SCHEMA,
+        LiveTargetObservation, ManifestEntry, PlannedDocument, ReadinessEvidence, StopCondition,
+        TreeChange, TreeChangeKind, TreeManifest, BANK_MUTATION_CONTRACT_SCHEMA,
     };
     use sha2::{Digest, Sha256};
     use std::fs;
@@ -210,7 +210,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(gaps, ReadinessGap::ALL.to_vec());
+        assert_eq!(gaps, ReadinessEvidence::current_main().open_gaps());
         assert!(stops
             .iter()
             .any(|stop| matches!(stop, StopCondition::UnmodeledDependency(_))));

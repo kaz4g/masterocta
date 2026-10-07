@@ -61,7 +61,7 @@ Scene is outside the original Done line. Arranger rows are not a Done line. `pro
 | #199 | `MO-PSE-READ-MODEL-COMPLETENESS-1` | yes | Track 8 master role, per-track scale, `INF` distinct from a finite step count. Schema `v3`. |
 | #190 | Arranger read | not merged | `STOP_WITH_FINDINGS`. Stacked on the old B2 branch. |
 
-`PROJECT_STATE_READ` stays `PARTIAL` because the arrangement file slot is still unknown. That partial is not an #179 Done miss.
+`PROJECT_STATE_READ` was `PARTIAL` on the original audit SHA because the arrangement file slot was unknown. Disposable `P_ARR_TEST` captures later mapped UI Arrangement 1 / 2 / 8 to raw `0` / `1` / `7` and to `arr01.work` / `arr02.work` / `arr08.work`. That slot is no longer the partial. `ARRANGEMENT_MODE` stays unmodeled. The partial was not an #179 Done miss.
 
 ## 5. Capability matrix
 
@@ -78,7 +78,7 @@ Scene is outside the original Done line. Arranger rows are not a Done line. `pro
 | Per-track scale | accuracy, now required for a correct Pattern | YES | #199; `real_device` pattern 0 lengths 12 and 64 | PASS |
 | Master length `INF` | accuracy, now required so 255 is not rounded | YES | #199; sentinel 255/255 is `Infinite`, normal-mode 255 stays finite | PASS |
 | Active Bank / Pattern from `[STATES]` | added after the original text; present | YES | #197 mapped | PASS |
-| Arrangement file slot | not an #179 Done line | raw only | #197 `Unmapped` | UNKNOWN |
+| Arrangement file slot | not an #179 Done line | YES for MkII `R0173` / OS `1.40` only, zero-based `0..8` | `P_ARR_TEST` UI 1/2/8 → raw 0/1/7 → `arr01`/`arr02`/`arr08`. Other OS versions stay unrecognized | PROVEN for that OS |
 | Scene | NO until a trusted model exists | listed unmodeled | #179 body and control-plane §5 | DEFERRED |
 | Arranger rows | not an #179 Done line | not on main | #190 `STOP_WITH_FINDINGS` | BLOCKED-FUTURE |
 | Bank internal identity | not an #179 Done line | file name is the index used by the reader; bytes inside the bank are not proven as identity | #190 findings | UNKNOWN |
@@ -121,7 +121,7 @@ These can ship as an explicit unread or unmapped label. They do not stop a read-
 
 | Item | Why it does not block #180 |
 | --- | --- |
-| Arrangement file slot | PSE-1 does not require Arranger or arrangement files. `[STATES] ARRANGEMENT` may be shown as raw `Unmapped`, or omitted with that label. |
+| Arrangement file slot | The active slot is mapped for MkII `R0173` / OS `1.40`. The viewer shows the one-based arrangement number for that OS and the raw value when the version or the raw is unrecognized. Arranger rows are still unread. |
 | Scene | #179 and PSE-1 say not to invent Scene rows. The DTO already lists `scenes` as unmodeled. The viewer says "Scene is not read". |
 | Arranger rows | PSE-1 scope is Bank, Pattern, Part, Track, Sample Slot, parse status. |
 
@@ -131,7 +131,7 @@ These can ship as an explicit unread or unmapped label. They do not stop a read-
 
 | Gap | Why it blocks a plan |
 | --- | --- |
-| Arrangement file slot | Active arrangement cannot be tied to `arr01`–`arr08`. A bank change can retarget that reference without the plan naming the file. |
+| Arrangement file slot | Resolved for MkII `R0173` / OS `1.40`: UI Arrangement N is raw `N - 1` and `arrNN.work`. Other OS versions stay unrecognized. A bank change can still retarget Arranger `pattern_id` rows, which remain unproven. |
 | Arranger `pattern_id` | Numbering, including `n_rows == 0`, is unproven. A move/swap cannot list Arranger rows that point at the bank. |
 | Bank internal identity | Only `bank01` is in the tracked fixtures. The reader uses the file name. Bytes inside the bank are not proven as a second identity the plan must rewrite. |
 | Scene and Recorder | Control plane §6: an unmodeled dependency closes the plan as a failure. The read model lists them. A plan that always fails is not a reviewable plan for the three operations. |
@@ -197,8 +197,8 @@ ISSUE_196 = SPLIT_RECOMMENDED
 
 VIEWER_READINESS = READY
 
-PROJECT_STATE_READ = PARTIAL
-ARRANGEMENT_MAPPING = UNKNOWN
+PROJECT_STATE_READ = COMPLETE
+ARRANGEMENT_MAPPING = PROVEN (MkII R0173 / OS 1.40 only)
 ARRANGER_READ = STOP_WITH_FINDINGS
 
 BANK_CHANGEPLAN_READINESS = NOT_READY

@@ -17,7 +17,7 @@ for (const width of [1280, 840]) {
           if (command === 'v2_change_recovery_status' || command === 'v2_rename_recovery_status') return { schema: command, recoveryRequired: false, operations: [] };
           if (command === 'v2_clone_verification_status') return null;
           if (command === 'v2_project_structure_read') return {
-            schema: 'masterocta.project-structure:v3', projectRelativePath: args.projectRelativePath, projectState: null,
+            schema: 'masterocta.project-structure:v4', projectRelativePath: args.projectRelativePath, projectState: null,
             banks: ['working', 'savedCheckpoint'].map((role, i) => ({ index: 0, letter: 'A', role, sourceRelativePath: `PSE_PROJECT/bank01.${i === 0 ? 'work' : 'strd'}`, parseStatus: i === 0 ? 'parsed' : 'malformed', unmodeledDependencies: ['scenes'], patterns: [{ index: 0, partIndex: 0, scale: { kind: 'perTrack', masterLength: { kind: 'infinite' }, masterScale: { kind: 'times1' }, tracks: [{ track: 0, length: 12, scale: { kind: 'times1Over2' } }] } }], parts: [{ index: 0, tracks: [{ index: 0, playback: { kind: 'audio', machine: { kind: 'static' }, slot: { kind: 'slot', slotKind: 'static', number: 3 } } }, { index: 7, playback: { kind: 'master' } }] }] })),
           };
           throw new Error(`Unexpected fixture IPC: ${command}`);

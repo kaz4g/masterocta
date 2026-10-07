@@ -66,7 +66,8 @@ export type MessageParams = {
   'pse.patternSummary': { id: string; part: number; mode: string; length: string },
   'pse.stateBank': { bank: string },
   'pse.statePattern': { pattern: string },
-  'pse.arrangementUnmappedRaw': { raw: number },
+  'pse.stateArrangement': { arrangement: string },
+  'pse.arrangementUnrecognized': { raw: number },
   'pse.catalogEvidence': { usage: string; slot: string; status: string },
   'pse.catalogEvidenceStep': { usage: string; slot: string; step: number; status: string },
 }

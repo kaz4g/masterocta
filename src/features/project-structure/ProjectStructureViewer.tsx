@@ -110,7 +110,7 @@ function ViewerSession({ rootId, projectRelativePath, usageEdges = [], client = 
         {projectState?.parseStatus === 'parsed' && <>
           {' · '}{t('pse.stateBank', { bank: projectState.bank?.kind === 'selected' ? String.fromCharCode(65 + projectState.bank.index) : t('pse.unread') })}
           {' · '}{t('pse.statePattern', { pattern: projectState.pattern?.kind === 'selected' ? String(projectState.pattern.index + 1) : t('pse.unread') })}
-          {' · '}{projectState.arrangement?.kind === 'unmapped' ? t('pse.arrangementUnmappedRaw', { raw: projectState.arrangement.raw }) : t('pse.arrangementUnmapped')}
+          {' · '}{projectState.arrangement?.kind === 'selected' ? t('pse.stateArrangement', { arrangement: String(projectState.arrangement.index + 1) }) : projectState.arrangement?.kind === 'unrecognized' ? t('pse.arrangementUnrecognized', { raw: projectState.arrangement.raw }) : t('pse.unread')}
         </>}
       </p>
       {bank === undefined ? <p>{t('pse.noBanks')}</p> : <>

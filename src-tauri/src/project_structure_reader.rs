@@ -119,14 +119,25 @@ fn project_state_from_bytes(
     };
     // Includes the verified VERSION=19 / R0173 / 1.40 fixture exception.
     // Upstream `check_compatible_os_version` alone rejects that file.
-    match evaluate_project_compatibility(&project).compatibility {
+    // Arrangement slots are evidenced only for that same R0173 / 1.40 pair.
+    let decision = evaluate_project_compatibility(&project);
+    let (os_revision, os_release) = decision
+        .os_version
+        .as_ref()
+        .map(|version| (version.revision.as_str(), version.release.as_str()))
+        .unwrap_or(("", ""));
+    match decision.compatibility {
         ProjectCompatibility::Supported { .. } => ProjectStateDocument {
             role: StateDocumentRole::Working,
             source_relative_path,
             parse_status: StateDocumentParseStatus::Parsed,
             bank: Some(project_bank_selection(project.states.bank)),
             pattern: Some(project_pattern_selection(project.states.pattern)),
-            arrangement: Some(project_arrangement_selection(project.states.arrangement)),
+            arrangement: Some(project_arrangement_selection(
+                project.states.arrangement,
+                os_revision,
+                os_release,
+            )),
             master_track: Some(project.settings.control.audio.master_track),
         },
         ProjectCompatibility::UnsupportedVersion => {
@@ -717,10 +728,12 @@ mod tests {
         assert_eq!(bank.file_number(), 1);
         assert_eq!(pattern, PatternIndex::new(0).unwrap());
         assert_eq!(state.master_track, Some(true));
+        // `real_device` and `multipart` are OS 1.40B. Arrangement slots are
+        // evidenced only for R0173 / 1.40, so an in-range raw stays unrecognized.
         assert_eq!(
             state.arrangement,
             Some(
-                ot_domain::project_structure::ProjectArrangementSelection::Unmapped(
+                ot_domain::project_structure::ProjectArrangementSelection::Unrecognized(
                     arrangement_raw
                 )
             )
@@ -831,6 +844,31 @@ mod tests {
     }
 
     #[test]
+    fn device_arrangement_captures_map_ui_selection_to_arr_files() {
+        for (fixture, raw) in [
+            ("pse_arrangement_device/arrangement_1", 0_u8),
+            ("pse_arrangement_device/arrangement_2", 1),
+            ("pse_arrangement_device/arrangement_8", 7),
+        ] {
+            let fixture_file = fixture_dir(fixture).join("project.work");
+            let tracked_before = fs::read(&fixture_file).unwrap();
+            let (_temp, root) = copied_project(fixture, &["project.work"]);
+            let before = tree_digest(&root);
+            let structure = read_project_structure(&root, &project_path()).unwrap();
+            let state = structure.project_state.as_ref().unwrap();
+            let ot_domain::project_structure::ProjectArrangementSelection::Selected(index) =
+                state.arrangement.unwrap()
+            else {
+                panic!("{fixture} arrangement must be selected");
+            };
+            assert_eq!(index.get(), raw, "{fixture}");
+            assert_eq!(index.file_number(), raw + 1, "{fixture}");
+            assert_eq!(tree_digest(&root), before);
+            assert_eq!(fs::read(&fixture_file).unwrap(), tracked_before);
+        }
+    }
+
+    #[test]
     fn out_of_range_bank_and_pattern_stay_unrecognized() {
         let (_temp, root) = copied_project("real_device", &["project.work", "bank01.work"]);
         replace_states_assignment(&root, "BANK", 16);
@@ -849,7 +887,7 @@ mod tests {
         );
         assert_eq!(
             state.arrangement,
-            Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(8))
+            Some(ot_domain::project_structure::ProjectArrangementSelection::Unrecognized(8))
         );
     }
 
@@ -921,7 +959,11 @@ mod tests {
         );
         assert_eq!(
             state.arrangement,
-            Some(ot_domain::project_structure::ProjectArrangementSelection::Unmapped(0))
+            Some(
+                ot_domain::project_structure::ProjectArrangementSelection::Selected(
+                    ot_domain::project_structure::ArrangementIndex::new(0).unwrap()
+                )
+            )
         );
         assert_eq!(state.master_track, Some(true));
         assert_eq!(tree_digest(&root), before);

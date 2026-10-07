@@ -1,0 +1,16 @@
+{
+  "schema": "masterocta.pse-arrangement-capture:v1",
+  "capture_id": "B",
+  "capture_label": "arrangement_2",
+  "device": "Octatrack MkII",
+  "os_version": "1.40 (R0173)",
+  "project_name": "P_ARR_TEST",
+  "selected_arrangement_ui": 2,
+  "expected_arrangement_index": 1,
+  "save_actions": [
+    "Device save after Arrangement 2 was active, then a separate directory copy. The exact save-menu label was not transcribed. os_version is the project.work OS_VERSION field."
+  ],
+  "capture_date": "2026-10-07",
+  "device_generated": true,
+  "synthetic_modification": false
+}

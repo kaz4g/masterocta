@@ -15,6 +15,7 @@ pub const BANK_COUNT: u8 = 16;
 pub const PATTERNS_PER_BANK: u8 = 16;
 pub const PARTS_PER_BANK: u8 = 4;
 pub const AUDIO_TRACKS_PER_PART: u8 = 8;
+pub const ARRANGEMENTS_PER_PROJECT: u8 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InvalidStructureIndex {
@@ -60,6 +61,7 @@ structure_index!(BankIndex, "bank", BANK_COUNT);
 structure_index!(PatternIndex, "pattern", PATTERNS_PER_BANK);
 structure_index!(PartIndex, "part", PARTS_PER_BANK);
 structure_index!(TrackIndex, "track", AUDIO_TRACKS_PER_PART);
+structure_index!(ArrangementIndex, "arrangement", ARRANGEMENTS_PER_PROJECT);
 
 impl BankIndex {
     /// Octatrack UI letter (`A`..=`P`).
@@ -68,6 +70,13 @@ impl BankIndex {
     }
 
     /// On-media file number (`bank01`..=`bank16`).
+    pub fn file_number(self) -> u8 {
+        self.0 + 1
+    }
+}
+
+impl ArrangementIndex {
+    /// On-media file number (`arr01`..=`arr08`).
     pub fn file_number(self) -> u8 {
         self.0 + 1
     }
@@ -299,14 +308,19 @@ pub enum ProjectPatternSelection {
     Unrecognized(u8),
 }
 
-/// `project.work` `[STATES] ARRANGEMENT`, stored raw.
+/// `project.work` `[STATES] ARRANGEMENT` uses the same zero-based index as
+/// [`ArrangementIndex`] on the evidenced firmware only.
 ///
-/// Tracked fixtures only contain `0`. Pinned ot-tools-io calls the field the
-/// current arrangement and does not define a correspondence to `arr01.work`
-/// through `arr08.work`, so this model does not assign a file slot.
+/// Disposable `P_ARR_TEST` on Octatrack MkII OS 1.40 (R0173) stored UI
+/// Arrangement 1 / 2 / 8 as raw `0` / `1` / `7`. The edited names `ARR1-TEST`,
+/// `ARR2-TEST`, and `ARR8-TEST` remained in `arr01.work`, `arr02.work`, and
+/// `arr08.work`. A value outside `0..8` is unrecognized and is not clamped.
+/// Any other OS revision or release, including 1.40B, stays unrecognized.
+/// `ARRANGEMENT_MODE` is not modeled.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectArrangementSelection {
-    Unmapped(u8),
+    Selected(ArrangementIndex),
+    Unrecognized(u8),
 }
 
 /// Active selection from one project state document. Selections are `None`
@@ -338,8 +352,27 @@ pub fn project_pattern_selection(raw: u8) -> ProjectPatternSelection {
     }
 }
 
-pub fn project_arrangement_selection(raw: u8) -> ProjectArrangementSelection {
-    ProjectArrangementSelection::Unmapped(raw)
+/// Octatrack MkII revision whose arrangement slots were captured.
+pub const ARRANGEMENT_EVIDENCED_OS_REVISION: &str = "R0173";
+/// Octatrack OS release whose arrangement slots were captured. `1.40B` is not this release.
+pub const ARRANGEMENT_EVIDENCED_OS_RELEASE: &str = "1.40";
+
+/// Map `[STATES] ARRANGEMENT` only for [`ARRANGEMENT_EVIDENCED_OS_REVISION`] /
+/// [`ARRANGEMENT_EVIDENCED_OS_RELEASE`]. Other versions keep `raw` unrecognized.
+pub fn project_arrangement_selection(
+    raw: u8,
+    os_revision: &str,
+    os_release: &str,
+) -> ProjectArrangementSelection {
+    if os_revision != ARRANGEMENT_EVIDENCED_OS_REVISION
+        || os_release != ARRANGEMENT_EVIDENCED_OS_RELEASE
+    {
+        return ProjectArrangementSelection::Unrecognized(raw);
+    }
+    match ArrangementIndex::new(raw) {
+        Ok(index) => ProjectArrangementSelection::Selected(index),
+        Err(_) => ProjectArrangementSelection::Unrecognized(raw),
+    }
 }
 
 /// Banks are ordered by Bank index, then Working before SavedCheckpoint.
@@ -381,6 +414,8 @@ mod tests {
         assert!(PartIndex::new(4).is_err());
         assert_eq!(TrackIndex::new(7).unwrap().get(), 7);
         assert!(TrackIndex::new(8).is_err());
+        assert_eq!(ArrangementIndex::new(7).unwrap().get(), 7);
+        assert!(ArrangementIndex::new(8).is_err());
     }
 
     #[test]
@@ -389,6 +424,7 @@ mod tests {
         assert_eq!(PatternIndex::all().count(), 16);
         assert_eq!(PartIndex::all().count(), 4);
         assert_eq!(TrackIndex::all().count(), 8);
+        assert_eq!(ArrangementIndex::all().count(), 8);
     }
 
     #[test]
@@ -491,11 +527,58 @@ mod tests {
     }
 
     #[test]
-    fn arrangement_raw_stays_unmapped_for_every_stored_value() {
-        for raw in [0_u8, 1, 7, 8, 255] {
+    fn project_arrangement_selection_maps_zero_based_file_slots() {
+        for raw in [0_u8, 1, 7] {
+            let selected = project_arrangement_selection(
+                raw,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            );
+            let ProjectArrangementSelection::Selected(index) = selected else {
+                panic!("arrangement {raw} must be a file slot");
+            };
+            assert_eq!(index.get(), raw);
+            assert_eq!(index.file_number(), raw + 1);
+        }
+    }
+
+    #[test]
+    fn project_arrangement_selection_keeps_out_of_range_raw() {
+        assert_eq!(
+            project_arrangement_selection(
+                8,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            ),
+            ProjectArrangementSelection::Unrecognized(8)
+        );
+        assert_eq!(
+            project_arrangement_selection(
+                255,
+                ARRANGEMENT_EVIDENCED_OS_REVISION,
+                ARRANGEMENT_EVIDENCED_OS_RELEASE,
+            ),
+            ProjectArrangementSelection::Unrecognized(255)
+        );
+    }
+
+    #[test]
+    fn project_arrangement_selection_keeps_unevidenced_firmware_unrecognized() {
+        for (revision, release) in [
+            ("R0177", "1.40B"),
+            ("R0173", "1.40A"),
+            ("R0174", "1.40"),
+            ("", ""),
+        ] {
             assert_eq!(
-                project_arrangement_selection(raw),
-                ProjectArrangementSelection::Unmapped(raw)
+                project_arrangement_selection(0, revision, release),
+                ProjectArrangementSelection::Unrecognized(0),
+                "{revision} {release}"
+            );
+            assert_eq!(
+                project_arrangement_selection(7, revision, release),
+                ProjectArrangementSelection::Unrecognized(7),
+                "{revision} {release}"
             );
         }
     }
