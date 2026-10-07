@@ -31,6 +31,21 @@
       "path": "bank02.strd",
       "sha256": "95df787ab7a6262af8393ee5de8b343c2b84003003673a2f6443a5e3f5fe2154",
       "size": 636113
+    },
+    {
+      "path": "bank03.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank03.strd",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank04.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
     }
   ]
 }

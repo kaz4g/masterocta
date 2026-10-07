@@ -13,8 +13,10 @@ import {
   closeSync,
   constants,
   lstatSync,
+  mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -35,7 +37,7 @@ export const FIXTURE_ROOT = path.join(
   "../src-tauri/tests/fixtures/pse_bank_identity_device",
 );
 
-const AB_FILES = [
+const BASE_FILES = [
   "project.work",
   "project.strd",
   "bank01.work",
@@ -51,7 +53,12 @@ export const REQUIRED_CAPTURES = [
     current_bank_ui: "A",
     source_bank_ui: "A",
     destination_bank_ui: "B",
-    files: AB_FILES,
+    files: [
+      ...BASE_FILES,
+      "bank03.work",
+      "bank03.strd",
+      "bank04.work",
+    ],
   },
   {
     name: "bank_ab_current_b",
@@ -59,7 +66,7 @@ export const REQUIRED_CAPTURES = [
     current_bank_ui: "B",
     source_bank_ui: "A",
     destination_bank_ui: "B",
-    files: AB_FILES,
+    files: [...BASE_FILES, "bank03.work", "bank03.strd"],
   },
 ];
 
@@ -70,7 +77,7 @@ export const OPTIONAL_CAPTURES = [
     current_bank_ui: "C",
     source_bank_ui: "A",
     destination_bank_ui: "C",
-    files: [...AB_FILES, "bank03.work", "bank03.strd"],
+    files: [...BASE_FILES, "bank03.work", "bank03.strd"],
   },
 ];
 
@@ -86,7 +93,66 @@ export function resolveCaptureDir(captureName, root = FIXTURE_ROOT) {
   if (rel.startsWith("..") || path.isAbsolute(rel)) {
     throw new Error(`Capture path escapes fixture root: ${captureName}`);
   }
+  let st;
+  try {
+    st = lstatSync(captureDir);
+  } catch (err) {
+    if (!err || err.code !== "ENOENT") throw err;
+    return captureDir;
+  }
+  if (st.isSymbolicLink()) {
+    throw new Error(`Symlink not allowed for capture directory: ${captureName}`);
+  }
+  if (!st.isDirectory()) {
+    throw new Error(`Capture path is not a directory: ${captureName}`);
+  }
   return captureDir;
+}
+
+function oneByte(values) {
+  if (values.length !== 1) return "UNKNOWN";
+  const value = values[0];
+  if (!Number.isInteger(value) || value < 0 || value > 255) return "UNKNOWN";
+  return value;
+}
+
+export function parseStatesSection(text) {
+  const lines = text.split(/\n/).map((line) => line.replace(/\r$/, ""));
+  const starts = [];
+  lines.forEach((line, index) => {
+    if (line.trim() === "[STATES]") starts.push(index);
+  });
+  if (starts.length !== 1) {
+    return { bank: "UNKNOWN" };
+  }
+  const bank = [];
+  for (let index = starts[0] + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line === "[/STATES]") break;
+    const bankMatch = line.match(/^BANK=([0-9]+)$/);
+    if (bankMatch) bank.push(Number(bankMatch[1]));
+  }
+  return { bank: oneByte(bank) };
+}
+
+export function bankRawForUi(uiLabel) {
+  const index = "ABCDEFGHIJKLMNOP".indexOf(uiLabel);
+  if (index < 0) {
+    throw new Error(`Unknown bank UI label: ${uiLabel}`);
+  }
+  return index;
+}
+
+export function projectStatesTemplate(bankRaw) {
+  return `############################
+# Project Settings
+############################
+
+[STATES]
+BANK=${bankRaw}
+PATTERN=0
+[/STATES]
+`;
 }
 
 function assertRegularFile(filePath, label) {
@@ -117,7 +183,7 @@ function readMeta(captureDir) {
   return meta;
 }
 
-function provenanceReady(meta, planned) {
+function provenanceReady(meta, planned, captureDir) {
   if (meta.device_generated !== true) return false;
   if (meta.schema !== META_SCHEMA) throw new Error("capture provenance is incomplete");
   if (meta.capture_label !== planned.name || meta.capture_id !== planned.capture_id) {
@@ -128,6 +194,19 @@ function provenanceReady(meta, planned) {
   }
   if (meta.current_bank_ui !== planned.current_bank_ui) {
     throw new Error("current_bank_ui does not match the capture label");
+  }
+  const projectPath = path.join(captureDir, "project.work");
+  const projectStat = assertRegularFile(projectPath, "project.work");
+  if (!projectStat) {
+    throw new Error("capture provenance is incomplete");
+  }
+  if (projectStat.size > PROJECT_WORK_CAP_BYTES) {
+    throw new Error("project.work exceeds 1 MiB");
+  }
+  const states = parseStatesSection(readFileSync(projectPath, "latin1"));
+  const expectedBank = bankRawForUi(planned.current_bank_ui);
+  if (states.bank !== expectedBank) {
+    throw new Error("project.work BANK does not match declared current_bank_ui");
   }
   if (meta.source_bank_ui !== planned.source_bank_ui || meta.destination_bank_ui !== planned.destination_bank_ui) {
     throw new Error("source or destination bank does not match the capture label");
@@ -155,7 +234,7 @@ export function inspectCapture(captureName, root = FIXTURE_ROOT) {
   if (!planned) throw new Error(`Not a planned capture: ${captureName}`);
   const captureDir = resolveCaptureDir(captureName, root);
   const meta = readMeta(captureDir);
-  if (!provenanceReady(meta, planned)) {
+  if (!provenanceReady(meta, planned, captureDir)) {
     return {
       capture_label: planned.name,
       capture_status: "WAITING",
@@ -185,7 +264,12 @@ export function inspectCapture(captureName, root = FIXTURE_ROOT) {
 }
 
 function captureRow(planned, root) {
-  const captureDir = resolveCaptureDir(planned.name, root);
+  let captureDir;
+  try {
+    captureDir = resolveCaptureDir(planned.name, root);
+  } catch (err) {
+    return { capture_label: planned.name, capture_status: "REJECTED", error: err.message };
+  }
   let meta;
   try {
     meta = readMeta(captureDir);
@@ -199,7 +283,7 @@ function captureRow(planned, root) {
     return { capture_label: planned.name, capture_status: "MISSING" };
   }
   try {
-    if (!provenanceReady(meta, planned)) {
+    if (!provenanceReady(meta, planned, captureDir)) {
       return { capture_label: planned.name, capture_status: "WAITING" };
     }
     const inspected = inspectCapture(planned.name, root);
@@ -215,13 +299,20 @@ function captureRow(planned, root) {
 
 export function captureStatus(root = FIXTURE_ROOT) {
   const required = REQUIRED_CAPTURES.map((planned) => captureRow(planned, root));
-  const optionalDir = resolveCaptureDir(OPTIONAL_CAPTURES[0].name, root);
   let optional = [];
   try {
-    lstatSync(optionalDir);
+    resolveCaptureDir(OPTIONAL_CAPTURES[0].name, root);
     optional = [captureRow(OPTIONAL_CAPTURES[0], root)];
   } catch (err) {
-    if (!err || err.code !== "ENOENT") throw err;
+    if (String(err.message).includes("Symlink not allowed")) {
+      optional = [{
+        capture_label: OPTIONAL_CAPTURES[0].name,
+        capture_status: "REJECTED",
+        error: err.message,
+      }];
+    } else if (!err || err.code !== "ENOENT") {
+      throw err;
+    }
   }
   const present = required.filter((entry) => entry.capture_status === "PRESENT");
   return {
@@ -315,10 +406,11 @@ export function buildManifest(captureName, root = FIXTURE_ROOT) {
   return { schema: MANIFEST_SCHEMA, capture: planned.name, files };
 }
 
-function writeRegularFileNoFollow(filePath, contents) {
+function writeRegularFileAtomic(filePath, contents) {
+  const destination = path.resolve(filePath);
   let existing = null;
   try {
-    existing = lstatSync(filePath);
+    existing = lstatSync(destination);
   } catch (err) {
     if (!err || err.code !== "ENOENT") throw err;
   }
@@ -326,14 +418,25 @@ function writeRegularFileNoFollow(filePath, contents) {
     if (existing.isSymbolicLink() || !existing.isFile()) {
       throw new Error("Refusing non-regular manifest destination: SHA256SUMS.json");
     }
-    unlinkSync(filePath);
   }
+  mkdirSync(path.dirname(destination), { recursive: true });
+  const partial = `${destination}.partial-${process.pid}`;
   const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
-  const fd = openSync(filePath, flags, 0o644);
+  const fd = openSync(partial, flags, 0o644);
   try {
     writeFileSync(fd, contents);
   } finally {
     closeSync(fd);
+  }
+  try {
+    renameSync(partial, destination);
+  } catch (err) {
+    try {
+      unlinkSync(partial);
+    } catch {
+      // Ignore cleanup failure.
+    }
+    throw err;
   }
 }
 
@@ -346,7 +449,7 @@ export function writeManifest(captureName, root = FIXTURE_ROOT) {
     if (!st) throw new Error(`write-manifest requires a regular ${name}`);
   }
   const manifest = buildManifest(captureName, root);
-  writeRegularFileNoFollow(
+  writeRegularFileAtomic(
     path.join(captureDir, "SHA256SUMS.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
   );

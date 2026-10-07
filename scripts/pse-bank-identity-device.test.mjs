@@ -20,6 +20,9 @@ import {
   classifyRawDiffs,
   inspectCapture,
   judgmentFromDeclaredSameContent,
+  parseStatesSection,
+  bankRawForUi,
+  projectStatesTemplate,
   resolveCaptureDir,
   verifyManifest,
   writeManifest,
@@ -61,8 +64,10 @@ function scaffold(root, captures = REQUIRED_CAPTURES) {
 }
 
 function writeEvidenceFiles(root, planned) {
+  const projectBody = projectStatesTemplate(bankRawForUi(planned.current_bank_ui));
   for (const name of planned.files) {
-    writeFileSync(path.join(root, planned.name, name), `FILE ${name}\n`, "utf8");
+    const body = name.startsWith("project.") ? projectBody : `FILE ${name}\n`;
+    writeFileSync(path.join(root, planned.name, name), body, "utf8");
   }
 }
 
@@ -83,6 +88,72 @@ test("committed P_BANK_ID captures stay short of a proven identity", () => {
 
 test("resolveCaptureDir rejects path traversal", () => {
   assert.throws(() => resolveCaptureDir("../outside"), /Invalid capture name/);
+});
+
+test("parseStatesSection reads BANK from the single STATES block", () => {
+  assert.equal(parseStatesSection(projectStatesTemplate(0)).bank, 0);
+  assert.equal(parseStatesSection(projectStatesTemplate(3)).bank, 3);
+  assert.equal(parseStatesSection("[STATES]\nBANK=0\nBANK=1\n[/STATES]\n").bank, "UNKNOWN");
+});
+
+test("a symlinked capture directory is rejected", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-bank-id-capdir-"));
+  const outside = path.join(root, "outside_dir");
+  mkdirSync(outside);
+  symlinkSync(outside, path.join(root, "bank_ab_current_a"));
+  assert.throws(
+    () => resolveCaptureDir("bank_ab_current_a", root),
+    /Symlink not allowed for capture directory/,
+  );
+});
+
+test("project.work BANK must match declared current_bank_ui", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-bank-id-bankstate-"));
+  scaffold(root);
+  const planned = REQUIRED_CAPTURES[0];
+  writeEvidenceFiles(root, planned);
+  writeFileSync(
+    path.join(root, planned.name, "project.work"),
+    projectStatesTemplate(1),
+    "utf8",
+  );
+  writeFileSync(
+    path.join(root, planned.name, "project.strd"),
+    projectStatesTemplate(1),
+    "utf8",
+  );
+  writeFileSync(
+    path.join(root, planned.name, "capture.meta.json"),
+    JSON.stringify(metaFor(planned, {
+      device_generated: true,
+      same_content_different_slot_evidence: true,
+      os_version: "1.40 (R0173)",
+      copy_operation: "Bank copy",
+      save_operation: "Project save",
+      capture_date: "2026-10-07",
+    })),
+    "utf8",
+  );
+  assert.throws(
+    () => inspectCapture(planned.name, root),
+    /BANK does not match declared current_bank_ui/,
+  );
+  assert.equal(captureStatus(root).captures[0].capture_status, "REJECTED");
+});
+
+test("committed manifests hash every audited bank file", () => {
+  for (const planned of REQUIRED_CAPTURES) {
+    const verified = verifyManifest(planned.name, FIXTURE_ROOT);
+    assert.equal(verified.ok, true, planned.name);
+    for (const name of ["bank03.work", "bank03.strd"]) {
+      assert.ok(
+        verified.fresh_files.some((entry) => entry.path === name),
+        `${planned.name} missing ${name}`,
+      );
+    }
+  }
+  const captureA = verifyManifest("bank_ab_current_a", FIXTURE_ROOT);
+  assert.ok(captureA.fresh_files.some((entry) => entry.path === "bank04.work"));
 });
 
 test("a declared capture without files is rejected rather than ready", () => {
