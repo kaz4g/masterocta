@@ -36,7 +36,7 @@ APPLY_READINESS        = NOT_READY
 | `BankChangePlan` | #181 は `BANK_CHANGEPLAN_READINESS = NOT_READY` | #181 |
 | `ArrangementFileSlot` | `[STATES] ARRANGEMENT` が `arr01`–`arr08` に対応付いていない | #204 |
 | `ArrangerPatternReferences` | Arranger `pattern_id`（`n_rows == 0` を含む）の番号付けが未証明 | 監査 §7C / §8 |
-| `BankInternalIdentity` | tracked fixture は `bank01` のみ。Bank ファイル内に自己 index があるか未証明 | 監査 §7C |
+| `BankInternalIdentity` | A/B/C/E/F 監査後も `BANK_INTERNAL_IDENTITY = NOT_OBSERVED`（[`PSE_BANK_INTERNAL_IDENTITY.md`](./PSE_BANK_INTERNAL_IDENTITY.md) #221） | 監査 §7C |
 | `SceneAndRecorderDependencies` | Scene / Recorder は unmodeled。unmodeled 依存は計画を失敗で閉じる | 監査 §7C、control plane §6 |
 | `WorkingSavedCheckpointRule` | `.work` / `.strd` のどちらを動かすか、`[STATES] BANK` をどう扱うか未決 | 監査 §7C、control plane §12 |
 | `ApplyAuthorization` | PSE-3 Apply の明示承認文書がない | control plane §9 |

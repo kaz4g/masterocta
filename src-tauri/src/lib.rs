@@ -34,6 +34,7 @@ mod write_runtime;
 mod bank_mutation_contract;
 #[cfg(test)]
 mod gate_c_clone_rescan;
+mod pse_bank_internal_identity_audit;
 #[cfg(test)]
 mod pse_bank_multi_device_fixtures;
 #[cfg(test)]
