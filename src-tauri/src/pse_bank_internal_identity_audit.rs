@@ -81,7 +81,7 @@ mod tests {
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes)
                 .map_err(|e| format!("read: {e}"))?;
-            return Ok(bytes);
+            Ok(bytes)
         }
 
         #[cfg(not(unix))]
