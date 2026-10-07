@@ -6,6 +6,7 @@ mod tests {
     use sha2::{Digest, Sha256};
     use std::collections::BTreeMap;
     use std::fs;
+    use std::io::Read;
     use std::path::{Path, PathBuf};
 
     const CAPTURES: &[&str] = &[
@@ -22,7 +23,6 @@ mod tests {
     const HEADER_LEN: usize = 21;
     const CHECKSUM_LEN: usize = 2;
     const PINNED_SLOT_CORRELATED_OFFSET: usize = 585_459;
-    const CONTENT_NEIGHBORHOOD: usize = 32;
 
     #[derive(serde::Deserialize)]
     struct ManifestEntry {
@@ -36,6 +36,12 @@ mod tests {
         files: Vec<ManifestEntry>,
     }
 
+    #[derive(serde::Deserialize)]
+    struct CaptureMeta {
+        #[serde(default)]
+        same_content_different_slot_evidence: bool,
+    }
+
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/pse_bank_multi_device")
     }
@@ -44,8 +50,53 @@ mod tests {
         fixture_root().join(name)
     }
 
+    fn read_fixture_regular_file(path: &Path) -> Result<Vec<u8>, String> {
+        let metadata = fs::symlink_metadata(path).map_err(|e| format!("metadata: {e}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err(format!("symlink not allowed: {}", path.display()));
+        }
+        if !metadata.is_file() {
+            return Err(format!("not a regular file: {}", path.display()));
+        }
+        let root = fixture_root()
+            .canonicalize()
+            .map_err(|e| format!("fixture root: {e}"))?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| "missing parent".to_string())?
+            .canonicalize()
+            .map_err(|e| format!("parent canonicalize: {e}"))?;
+        if !parent.starts_with(&root) {
+            return Err(format!("path escapes fixture root: {}", path.display()));
+        }
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(path)
+                .map_err(|e| format!("open nofollow: {e}"))?;
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes)
+                .map_err(|e| format!("read: {e}"))?;
+            return Ok(bytes);
+        }
+
+        #[cfg(not(unix))]
+        {
+            fs::read(path).map_err(|e| format!("read: {e}"))
+        }
+    }
+
     fn sha256_file(path: &Path) -> String {
-        format!("{:x}", Sha256::digest(fs::read(path).unwrap()))
+        format!(
+            "{:x}",
+            Sha256::digest(
+                read_fixture_regular_file(path).expect("fixture read must stay in-root")
+            )
+        )
     }
 
     fn manifest_tree(dir: &Path) -> BTreeMap<String, String> {
@@ -53,7 +104,11 @@ mod tests {
         for entry in fs::read_dir(dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.is_file() {
+            let metadata = fs::symlink_metadata(&path).unwrap();
+            if metadata.file_type().is_symlink() {
+                panic!("symlink not allowed in fixture tree: {}", path.display());
+            }
+            if metadata.is_file() {
                 out.insert(
                     path.file_name().unwrap().to_string_lossy().into_owned(),
                     sha256_file(&path),
@@ -64,7 +119,7 @@ mod tests {
     }
 
     fn read_bank_bytes(capture: &str, file: &str) -> Vec<u8> {
-        fs::read(capture_dir(capture).join(file)).unwrap()
+        read_fixture_regular_file(&capture_dir(capture).join(file)).unwrap()
     }
 
     fn varying_offsets(buffers: &[Vec<u8>]) -> Vec<usize> {
@@ -95,34 +150,24 @@ mod tests {
         out
     }
 
-    fn overlaps_neighborhood(offset: usize, varying: &[usize], radius: usize) -> bool {
-        varying.iter().any(|v| offset.abs_diff(*v) <= radius)
-    }
-
-    fn surviving_identity_candidates(
-        raw: &[usize],
-        bank01_varying: &[usize],
-        bank02_varying: &[usize],
-        file_len: usize,
-    ) -> Vec<usize> {
+    fn unresolved_slot_correlated(raw: &[usize], file_len: usize) -> Vec<usize> {
         let checksum_start = file_len - CHECKSUM_LEN;
         raw.iter()
             .copied()
-            .filter(|offset| {
-                if *offset < HEADER_LEN {
-                    return false;
-                }
-                if *offset >= checksum_start {
-                    return false;
-                }
-                if overlaps_neighborhood(*offset, bank01_varying, CONTENT_NEIGHBORHOOD)
-                    || overlaps_neighborhood(*offset, bank02_varying, CONTENT_NEIGHBORHOOD)
-                {
-                    return false;
-                }
-                true
-            })
+            .filter(|offset| *offset >= HEADER_LEN && *offset < checksum_start)
             .collect()
+    }
+
+    fn same_content_different_slot_evidence() -> bool {
+        for capture in CAPTURES {
+            let meta_path = capture_dir(capture).join("capture.meta.json");
+            let text = read_fixture_regular_file(&meta_path).expect("capture meta");
+            let meta: CaptureMeta = serde_json::from_slice(&text).expect("capture meta json");
+            if meta.same_content_different_slot_evidence {
+                return true;
+            }
+        }
+        false
     }
 
     #[test]
@@ -197,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn checksum_and_content_neighborhood_exclude_identity_candidates() {
+    fn unresolved_slot_correlated_candidate_stays_unknown() {
         let bank01: Vec<_> = CAPTURES
             .iter()
             .map(|c| read_bank_bytes(c, "bank01.work"))
@@ -212,8 +257,9 @@ mod tests {
         let bank02_v = varying_offsets(&bank02);
         assert_eq!(bank01_v.len(), 6);
         assert_eq!(bank02_v.len(), 12);
-        let surviving = surviving_identity_candidates(&raw, &bank01_v, &bank02_v, bank01[0].len());
-        assert!(surviving.is_empty(), "unexpected survivors: {surviving:?}");
+        let unresolved = unresolved_slot_correlated(&raw, bank01[0].len());
+        assert_eq!(unresolved, vec![PINNED_SLOT_CORRELATED_OFFSET]);
+        assert!(!same_content_different_slot_evidence());
     }
 
     #[test]
@@ -254,5 +300,23 @@ mod tests {
                 "fixture bytes changed for {capture}"
             );
         }
+    }
+
+    #[test]
+    fn audit_rejects_symlinked_bank_fixture_file() {
+        use std::os::unix::fs::symlink;
+        use tempfile::TempDir;
+
+        let temp = TempDir::new_in(fixture_root()).unwrap();
+        let outside = fixture_root().join("_audit_symlink_outside.bin");
+        fs::write(&outside, b"outside").unwrap();
+        let link = temp.path().join("bank01.work");
+        symlink(&outside, &link).unwrap();
+        let err = read_fixture_regular_file(&link).unwrap_err();
+        assert!(
+            err.contains("symlink"),
+            "expected symlink rejection, got {err}"
+        );
+        let _ = fs::remove_file(outside);
     }
 }

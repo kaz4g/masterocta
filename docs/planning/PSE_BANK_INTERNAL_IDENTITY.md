@@ -93,14 +93,14 @@ This is the **only** raw candidate. It was **not** promoted to slot identity.
 | --- | --- |
 | Header constant region | No (offset in part/pattern payload band ~585k) |
 | Checksum | No |
-| Temporal variance within ±32 bytes on bank01 | Yes (`585471`, `585727`–`585730` vary on Save/session) |
-| Temporal variance within ±32 bytes on bank02 | Yes (`585461`, `585471`, … vary on pattern Save) |
+| Near temporally varying payload (±32 bytes) | Yes — noted, **not** treated as disproof of slot identity |
 | Typed parser field with operational slot semantics | No |
+| Same-content / different-slot device capture | **Absent** — cannot distinguish identity byte from content |
 
-After elimination:
+Header and checksum ranges are excluded from identity search. Proximity to mutable payload alone does **not** discard the candidate (a fixed slot field could sit beside editable data).
 
 ```text
-SLOT_CORRELATED_CANDIDATES_SURVIVING = (none)
+SLOT_CORRELATED_CANDIDATES_UNRESOLVED = offset 585459 (0x40 vs 0x6c)
 ```
 
 ## 8. Limitations
@@ -109,21 +109,21 @@ SLOT_CORRELATED_CANDIDATES_SURVIVING = (none)
 SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = ABSENT
 ```
 
-No capture shows identical bank bytes in `bank01.*` and `bank02.*`. P_TEST meta documents distinct Bank A vs Bank B content; device Bank Copy with identical payload into two slots was not performed.
+Declared per capture via `capture.meta.json` → `same_content_different_slot_evidence` (not inferred from raw `bank01.*` vs `bank02.*` equality — identity bytes would prevent byte-identical files even when musical content matches). P_TEST captures leave this flag unset / false; Bank A vs B **content** differs per operator meta.
 
 Working/SavedCheckpoint ([#217](https://github.com/kaz4g/masterocta/issues/217)) remains **OPEN**; E/F observations are not reinterpreted here.
 
-Optional serializer roundtrip on TempDir was **not required**: the sole raw candidate was eliminated before identity semantics; roundtrip would not prove device slot identity.
+Optional serializer roundtrip on TempDir was **not required** for this judgment pass.
 
 ## 9. Judgment
 
 ```text
-BANK_INTERNAL_IDENTITY = NOT_OBSERVED
+BANK_INTERNAL_IDENTITY = UNKNOWN
 ```
 
 - **Not** `PROVEN_PRESENT` (no field or byte with demonstrated slot identity semantics).
 - **Not** `PROVEN_ABSENT` (full-byte semantic map plus same-content/different-slot device proof is not available).
-- **Not** `UNKNOWN` (parser coverage is complete for file length; unexplained slot-correlated bytes do not survive elimination).
+- **Not** `NOT_OBSERVED` (one slot-correlated byte remains unresolved without device copy or field-level proof).
 
 ```text
 READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
@@ -137,7 +137,7 @@ Do not close `ReadinessGap::BankInternalIdentity` without owner review, contract
 BANK_CHANGEPLAN_READINESS = NOT_READY
 ```
 
-No internal identity rewrite can currently be justified. Fail-closed readiness gap remains unless an owner accepts a filename-only contract.
+Readiness gap remains open: one slot-correlated byte is unresolved and same-content/different-slot device evidence is absent. No internal identity rewrite can be justified yet; fail-closed until owner review or stronger device capture.
 
 Remaining blockers unchanged: #204 Arrangement mapping, Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open.
 

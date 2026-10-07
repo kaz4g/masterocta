@@ -151,7 +151,7 @@
         "bank_files_match_sha256_manifest_for_all_captures",
         "typed_parser_decodes_all_target_bank_files",
         "same_slot_temporal_hashes_are_pinned",
-        "checksum_and_content_neighborhood_exclude_identity_candidates",
+        "unresolved_slot_correlated_candidate_stays_unknown",
         "candidate_offset_analysis_is_deterministic",
         "fixture_tree_hashes_unchanged_after_audit_reads"
       ]

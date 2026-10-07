@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveCaptureDir } from "./pse-bank-multi-device-manifest.mjs";
 
 export const WORK_ID = "MO-PSE-BANK-INTERNAL-IDENTITY-1";
 export const OT_TOOLS_IO_REV = "cd246d8a595647364eb4cc78211033b2d1302526";
@@ -35,10 +36,8 @@ export const TRANSITIONS = [
   ["bank_a_working_diverged", "bank_a_after_save"],
 ];
 
-/** Pinned single raw slot-correlated byte before content-neighborhood elimination. */
+/** Pinned single raw slot-correlated byte on P_TEST captures. */
 export const PINNED_SLOT_CORRELATED_OFFSET = 585_459;
-
-const CONTENT_NEIGHBORHOOD = 32;
 
 const ROOT = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -49,18 +48,44 @@ export function fixtureRoot() {
   return ROOT;
 }
 
-export function sha256File(filePath) {
-  const bytes = readFileSync(filePath);
-  return createHash("sha256").update(bytes).digest("hex");
+function fixtureRootResolved() {
+  return path.resolve(ROOT);
+}
+
+/**
+ * Resolve a bank file under the fixture root; reject traversal and symlinks.
+ */
+export function readRegularFileUnderRoot(fullPath, rootResolved) {
+  const resolved = path.resolve(fullPath);
+  const rel = path.relative(rootResolved, resolved);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`Path escapes fixture root: ${resolved}`);
+  }
+  const st = lstatSync(resolved);
+  if (st.isSymbolicLink()) {
+    throw new Error(`Symlink not allowed: ${resolved}`);
+  }
+  if (!st.isFile()) {
+    throw new Error(`Not a regular file: ${resolved}`);
+  }
+  return readFileSync(resolved);
+}
+
+export function resolveFixtureBankPath(capture, fileName) {
+  const captureDir = resolveCaptureDir(capture);
+  const full = path.resolve(captureDir, fileName);
+  readRegularFileUnderRoot(full, fixtureRootResolved());
+  return full;
 }
 
 export function readBankBytes(capture, fileName) {
-  const full = path.join(ROOT, capture, fileName);
-  const st = lstatSync(full);
-  if (st.isSymbolicLink()) {
-    throw new Error(`Symlink not allowed: ${capture}/${fileName}`);
-  }
-  return readFileSync(full);
+  const full = path.resolve(resolveCaptureDir(capture), fileName);
+  return readRegularFileUnderRoot(full, fixtureRootResolved());
+}
+
+export function sha256BankFile(capture, fileName) {
+  const bytes = readBankBytes(capture, fileName);
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 export function buildShaMatrix(captures = CAPTURES, files = BANK_TARGET_FILES) {
@@ -68,7 +93,7 @@ export function buildShaMatrix(captures = CAPTURES, files = BANK_TARGET_FILES) {
   for (const capture of captures) {
     matrix[capture] = {};
     for (const file of files) {
-      matrix[capture][file] = sha256File(path.join(ROOT, capture, file));
+      matrix[capture][file] = sha256BankFile(capture, file);
     }
   }
   return matrix;
@@ -78,8 +103,7 @@ export function transitionChangedFiles(transitions = TRANSITIONS, files = BANK_T
   const out = {};
   for (const [from, to] of transitions) {
     const changed = files.filter(
-      (file) =>
-        sha256File(path.join(ROOT, from, file)) !== sha256File(path.join(ROOT, to, file)),
+      (file) => sha256BankFile(from, file) !== sha256BankFile(to, file),
     );
     out[`${from}->${to}`] = changed;
   }
@@ -121,34 +145,72 @@ export function findSlotCorrelatedCandidates(captures = CAPTURES) {
   return { fileLength: len, candidates };
 }
 
-function overlapsNeighborhood(offset, varying, radius) {
-  return varying.some((v) => Math.abs(v - offset) <= radius);
+/**
+ * Classify candidates for identity semantics. Proximity to temporally varying
+ * bytes is noted but does not discard a slot-correlated byte without field-level
+ * or same-content/different-slot device proof.
+ */
+export function classifyCandidates(candidates, bank01Varying, bank02Varying, fileLength) {
+  const checksumStart = fileLength - CHECKSUM_LEN;
+  return candidates.map((entry) => {
+    if (entry.offset < HEADER_LEN) {
+      return { ...entry, classification: "KNOWN_HEADER" };
+    }
+    if (entry.offset >= checksumStart) {
+      return { ...entry, classification: "CHECKSUM_DERIVED" };
+    }
+    const nearTemporalVariance =
+      bank01Varying.some((v) => Math.abs(v - entry.offset) <= 32) ||
+      bank02Varying.some((v) => Math.abs(v - entry.offset) <= 32);
+    if (nearTemporalVariance) {
+      return {
+        ...entry,
+        classification: "UNRESOLVED_SLOT_CORRELATED",
+        note: "Near temporally varying payload; identity vs content not distinguished",
+      };
+    }
+    return {
+      ...entry,
+      classification: "UNRESOLVED_SLOT_CORRELATED",
+      note: "Slot-correlated; no operational slot semantics",
+    };
+  });
 }
 
-export function eliminateCandidates(
-  candidates,
-  bank01Varying,
-  bank02Varying,
-  fileLength,
-) {
-  const checksumStart = fileLength - CHECKSUM_LEN;
-  return candidates
-    .map((entry) => {
-      if (entry.offset < HEADER_LEN) {
-        return { ...entry, classification: "KNOWN_HEADER" };
-      }
-      if (entry.offset >= checksumStart) {
-        return { ...entry, classification: "CHECKSUM_DERIVED" };
-      }
-      if (
-        overlapsNeighborhood(entry.offset, bank01Varying, CONTENT_NEIGHBORHOOD) ||
-        overlapsNeighborhood(entry.offset, bank02Varying, CONTENT_NEIGHBORHOOD)
-      ) {
-        return { ...entry, classification: "CONTENT_DEPENDENT" };
-      }
-      return { ...entry, classification: "UNKNOWN" };
-    })
-    .filter((entry) => entry.classification === "UNKNOWN");
+/**
+ * Device evidence when the operator saved identical bank content into two slots.
+ * Declared in capture.meta.json — not inferred from raw byte equality (identity
+ * bytes would prevent equality even when musical content matches).
+ */
+export function sameContentDifferentSlotDeviceEvidence(captures = CAPTURES) {
+  for (const capture of captures) {
+    const metaPath = path.resolve(resolveCaptureDir(capture), "capture.meta.json");
+    const meta = JSON.parse(
+      readRegularFileUnderRoot(metaPath, fixtureRootResolved()).toString("utf8"),
+    );
+    if (meta.same_content_different_slot_evidence === true) {
+      return "PRESENT";
+    }
+  }
+  return "ABSENT";
+}
+
+export function judgeBankInternalIdentity(classifiedCandidates) {
+  const unresolved = classifiedCandidates.filter(
+    (entry) => entry.classification === "UNRESOLVED_SLOT_CORRELATED",
+  );
+  if (unresolved.length > 0) {
+    return "UNKNOWN";
+  }
+  const hadRawSlotCorrelation = classifiedCandidates.some(
+    (entry) =>
+      entry.classification !== "KNOWN_HEADER" &&
+      entry.classification !== "CHECKSUM_DERIVED",
+  );
+  if (!hadRawSlotCorrelation) {
+    return "NOT_OBSERVED";
+  }
+  return "UNKNOWN";
 }
 
 export function analyzeFixtures() {
@@ -157,26 +219,15 @@ export function analyzeFixtures() {
   const bank01Varying = varyingOffsets(bank01Buffers);
   const bank02Varying = varyingOffsets(bank02Buffers);
   const { fileLength, candidates } = findSlotCorrelatedCandidates();
-  const surviving = eliminateCandidates(
+  const classified = classifyCandidates(
     candidates,
     bank01Varying,
     bank02Varying,
     fileLength,
   );
-
-  let sameContentDifferentSlot = "ABSENT";
-  for (const capture of CAPTURES) {
-    for (const ext of [".work", ".strd"]) {
-      const a = readBankBytes(capture, `bank01${ext}`);
-      const b = readBankBytes(capture, `bank02${ext}`);
-      if (a.equals(b)) {
-        sameContentDifferentSlot = "PRESENT";
-      }
-    }
-  }
-
-  const bankInternalIdentity =
-    surviving.length === 0 ? "NOT_OBSERVED" : "UNKNOWN";
+  const unresolved = classified.filter(
+    (entry) => entry.classification === "UNRESOLVED_SLOT_CORRELATED",
+  );
 
   return {
     workId: WORK_ID,
@@ -188,9 +239,10 @@ export function analyzeFixtures() {
     bank01TemporalVaryingOffsetCount: bank01Varying.length,
     bank02TemporalVaryingOffsetCount: bank02Varying.length,
     slotCorrelatedCandidatesRaw: candidates,
-    slotCorrelatedCandidatesSurvivingElimination: surviving,
-    sameContentDifferentSlotDeviceEvidence: sameContentDifferentSlot,
-    bankInternalIdentity,
+    slotCorrelatedCandidatesClassified: classified,
+    slotCorrelatedCandidatesUnresolved: unresolved,
+    sameContentDifferentSlotDeviceEvidence: sameContentDifferentSlotDeviceEvidence(),
+    bankInternalIdentity: judgeBankInternalIdentity(classified),
   };
 }
 

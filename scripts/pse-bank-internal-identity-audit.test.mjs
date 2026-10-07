@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   analyzeFixtures,
   BANK_TARGET_FILES,
   CAPTURES,
-  eliminateCandidates,
+  classifyCandidates,
   findSlotCorrelatedCandidates,
   fixtureRoot,
+  judgeBankInternalIdentity,
   PINNED_SLOT_CORRELATED_OFFSET,
+  readBankBytes,
+  readRegularFileUnderRoot,
+  resolveFixtureBankPath,
+  sameContentDifferentSlotDeviceEvidence,
   TRANSITIONS,
   transitionChangedFiles,
 } from "./pse-bank-internal-identity-audit.mjs";
@@ -31,11 +39,56 @@ test("pinned slot-correlated offset before elimination", () => {
   assert.equal(candidates[0].bank02Value, 108);
 });
 
-test("elimination removes the pinned candidate as content-dependent", () => {
+test("unresolved slot-correlated candidate yields UNKNOWN judgment", () => {
   const report = analyzeFixtures();
-  assert.equal(report.slotCorrelatedCandidatesSurvivingElimination.length, 0);
-  assert.equal(report.bankInternalIdentity, "NOT_OBSERVED");
-  assert.equal(report.sameContentDifferentSlotDeviceEvidence, "ABSENT");
+  assert.equal(report.slotCorrelatedCandidatesUnresolved.length, 1);
+  assert.equal(
+    report.slotCorrelatedCandidatesUnresolved[0].offset,
+    PINNED_SLOT_CORRELATED_OFFSET,
+  );
+  assert.equal(report.bankInternalIdentity, "UNKNOWN");
+  assert.equal(sameContentDifferentSlotDeviceEvidence(), "ABSENT");
+});
+
+test("classifyCandidates keeps pinned offset unresolved", () => {
+  const { candidates, fileLength } = findSlotCorrelatedCandidates();
+  const bank01 = CAPTURES.map((c) => readBankBytes(c, "bank01.work"));
+  const bank02 = CAPTURES.map((c) => readBankBytes(c, "bank02.work"));
+  const varying = (buffers) => {
+    const len = buffers[0].length;
+    const out = [];
+    for (let i = 0; i < len; i += 1) {
+      if (new Set(buffers.map((b) => b[i])).size > 1) {
+        out.push(i);
+      }
+    }
+    return out;
+  };
+  const classified = classifyCandidates(
+    candidates,
+    varying(bank01),
+    varying(bank02),
+    fileLength,
+  );
+  assert.equal(judgeBankInternalIdentity(classified), "UNKNOWN");
+});
+
+test("readRegularFileUnderRoot rejects symlinks", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "pse-bank-audit-symlink-"));
+  const outside = path.join(dir, "outside.bin");
+  writeFileSync(outside, "x");
+  const link = path.join(dir, "link.work");
+  symlinkSync(outside, link);
+  assert.throws(
+    () => readRegularFileUnderRoot(link, dir),
+    /Symlink not allowed/,
+  );
+});
+
+test("resolveFixtureBankPath accepts committed bank01.work", () => {
+  const resolved = resolveFixtureBankPath("bank_a_active", "bank01.work");
+  assert.match(resolved, /bank_a_active[/\\]bank01\.work$/);
+  assert.doesNotThrow(() => readBankBytes("bank_a_active", "bank01.work"));
 });
 
 test("transition diffs match pinned capture choreography", () => {
