@@ -66,15 +66,19 @@ function writeEvidenceFiles(root, planned) {
   }
 }
 
-test("empty receptacle stays waiting and does not prove identity absent", () => {
+test("committed P_BANK_ID captures stay short of a proven identity", () => {
   const status = captureStatus(FIXTURE_ROOT);
-  assert.equal(status.capture_status, "WAITING_FOR_REAL_DEVICE");
-  assert.equal(status.same_content_different_slot_device_evidence, "ABSENT");
+  assert.equal(status.capture_status, "READY_FOR_REVIEW");
+  assert.equal(status.same_content_different_slot_device_evidence, "DECLARED");
   assert.equal(status.bank_internal_identity, "UNKNOWN");
   assert.equal(status.readiness_gap_bank_internal_identity, "OPEN");
   assert.equal(status.bank_changeplan_readiness, "NOT_READY");
   assert.equal(status.domain_changed, false);
   assert.equal(sameContentDifferentSlotDeviceEvidence(), "ABSENT");
+  for (const planned of [...REQUIRED_CAPTURES, { name: "bank_abc_slot_c" }]) {
+    const verified = verifyManifest(planned.name, FIXTURE_ROOT);
+    assert.equal(verified.ok, true, planned.name);
+  }
 });
 
 test("resolveCaptureDir rejects path traversal", () => {

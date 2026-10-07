@@ -10,6 +10,9 @@ bank_ab_current_a/*
 !bank_ab_current_a/bank01.strd
 !bank_ab_current_a/bank02.work
 !bank_ab_current_a/bank02.strd
+!bank_ab_current_a/bank03.work
+!bank_ab_current_a/bank03.strd
+!bank_ab_current_a/bank04.work
 
 bank_ab_current_b/*
 !bank_ab_current_b/capture.meta.json
@@ -20,6 +23,8 @@ bank_ab_current_b/*
 !bank_ab_current_b/bank01.strd
 !bank_ab_current_b/bank02.work
 !bank_ab_current_b/bank02.strd
+!bank_ab_current_b/bank03.work
+!bank_ab_current_b/bank03.strd
 
 bank_abc_slot_c/*
 !bank_abc_slot_c/capture.meta.json

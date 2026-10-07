@@ -6,18 +6,20 @@ GitHub: [#221](https://github.com/kaz4g/masterocta/issues/221) (child of [#181](
 Disposable project: `P_BANK_ID` on Octatrack MkII. Do not reuse a live project
 or the Bank-evidence project `P_TEST`.
 
-No device copy is in this directory yet.
+Device copies from 2026-10-07 are in the capture directories. Offset
+`585459` is `108` on Bank A, Bank B, and copied Bank C, so it is not a slot
+id. Patterns match. Unsaved part 0 does not match completely, so identity is
+`NO_INTERNAL_IDENTITY_OBSERVED` and the readiness gap stays open. See
+`docs/planning/PSE_BANK_INTERNAL_IDENTITY.md` §11.
 
 ```text
-DEVICE_CAPTURE = NOT_RUN
-SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = ABSENT
-BANK_INTERNAL_IDENTITY = UNKNOWN
+DEVICE_CAPTURE = PASS
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = INSUFFICIENT
+BANK_INTERNAL_IDENTITY = NO_INTERNAL_IDENTITY_OBSERVED
 READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
+RESULT = STOP_WITH_FINDINGS
 ```
-
-Offset `585459` stays the unresolved raw candidate from `P_TEST`. This
-receptacle does not classify it, and it does not copy bank binaries on the Mac.
 
 ## Device steps
 

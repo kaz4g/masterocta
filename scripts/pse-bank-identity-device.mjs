@@ -67,7 +67,7 @@ export const OPTIONAL_CAPTURES = [
   {
     name: "bank_abc_slot_c",
     capture_id: "3",
-    current_bank_ui: "A",
+    current_bank_ui: "C",
     source_bank_ui: "A",
     destination_bank_ui: "C",
     files: [...AB_FILES, "bank03.work", "bank03.strd"],
