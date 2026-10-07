@@ -54,9 +54,12 @@ Each committed capture must include:
   "expected_bank_index": 0,
   "expected_pattern_index": 0,
   "save_actions": ["describe exact UI saves performed"],
-  "distinguishing_content": "e.g. Bank A Track 1 static slot 3 vs Bank B slot 7"
+  "distinguishing_content": "e.g. Bank A Track 1 static slot 3 vs Bank B slot 7",
+  "same_content_different_slot_evidence": false
 }
 ```
+
+Set `same_content_different_slot_evidence` to `true` only when the device saved **identical bank musical content** into two different filename slots (for example UI Bank Copy with no content edits). Do not infer this from raw `bank01.*` vs `bank02.*` byte equality — internal slot bytes would prevent equality even when content matches.
 
 ## Acquisition status
 

@@ -1,54 +1,148 @@
 # Bank internal identity evidence
 
-Work ID: `MO-PSE-BANK-REAL-DEVICE-FIXTURE-1`  
-Companion: [PSE_BANK_MULTI_DEVICE_EVIDENCE.md](./PSE_BANK_MULTI_DEVICE_EVIDENCE.md)
+Work ID: `MO-PSE-BANK-INTERNAL-IDENTITY-1`  
+GitHub: [#221](https://github.com/kaz4g/masterocta/issues/221) (child of [#181](https://github.com/kaz4g/masterocta/issues/181))  
+Companion: [PSE_BANK_MULTI_DEVICE_EVIDENCE.md](./PSE_BANK_MULTI_DEVICE_EVIDENCE.md) ([#219](https://github.com/kaz4g/masterocta/issues/219))
 
-## Question
+## 1. Question
 
 When Copy / Move / Swap ChangePlan is built, must the plan rewrite a **bank slot number inside** `bankNN.work` / `bankNN.strd` bytes, or is **filename** (`bank01`–`bank16`) the only stable identity the read model uses today?
 
-## PSE read model (code fact)
+## 2. Evidence baseline
 
-- [`project_structure_reader.rs`](../../src-tauri/src/project_structure_reader.rs) discovers banks by **filename** and `BankIndex` from `NN` in `bankNN.work` / `bankNN.strd`.
-- [`BankIndex`](../../src-tauri/crates/ot-domain/src/project_structure.rs) maps UI letter `A` → index `0` → file number `01`.
+| Field | Value |
+| --- | --- |
+| `BASE_SHA` | `3639a1780d40234a1ad302a4de650980db78bf19` |
+| Fixture set | A/B/C/E/F under `pse_bank_multi_device/` (Capture D `NOT_RUN`) |
+| Device | Octatrack MkII OS 1.40 (R0173), disposable `P_TEST` |
+| Pinned `ot-tools-io` | git rev `cd246d8a595647364eb4cc78211033b2d1302526` |
+| Read-only tooling | [`scripts/pse-bank-internal-identity-audit.mjs`](../../scripts/pse-bank-internal-identity-audit.mjs), [`pse_bank_internal_identity_audit.rs`](../../src-tauri/src/pse_bank_internal_identity_audit.rs) |
 
-No second identity is decoded into `BankStructure` today.
+PSE read model discovers banks by **filename** ([`project_structure_reader.rs`](../../src-tauri/src/project_structure_reader.rs)); no second identity is decoded into `BankStructure`.
 
-## Pinned `ot-tools-io` `BankFile` (struct audit)
+## 3. Fixture matrix
 
-Source: git rev `cd246d8…` (`ot-tools-io/src/banks.rs`).
+Each committed capture includes `project.work/strd`, `bank01.work/strd`, `bank02.work/strd` (636113 bytes per bank file on P_TEST).
+
+| Capture | `bank01.work` | `bank01.strd` | `bank02.work` | `bank02.strd` |
+| --- | --- | --- | --- | --- |
+| A `bank_a_active` | `f9cac541…cb0c` | same as `.work` | `0030470e…10c1` | same as `.work` |
+| B `bank_b_active` | `27303716…072f` | same | `d073ab40…2749` | same |
+| C `bank_b_pattern_4` | same as B | same | `5ebcdc6a…9f65` | same |
+| E `bank_a_working_diverged` | same as B/C | same | `df8e24d8…01a` | same |
+| F `bank_a_after_save` | `573643a0…14c1` | same | same as E | same |
+
+Transition files that changed (SHA-256):
+
+| Step | Changed bank/project files |
+| --- | --- |
+| A→B | all four bank files |
+| B→C | `bank02.work`, `bank02.strd` |
+| C→E | `bank02.work`, `bank02.strd` |
+| E→F | `bank01.work`, `bank01.strd` |
+
+## 4. Parser field audit
+
+Source: `ot-tools-io/src/banks.rs` at pin `cd246d8…`.
 
 | Field | Role |
 | --- | --- |
-| `header` | Fixed 21-byte bank header |
-| `datatype_version` | Format version |
+| `header` | 21-byte constant `BANK_HEADER` |
+| `datatype_version` | `u8` (`BANK_FILE_VERSION = 23`) |
 | `patterns` | Pattern array payload |
-| `parts` | Part payload |
-| `parts_saved_state` | Part saved flags |
-| `parts_edited_bitmask` | Part edited flags |
-| `part_names` | Part names |
-| `checksum` | File checksum |
+| `parts` | Part payload (saved + unsaved) |
+| `parts_saved_state` | 4 bytes |
+| `parts_edited_bitmask` | `u8` |
+| `part_names` | 4 × 7 bytes |
+| `checksum` | `u16`; payload sum skips first 20 serialized bytes and last 2 |
 
 There is **no** serde field named bank index, bank number, or slot identity duplicate of the filename.
 
-## Judgment (without multi-bank device captures)
-
 ```text
-BANK_INTERNAL_IDENTITY = NOT_OBSERVED
+PARSER_INTERNAL_BANK_ID_FIELD = ABSENT
 ```
 
-Interpretation:
+Serializer: `BankFile::encode()` recomputes checksum over bincode-serialized payload; entire file is consumed by the typed struct (no trailing unknown blob on 636113-byte fixtures).
 
-- **Not** `PROVEN_ABSENT` globally (unknown bytes outside the typed struct may exist).
-- **Not** `PROVEN_PRESENT` (no field with demonstrated slot identity semantics).
-- Multi-bank **device-generated** captures are required to compare `bank01.*` vs `bank02.*` content and optional device Bank Copy (#21 in work unit) before upgrading to `PROVEN_*`.
+## 5. Raw byte comparison
 
-## Experiments still required
+| Observation | Classification |
+| --- | --- |
+| `bank01.work` ≠ `bank02.work` in every capture | **CONTENT_DEPENDENT** (Bank A vs B distinguishing content on P_TEST) |
+| Headers byte-identical across bank01/bank02 | **KNOWN_HEADER** |
+| Last two bytes differ with content edits | **CHECKSUM_DERIVED** |
+| `bank01` bytes varying across A/B/C/E/F | 6 offsets (includes checksum byte); Save on F updates `bank01` |
+| `bank02` bytes varying across captures | 12 offsets (pattern edit on C, session drift, checksum) |
+| Any `bank01.*` byte-equal to `bank02.*` in same capture | **No** |
 
-1. Labeled Bank A vs Bank B fixtures with distinct Track 1 slot/machine markers.
-2. Optional: device UI Bank Copy A→B, then byte-compare whether non-content identity bytes change.
-3. If a candidate byte run correlates with slot across captures **and** content edits are ruled out, document provenance and still avoid naming it “bank number” until operationally verified.
+Same-slot temporal comparison shows content and Save drive byte changes; no offset stays fixed for a slot while unrelated content changes elsewhere in a way that would support immutable slot identity.
 
-## ChangePlan impact (unchanged)
+## 6. Candidate offsets
 
-[`PSE_BANK_MUTATION_SAFETY_CONTRACT.md`](./PSE_BANK_MUTATION_SAFETY_CONTRACT.md): do not assume destination bank bytes equal source after copy. `ReadinessGap::BankInternalIdentity` stays open in `ReadinessEvidence::current_main()` until reviewed closure.
+Strict search: offset where all `bank01.work` shares one value and all `bank02.work` shares another, across A/B/C/E/F.
+
+| Offset | bank01 | bank02 | Raw label |
+| --- | --- | --- | --- |
+| 585459 | `0x40` (64) | `0x6c` (108) | `SLOT_CORRELATED_CANDIDATE` |
+
+This is the **only** raw candidate. It was **not** promoted to slot identity.
+
+## 7. Candidate elimination
+
+| Check | Result for offset 585459 |
+| --- | --- |
+| Header constant region | No (offset in part/pattern payload band ~585k) |
+| Checksum | No |
+| Near temporally varying payload (±32 bytes) | Yes — noted, **not** treated as disproof of slot identity |
+| Typed parser field with operational slot semantics | No |
+| Same-content / different-slot device capture | **Absent** — cannot distinguish identity byte from content |
+
+Header and checksum ranges are excluded from identity search. Proximity to mutable payload alone does **not** discard the candidate (a fixed slot field could sit beside editable data).
+
+```text
+SLOT_CORRELATED_CANDIDATES_UNRESOLVED = offset 585459 (0x40 vs 0x6c)
+```
+
+## 8. Limitations
+
+```text
+SAME_CONTENT_DIFFERENT_SLOT_DEVICE_EVIDENCE = ABSENT
+```
+
+Declared per capture via `capture.meta.json` → `same_content_different_slot_evidence` (not inferred from raw `bank01.*` vs `bank02.*` equality — identity bytes would prevent byte-identical files even when musical content matches). P_TEST captures leave this flag unset / false; Bank A vs B **content** differs per operator meta.
+
+Working/SavedCheckpoint ([#217](https://github.com/kaz4g/masterocta/issues/217)) remains **OPEN**; E/F observations are not reinterpreted here.
+
+Optional serializer roundtrip on TempDir was **not required** for this judgment pass.
+
+## 9. Judgment
+
+```text
+BANK_INTERNAL_IDENTITY = UNKNOWN
+```
+
+- **Not** `PROVEN_PRESENT` (no field or byte with demonstrated slot identity semantics).
+- **Not** `PROVEN_ABSENT` (full-byte semantic map plus same-content/different-slot device proof is not available).
+- **Not** `NOT_OBSERVED` (one slot-correlated byte remains unresolved without device copy or field-level proof).
+
+```text
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+```
+
+Do not close `ReadinessGap::BankInternalIdentity` without owner review, contract update, and pinned tests.
+
+## 10. #181 impact
+
+```text
+BANK_CHANGEPLAN_READINESS = NOT_READY
+```
+
+Readiness gap remains open: one slot-correlated byte is unresolved and same-content/different-slot device evidence is absent. No internal identity rewrite can be justified yet; fail-closed until owner review or stronger device capture.
+
+Remaining blockers unchanged: #204 Arrangement mapping, Arranger `pattern_id`, Scene / Recorder, Working/SavedCheckpoint rule, active Move/Swap retarget, and this gap while open.
+
+```text
+WRITE = NONE
+FIXTURE_NO_WRITE = PASS (audit reads only; PRE == POST)
+RESULT = PASS
+```
