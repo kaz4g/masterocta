@@ -1,0 +1,14 @@
+{
+  "schema": "masterocta.pse-arrangement-capture:v1",
+  "capture_id": "C",
+  "capture_label": "arrangement_8",
+  "device": "Octatrack MkII",
+  "os_version": "",
+  "project_name": "P_ARR_TEST",
+  "selected_arrangement_ui": 8,
+  "expected_arrangement_index": 7,
+  "save_actions": [],
+  "capture_date": "",
+  "device_generated": false,
+  "synthetic_modification": false
+}
