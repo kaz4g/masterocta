@@ -148,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn receptacle_templates_are_not_device_evidence_and_stay_unwritten() {
+    fn crossover_fixture_reads_do_not_rewrite_capture_metadata() {
         let before = meta_digest();
         for name in CAPTURES {
             let path = fixture_root().join(name).join("capture.meta.json");
@@ -157,12 +157,19 @@ mod tests {
             assert!(metadata.is_file());
             let text = fs::read_to_string(&path).expect("meta text");
             let meta: Value = serde_json::from_str(&text).expect("meta json");
-            assert_eq!(meta["device_generated"], false);
+            assert_eq!(meta["device_generated"], true);
             assert_eq!(meta["synthetic_modification"], false);
             assert_eq!(meta["current_bank_ui"], "D");
             assert_eq!(meta["source_bank_ui"], "A");
             for bank in COMPARED_BANKS {
-                assert!(!fixture_root().join(name).join(bank).exists());
+                let bank_path = fixture_root().join(name).join(bank);
+                if meta["device_generated"] == true {
+                    let bank_meta = fs::symlink_metadata(&bank_path).expect("bank metadata");
+                    assert!(!bank_meta.file_type().is_symlink());
+                    assert!(bank_meta.is_file());
+                } else {
+                    assert!(!bank_path.exists());
+                }
             }
         }
         let _ = parse_states_bank_raw("[STATES]\nBANK=3\n[/STATES]\n");
@@ -192,5 +199,96 @@ mod tests {
                 assert!(delta.is_empty(), "{name}/{bank_name}");
             }
         }
+    }
+
+    fn read_regular(capture: &str, name: &str) -> Vec<u8> {
+        let path = fixture_root().join(capture).join(name);
+        let metadata = fs::symlink_metadata(&path).expect("metadata");
+        assert!(!metadata.file_type().is_symlink(), "{capture}/{name}");
+        assert!(metadata.is_file(), "{capture}/{name}");
+        fs::read(&path).expect("read")
+    }
+
+    #[test]
+    fn crossover_captures_do_not_show_a_stable_slot_field() {
+        let compared = ["bank01.work", "bank02.work", "bank03.work", "bank04.work"];
+        for capture in CAPTURES {
+            let project =
+                String::from_utf8_lossy(&read_regular(capture, "project.work")).into_owned();
+            assert!(current_bank_is_d(&project), "{capture}");
+            for name in compared {
+                let work = read_regular(capture, name);
+                let stored = name.replace(".work", ".strd");
+                assert_eq!(work, read_regular(capture, &stored), "{capture}/{name}");
+                let decoded = BankFile::from_bytes(&work).expect("decode");
+                assert_eq!(decoded.encode().expect("encode"), work, "{capture}/{name}");
+            }
+        }
+
+        let a_pre_b = read_regular("run_a_pre", "bank02.work");
+        let a_pre_c = read_regular("run_a_pre", "bank03.work");
+        let a_post_a = read_regular("run_a_post", "bank01.work");
+        let a_post_b = read_regular("run_a_post", "bank02.work");
+        let a_post_c = read_regular("run_a_post", "bank03.work");
+        assert_eq!(a_pre_b, a_pre_c);
+        assert_eq!(a_post_b, a_post_c);
+        assert_ne!(a_pre_b, a_post_b);
+        for offset in [46_usize, 36_599] {
+            assert_ne!(a_pre_b[offset], a_post_b[offset]);
+            assert_eq!(a_post_b[offset], a_post_a[offset]);
+            assert_eq!(a_post_c[offset], a_post_a[offset]);
+        }
+        let a_pre_a = BankFile::from_bytes(&read_regular("run_a_pre", "bank01.work")).unwrap();
+        let a_post_a_typed = BankFile::from_bytes(&a_post_a).unwrap();
+        assert!(typed_field_delta(&a_pre_a, &a_post_a_typed).is_empty());
+        let a_b_delta = typed_field_delta(
+            &BankFile::from_bytes(&a_pre_b).unwrap(),
+            &BankFile::from_bytes(&a_post_b).unwrap(),
+        );
+        assert_eq!(a_b_delta, vec!["patterns"]);
+        assert_eq!(
+            typed_field_delta(
+                &BankFile::from_bytes(&a_pre_c).unwrap(),
+                &BankFile::from_bytes(&a_post_c).unwrap(),
+            ),
+            vec!["patterns"]
+        );
+        let a_pre_d = read_regular("run_a_pre", "bank04.work");
+        let a_post_d = read_regular("run_a_post", "bank04.work");
+        assert_eq!(a_pre_d[585_459], 108);
+        assert_eq!(a_post_d[585_459], 64);
+        assert_eq!(
+            typed_field_delta(
+                &BankFile::from_bytes(&a_pre_d).unwrap(),
+                &BankFile::from_bytes(&a_post_d).unwrap(),
+            ),
+            vec!["parts.unsaved", "parts_edited_bitmask"]
+        );
+
+        for capture in ["run_a_pre", "run_a_post", "run_b_pre", "run_b_post"] {
+            for name in ["bank01.work", "bank02.work", "bank03.work"] {
+                assert_eq!(
+                    read_regular(capture, name)[585_459],
+                    108,
+                    "{capture}/{name}"
+                );
+            }
+        }
+
+        for name in compared {
+            assert_eq!(
+                read_regular("run_b_pre", name),
+                read_regular("run_b_post", name),
+                "{name}"
+            );
+        }
+        assert_ne!(
+            read_regular("run_b_post", "bank01.work"),
+            read_regular("run_b_post", "bank02.work")
+        );
+        assert_eq!(
+            read_regular("run_b_pre", "bank02.work"),
+            read_regular("run_b_pre", "bank03.work")
+        );
     }
 }

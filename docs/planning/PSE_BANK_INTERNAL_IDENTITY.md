@@ -243,25 +243,41 @@ BANK_CHANGEPLAN_READINESS = NOT_READY
 RESULT = STOP_WITH_FINDINGS
 ```
 
-## 13. Crossover harness (evidence, not yet captured)
+## 13. Crossover captures (reversed copy order)
 
-`MO-PSE-BANK-INTERNAL-IDENTITY-CROSSOVER-1` adds a read-only receptacle at
-`pse_bank_identity_crossover/` for disposable `P_BANK_XA` and `P_BANK_XB`.
-Run A copies A→B then A→C. Run B copies A→C then A→B. Both end on current
-bank D. The comparison is each run's PRE→POST delta, not absolute equality
-across runs.
+`MO-PSE-BANK-INTERNAL-IDENTITY-CROSSOVER-1` captured disposable `P_BANK_XA`
+and `P_BANK_XB` on Octatrack MkII OS 1.40 (R0173). Each `project.work` has one
+`[STATES]` `BANK=3` (UI D). `.work` matches `.strd` for `bank01`–`bank04`.
+Reload was not reported. Menu labels were not transcribed.
 
-The four capture directories are templates (`device_generated: false`).
-Offset 585459 stays **content-dependent** and is not promoted from a
-slot-shaped byte. `BANK_CHANGEPLAN_READINESS` stays `NOT_READY`. `#221`
-stays open until a real capture is classified. No Bank write path was added.
+PRE→POST on the compared banks:
+
+| Run | Copy order | Bank A | Bank B | Bank C | Offset 585459 on A/B/C |
+| --- | --- | --- | --- | --- | --- |
+| A | B, then C | unchanged | `patterns` only | same delta as B | stays `108` |
+| B | C, then B | unchanged | unchanged | unchanged | stays `108` |
+
+Run A offsets `46` and `36599` on both destinations become the source Bank A
+bytes. Bank B and Bank C stay equal to each other, so the change does not
+follow slot and does not follow copy rank. The last checksum byte follows.
+Run B keeps Bank A different from Bank B (`585728`, `585729`, and a checksum
+byte) and those bytes do not move onto B or C. Untouched Bank B and Bank C
+are byte-identical in both PRE captures.
+
+Current bank D on Run A changes `parts.unsaved`, `parts_edited_bitmask` `0→1`,
+and offset `585459` `108→64`. That stays **content-dependent** and is not a
+slot candidate.
 
 ```text
-CROSSOVER_HARNESS = READY
-DEVICE_CAPTURE = WAITING_FOR_REAL_DEVICE
+DEVICE_CAPTURE = PASS
+UNTOUCHED_SLOT_IDENTITY_OBSERVED = NO
+STABLE_SLOT_CORRELATED_FIELD = INSUFFICIENT
+COPY_ORDER_CORRELATED_FIELD = INSUFFICIENT
 OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
 BANK_INTERNAL_IDENTITY = UNKNOWN
+INTERNAL_ID_REWRITE_REQUIRED_BY_EVIDENCE = UNKNOWN
 READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+ISSUE_221 = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
-RESULT = WAITING_FOR_REAL_DEVICE
+RESULT = STOP_WITH_FINDINGS
 ```

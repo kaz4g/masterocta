@@ -29,17 +29,17 @@ import {
 
 const PINNED = 585459;
 
-test("empty crossover receptacle waits for a real device and does not write", () => {
+test("committed crossover captures verify and do not advance identity", () => {
   const before = snapshotTree(FIXTURE_ROOT);
   const status = crossoverStatus(FIXTURE_ROOT);
   const analyzed = analyzeCrossover(null, FIXTURE_ROOT);
   assert.equal(status.crossover_harness, "READY");
-  assert.equal(status.device_capture, "WAITING_FOR_REAL_DEVICE");
-  assert.equal(status.result, "WAITING_FOR_REAL_DEVICE");
-  assert.equal(status.run_a_pre, "NOT_RUN");
-  assert.equal(status.run_a_post, "NOT_RUN");
-  assert.equal(status.run_b_pre, "NOT_RUN");
-  assert.equal(status.run_b_post, "NOT_RUN");
+  assert.equal(status.device_capture, "PASS");
+  assert.equal(status.result, "PENDING_RUST");
+  assert.equal(status.run_a_pre, "PASS");
+  assert.equal(status.run_a_post, "PASS");
+  assert.equal(status.run_b_pre, "PASS");
+  assert.equal(status.run_b_post, "PASS");
   assert.deepEqual(status.run_a_copy_order, ["B", "C"]);
   assert.deepEqual(status.run_b_copy_order, ["C", "B"]);
   assert.equal(status.current_bank, "D");
@@ -48,13 +48,15 @@ test("empty crossover receptacle waits for a real device and does not write", ()
   assert.equal(status.readiness_gap_bank_internal_identity, "OPEN");
   assert.equal(status.issue_221, "OPEN");
   assert.equal(status.bank_changeplan_readiness, "NOT_READY");
-  assert.equal(analyzed.raw_delta_classification, "NOT_RUN");
+  assert.equal(analyzed.raw_delta_classification, "PENDING_TYPED_REPORT");
+  assert.equal(analyzed.bank_internal_identity, "UNKNOWN");
   assert.equal(JSON.stringify(status).includes("PROVEN_ABSENT"), false);
   for (const planned of PLANNED_CAPTURES) {
     const row = status.captures.find((entry) => entry.capture_label === planned.name);
-    assert.equal(row.capture_status, "WAITING");
+    assert.equal(row.capture_status, "PRESENT");
+    assert.equal(verifyManifest(planned.name, FIXTURE_ROOT).ok, true);
     const meta = JSON.parse(readFileSync(path.join(FIXTURE_ROOT, planned.name, "capture.meta.json"), "utf8"));
-    assert.equal(meta.device_generated, false);
+    assert.equal(meta.device_generated, true);
     assert.deepEqual(meta.copy_order, planned.copy_order);
     assert.equal(meta.project_name, planned.project_name);
   }
@@ -257,7 +259,9 @@ test("committed templates match the planned capture contract", () => {
     const onDisk = JSON.parse(readFileSync(path.join(FIXTURE_ROOT, planned.name, "capture.meta.json"), "utf8"));
     const template = metaTemplate(planned);
     assert.equal(onDisk.schema, template.schema);
-    assert.equal(onDisk.device_generated, false);
+    assert.equal(onDisk.device_generated, true);
+    assert.equal(onDisk.os_version, "1.40 (R0173)");
+    assert.equal(onDisk.project_reloaded, false);
     assert.equal(onDisk.synthetic_modification, false);
     assert.equal(onDisk.current_bank_ui, "D");
     assert.equal(lstatSync(path.join(FIXTURE_ROOT, planned.name)).isSymbolicLink(), false);
