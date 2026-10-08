@@ -242,3 +242,53 @@ READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
 BANK_CHANGEPLAN_READINESS = NOT_READY
 RESULT = STOP_WITH_FINDINGS
 ```
+
+## 13. Crossover captures (reversed copy order)
+
+`MO-PSE-BANK-INTERNAL-IDENTITY-CROSSOVER-1` captured disposable `P_BANK_XA`
+and `P_BANK_XB` on Octatrack MkII OS 1.40 (R0173). Each `project.work` has one
+`[STATES]` `BANK=3` (UI D). `.work` matches `.strd` for `bank01`–`bank04`.
+Reload was not reported. Menu labels were not transcribed.
+
+PRE→POST on the compared banks:
+
+| Run | Copy order | Bank A | Bank B | Bank C | Offset 585459 on A/B/C |
+| --- | --- | --- | --- | --- | --- |
+| A | B, then C | unchanged | `patterns` only | same delta as B | stays `108` |
+| B | C, then B | unchanged | unchanged | unchanged | stays `108` |
+
+Run A offsets `46` and `36599` on both destinations become the source Bank A
+bytes. Bank B and Bank C stay equal to each other, so the change does not
+follow slot and does not follow copy rank. The last checksum byte follows.
+Run B keeps Bank A different from Bank B (`585728`, `585729`, and a checksum
+byte) and those bytes do not move onto B or C. Untouched Bank B and Bank C
+are byte-identical in both PRE captures.
+
+Current bank D on Run A changes `parts.unsaved`, `parts_edited_bitmask` `0→1`,
+and offset `585459` `108→64`. Bank D is the untouched runtime negative control:
+those bytes are not slot-identity candidates. Run A post keeps Bank B byte-identical
+to Bank C (copy order did not split destinations). Run B PRE equals POST on all
+compared banks, so binary evidence does not show that the reversed copy order
+changed saved bank bytes.
+
+```text
+DEVICE_CAPTURE = PASS
+RUN_A_COPY_EFFECT_OBSERVED = YES
+RUN_B_COPY_EFFECT_OBSERVED = NO
+RUN_A_DESTINATIONS_POST_RAW_EQUAL = YES
+RUN_A_DESTINATIONS_POST_TYPED_EQUAL = YES
+ABSOLUTE_SLOT_COMPARISON = PASS
+BANK_D_RUNTIME_CONTROL = PRESENT
+STABLE_SLOT_CORRELATED_FIELD = NONE_OBSERVED
+COPY_ORDER_CORRELATED_FIELD = NONE_OBSERVED
+SOURCE_RUNTIME_CORRELATED = PRESENT
+CROSSOVER_COMPLETENESS = PARTIAL
+CROSSOVER_NEGATIVE_EVIDENCE = INSUFFICIENT
+OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
+BANK_INTERNAL_IDENTITY = UNKNOWN
+INTERNAL_ID_REWRITE_REQUIRED_BY_EVIDENCE = UNKNOWN
+READINESS_GAP_BANK_INTERNAL_IDENTITY = OPEN
+ISSUE_221 = OPEN
+BANK_CHANGEPLAN_READINESS = NOT_READY
+RESULT = STOP_WITH_FINDINGS
+```
