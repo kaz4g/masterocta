@@ -221,16 +221,10 @@ mod tests {
 
         let a_pre_b = bank_work("run_a_pre", 2);
         let a_post_b = bank_work("run_a_post", 2);
-        assert_eq!(
-            typed_field_delta(&a_pre_b, &a_post_b),
-            vec!["patterns"]
-        );
+        assert_eq!(typed_field_delta(&a_pre_b, &a_post_b), vec!["patterns"]);
         let a_pre_c = bank_work("run_a_pre", 3);
         let a_post_c = bank_work("run_a_post", 3);
-        assert_eq!(
-            typed_field_delta(&a_pre_c, &a_post_c),
-            vec!["patterns"]
-        );
+        assert_eq!(typed_field_delta(&a_pre_c, &a_post_c), vec!["patterns"]);
 
         let a_pre_d = bank_work("run_a_pre", 4);
         let a_post_d = bank_work("run_a_post", 4);
