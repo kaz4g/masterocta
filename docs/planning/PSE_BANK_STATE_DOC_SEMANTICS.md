@@ -20,6 +20,8 @@ ISSUE_183_STATE_MISMATCH = YES
 
 `ReadinessGap::WorkingSavedCheckpointRule` in `ot_plan::bank_mutation` stays **open** (`ReadinessEvidence::current_main()` unchanged).
 
+Bank Copy persistence receptacle `MO-PSE-BANK-COPY-PERSISTENCE-1` ([#217](https://github.com/kaz4g/masterocta/issues/217)) is harness-ready with `DEVICE_CAPTURE = WAITING_FOR_REAL_DEVICE`; `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN** until six verified device stages pass the copy-success gate. See [`PSE_BANK_COPY_PERSISTENCE.md`](./PSE_BANK_COPY_PERSISTENCE.md).
+
 ## Issue #183 vs implementation
 
 GitHub [#183](https://github.com/kaz4g/masterocta/issues/183) `[PSE] Bank Fixture Apply` is **CLOSED**, but there is no production Bank Apply runner, Prepare writer, or Tauri command that executes Copy / Move / Swap on fixtures. Only the #182 safety contract (`evaluate_apply_entry`, envelope checks) and disabled legacy writers exist. This audit records `ISSUE_183_STATE_MISMATCH = YES` and does not reopen or mutate the issue.
