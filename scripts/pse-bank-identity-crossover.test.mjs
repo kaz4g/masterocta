@@ -23,6 +23,7 @@ import {
   classifyUntouchedBaseline,
   committedCrossoverTypedDeltas,
   crossoverStatus,
+  defaultAbsoluteTypedContentEqual,
   emptyTypedDeltas,
   metaTemplate,
   verifyManifest,
@@ -216,13 +217,21 @@ test("synthetic crossover classes follow slot, copy order, typed content, or che
 });
 
 test("close review requires the full closure bundle and Run B copy effect", () => {
+  const typed = emptyTypedDeltas();
+  for (const run of ["A", "B"]) {
+    typed[run].B = ["patterns"];
+    typed[run].C = ["patterns"];
+  }
   const dataset = syntheticDataset(32, [
-    { run: "A", slot: "B", offset: 10, after: 1 },
-    { run: "A", slot: "C", offset: 10, after: 2 },
-    { run: "B", slot: "C", offset: 10, after: 1 },
-    { run: "B", slot: "B", offset: 10, after: 2 },
+    { run: "A", slot: "B", offset: 10, after: 5 },
+    { run: "A", slot: "C", offset: 10, after: 5 },
+    { run: "B", slot: "B", offset: 10, after: 5 },
+    { run: "B", slot: "C", offset: 10, after: 5 },
   ], {
+    typed_deltas: typed,
+    typed_regions: { work: { 10: "patterns" }, strd: {} },
     absolute_captures: syntheticAbsoluteCaptures(32),
+    absolute_typed_content_equal: defaultAbsoluteTypedContentEqual(),
     closure: fullClosure(),
   });
   const closed = classifyCrossover(dataset);
@@ -373,6 +382,8 @@ function syntheticDataset(length, edits, extra = {}) {
     typed_deltas: extra.typed_deltas ?? emptyTypedDeltas(),
     typed_regions: extra.typed_regions ?? { work: {}, strd: {} },
     absolute_captures: extra.absolute_captures ?? null,
+    absolute_typed_content_equal:
+      extra.absolute_typed_content_equal ?? defaultAbsoluteTypedContentEqual(),
     closure: extra.closure ?? null,
     run_a_destinations_post_raw_equal: extra.run_a_destinations_post_raw_equal ?? null,
     run_a_destinations_post_typed_equal: extra.run_a_destinations_post_typed_equal ?? null,

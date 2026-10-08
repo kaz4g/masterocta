@@ -719,11 +719,14 @@ function closureBundleReady(closure) {
   return required.every((key) => closure[key] === true);
 }
 
-function runCopyEffectObserved(dataset, pairs) {
+function runCopyEffectObserved(_dataset, pairs) {
   const observed = { A: false, B: false };
   for (const pair of pairs) {
-    if (pair.slot === "D") continue;
-    if (pair.byOffset.size > 0) observed[pair.run] = true;
+    if (pair.slot !== "B" && pair.slot !== "C") continue;
+    for (const change of pair.byOffset.values()) {
+      if (change.checksum) continue;
+      observed[pair.run] = true;
+    }
   }
   return {
     run_a_copy_effect_observed: observed.A ? "YES" : "NO",
@@ -754,13 +757,26 @@ function compareAbsoluteBuffers(left, right, suffix, captureName, leftSlot, righ
   return { same_length: true, diffs };
 }
 
-function typedSlotsEqual(typed, leftSlot, rightSlot) {
-  for (const run of RUNS) {
-    const left = [...(typed?.[run]?.[leftSlot] ?? [])].sort().join(",");
-    const right = [...(typed?.[run]?.[rightSlot] ?? [])].sort().join(",");
-    if (left !== right) return false;
+function absolutePairKey(leftSlot, rightSlot) {
+  return [leftSlot, rightSlot].sort().join("-");
+}
+
+function absoluteTypedContentEqual(dataset, captureName, leftSlot, rightSlot) {
+  if (
+    (leftSlot === "B" && rightSlot === "C")
+    || (leftSlot === "C" && rightSlot === "B")
+  ) {
+    return true;
   }
-  return true;
+  const map = dataset.absolute_typed_content_equal?.[captureName];
+  if (!map) return false;
+  const key = absolutePairKey(leftSlot, rightSlot);
+  return map[key] === true;
+}
+
+export function defaultAbsoluteTypedContentEqual() {
+  const row = { "B-C": true, "B-D": false, "C-D": false };
+  return Object.fromEntries(ABSOLUTE_CAPTURES.map((capture) => [capture, { ...row }]));
 }
 
 export function analyzeAbsoluteSlotComparison(dataset) {
@@ -768,7 +784,6 @@ export function analyzeAbsoluteSlotComparison(dataset) {
   if (!captures) {
     return { status: "INSUFFICIENT", slot_candidate: false, diffs: [] };
   }
-  const typed = dataset.typed_deltas ?? emptyTypedDeltas();
   const diffs = [];
   for (const captureName of ABSOLUTE_CAPTURES) {
     const cap = captures[captureName];
@@ -778,11 +793,13 @@ export function analyzeAbsoluteSlotComparison(dataset) {
     for (const suffix of SUFFIXES) {
       const leftB = cap.B[suffix];
       const leftC = cap.C[suffix];
-      diffs.push(...compareAbsoluteBuffers(leftB, leftC, suffix, captureName, "B", "C").diffs);
-      if (cap.D && typedSlotsEqual(typed, "B", "D")) {
+      if (absoluteTypedContentEqual(dataset, captureName, "B", "C")) {
+        diffs.push(...compareAbsoluteBuffers(leftB, leftC, suffix, captureName, "B", "C").diffs);
+      }
+      if (cap.D && absoluteTypedContentEqual(dataset, captureName, "B", "D")) {
         diffs.push(...compareAbsoluteBuffers(leftB, cap.D[suffix], suffix, captureName, "B", "D").diffs);
       }
-      if (cap.D && typedSlotsEqual(typed, "C", "D")) {
+      if (cap.D && absoluteTypedContentEqual(dataset, captureName, "C", "D")) {
         diffs.push(...compareAbsoluteBuffers(leftC, cap.D[suffix], suffix, captureName, "C", "D").diffs);
       }
     }
@@ -830,6 +847,8 @@ export function buildCrossoverDatasetFromFixture(root, typed_deltas, options = {
     typed_deltas,
     typed_regions: options.typed_regions ?? { work: {}, strd: {} },
     absolute_captures,
+    absolute_typed_content_equal:
+      options.absolute_typed_content_equal ?? defaultAbsoluteTypedContentEqual(),
     closure: options.closure ?? null,
     run_a_destinations_post_raw_equal: options.run_a_destinations_post_raw_equal ?? null,
     run_a_destinations_post_typed_equal: options.run_a_destinations_post_typed_equal ?? null,
@@ -975,6 +994,8 @@ export function classifyCrossover(dataset) {
     && !unexplained
     && !stableDelta
     && !stableAbsolute
+    && !orderPresent
+    && !runtimePresent
     && copyEffects.run_b_copy_effect_observed === "YES"
     && absoluteStatus === "PASS";
 
