@@ -265,14 +265,25 @@ byte) and those bytes do not move onto B or C. Untouched Bank B and Bank C
 are byte-identical in both PRE captures.
 
 Current bank D on Run A changes `parts.unsaved`, `parts_edited_bitmask` `0→1`,
-and offset `585459` `108→64`. That stays **content-dependent** and is not a
-slot candidate.
+and offset `585459` `108→64`. Bank D is the untouched runtime negative control:
+those bytes are not slot-identity candidates. Run A post keeps Bank B byte-identical
+to Bank C (copy order did not split destinations). Run B PRE equals POST on all
+compared banks, so binary evidence does not show that the reversed copy order
+changed saved bank bytes.
 
 ```text
 DEVICE_CAPTURE = PASS
-UNTOUCHED_SLOT_IDENTITY_OBSERVED = NO
-STABLE_SLOT_CORRELATED_FIELD = INSUFFICIENT
-COPY_ORDER_CORRELATED_FIELD = INSUFFICIENT
+RUN_A_COPY_EFFECT_OBSERVED = YES
+RUN_B_COPY_EFFECT_OBSERVED = NO
+RUN_A_DESTINATIONS_POST_RAW_EQUAL = YES
+RUN_A_DESTINATIONS_POST_TYPED_EQUAL = YES
+ABSOLUTE_SLOT_COMPARISON = PASS
+BANK_D_RUNTIME_CONTROL = PRESENT
+STABLE_SLOT_CORRELATED_FIELD = NONE_OBSERVED
+COPY_ORDER_CORRELATED_FIELD = NONE_OBSERVED
+SOURCE_RUNTIME_CORRELATED = PRESENT
+CROSSOVER_COMPLETENESS = PARTIAL
+CROSSOVER_NEGATIVE_EVIDENCE = INSUFFICIENT
 OFFSET_585459_CLASSIFICATION = CONTENT_DEPENDENT
 BANK_INTERNAL_IDENTITY = UNKNOWN
 INTERNAL_ID_REWRITE_REQUIRED_BY_EVIDENCE = UNKNOWN

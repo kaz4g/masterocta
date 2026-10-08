@@ -195,10 +195,66 @@ mod tests {
                     bytes,
                     "{name}/{bank_name}"
                 );
-                let delta = typed_field_delta(&decoded, &decoded);
-                assert!(delta.is_empty(), "{name}/{bank_name}");
             }
         }
+    }
+
+    fn bank_work(capture: &str, bank_index: u8) -> BankFile {
+        let name = format!("bank0{bank_index}.work");
+        let bytes = read_regular(capture, &name);
+        BankFile::from_bytes(&bytes).expect("decode")
+    }
+
+    #[test]
+    fn crossover_typed_deltas_match_pre_and_post_for_each_bank() {
+        for (pre, post) in [("run_a_pre", "run_a_post"), ("run_b_pre", "run_b_post")] {
+            for bank_index in 1..=4 {
+                let pre_bank = bank_work(pre, bank_index);
+                let post_bank = bank_work(post, bank_index);
+                let _ = typed_field_delta(&pre_bank, &post_bank);
+            }
+        }
+
+        let a_pre_a = bank_work("run_a_pre", 1);
+        let a_post_a = bank_work("run_a_post", 1);
+        assert!(typed_field_delta(&a_pre_a, &a_post_a).is_empty());
+
+        let a_pre_b = bank_work("run_a_pre", 2);
+        let a_post_b = bank_work("run_a_post", 2);
+        assert_eq!(
+            typed_field_delta(&a_pre_b, &a_post_b),
+            vec!["patterns"]
+        );
+        let a_pre_c = bank_work("run_a_pre", 3);
+        let a_post_c = bank_work("run_a_post", 3);
+        assert_eq!(
+            typed_field_delta(&a_pre_c, &a_post_c),
+            vec!["patterns"]
+        );
+
+        let a_pre_d = bank_work("run_a_pre", 4);
+        let a_post_d = bank_work("run_a_post", 4);
+        assert_eq!(
+            typed_field_delta(&a_pre_d, &a_post_d),
+            vec!["parts.unsaved", "parts_edited_bitmask"]
+        );
+
+        for bank_index in 1..=4 {
+            let b_pre = bank_work("run_b_pre", bank_index);
+            let b_post = bank_work("run_b_post", bank_index);
+            assert!(
+                typed_field_delta(&b_pre, &b_post).is_empty(),
+                "run_b bank0{bank_index}"
+            );
+        }
+
+        assert_eq!(
+            read_regular("run_a_post", "bank02.work"),
+            read_regular("run_a_post", "bank03.work")
+        );
+        let post_b = bank_work("run_a_post", 2);
+        let post_c = bank_work("run_a_post", 3);
+        assert!(typed_field_delta(&post_b, &post_c).is_empty());
     }
 
     fn read_regular(capture: &str, name: &str) -> Vec<u8> {

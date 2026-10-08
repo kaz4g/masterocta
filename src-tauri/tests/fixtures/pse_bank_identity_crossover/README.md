@@ -5,7 +5,7 @@ GitHub: [#221](https://github.com/kaz4g/masterocta/issues/221) (child of [#181](
 
 Disposable projects only: `P_BANK_XA` and `P_BANK_XB`. Do not reuse a live project, and do not modify `pse_bank_identity_device/` or `pse_bank_identity_device_2/`.
 
-The four directories hold the 2026-10-08 device copies. Reviewed result is `STOP_WITH_FINDINGS`: Run A changes `patterns` on Bank B and Bank C together, and Run B does not change those bank bytes. Offset 585459 stays content-dependent. `#221` stays open.
+The four directories hold the 2026-10-08 device copies. Reviewed result is `STOP_WITH_FINDINGS`: Run A changes `patterns` on Bank B and Bank C together and keeps B/C equal; Run B leaves all compared bank bytes unchanged (`RUN_B_COPY_EFFECT_OBSERVED = NO`). Bank D supplies runtime negative control. Absolute slot comparison passes with no stable field. Offset 585459 stays content-dependent. `#221` stays open.
 
 ```text
 run_a_pre/    P_BANK_XA before copy, current bank D

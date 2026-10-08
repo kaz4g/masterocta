@@ -18,13 +18,17 @@ import {
   PLANNED_CAPTURES,
   REQUIRED_FILES,
   analyzeCrossover,
+  buildCrossoverDatasetFromFixture,
   classifyCrossover,
   classifyUntouchedBaseline,
+  committedCrossoverTypedDeltas,
   crossoverStatus,
   emptyTypedDeltas,
   metaTemplate,
   verifyManifest,
   writeManifest,
+  setManifestWriteImpl,
+  writeRegularFileAtomic,
 } from "./pse-bank-identity-crossover.mjs";
 
 const PINNED = 585459;
@@ -146,13 +150,13 @@ test("synthetic crossover classes follow slot, copy order, typed content, or che
     { run: "B", slot: "C", offset: 10, after: 3 },
   ]));
   assert.equal(slot.stable_slot_correlated_field, "PRESENT");
-  assert.equal(slot.copy_order_correlated_field, "NONE");
+  assert.equal(slot.copy_order_correlated_field, "INSUFFICIENT");
   assert.equal(slot.bank_internal_identity, "CANDIDATE_PRESENT");
   assert.equal(slot.internal_id_rewrite_required_by_evidence, "UNKNOWN");
   assert.equal(slot.readiness_gap_bank_internal_identity, "OPEN");
   assert.equal(slot.issue_221, "OPEN");
   assert.equal(slot.bank_changeplan_readiness, "NOT_READY");
-  assert.equal(slot.result, "PASS");
+  assert.equal(slot.result, "STOP_WITH_FINDINGS");
   assert.equal(slot.diffs.some((diff) => diff.slot === "B" && diff.copy_rank === 1 && diff.after === 2), true);
   assert.equal(slot.diffs.some((diff) => diff.slot === "B" && diff.run === "B" && diff.copy_rank === 2), true);
 
@@ -163,12 +167,14 @@ test("synthetic crossover classes follow slot, copy order, typed content, or che
     { run: "B", slot: "B", offset: 10, after: 2 },
   ]));
   assert.equal(order.copy_order_correlated_field, "PRESENT");
-  assert.equal(order.stable_slot_correlated_field, "NONE");
-  assert.equal(order.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
-  assert.equal(order.internal_id_rewrite_required_by_evidence, "NO");
-  assert.equal(order.readiness_gap_bank_internal_identity, "CLOSE_REVIEW");
-  assert.equal(order.issue_221, "CLOSE_REVIEW");
+  assert.equal(order.stable_slot_correlated_field, "INSUFFICIENT");
+  assert.equal(order.bank_internal_identity, "UNKNOWN");
+  assert.equal(order.internal_id_rewrite_required_by_evidence, "UNKNOWN");
+  assert.equal(order.readiness_gap_bank_internal_identity, "OPEN");
+  assert.equal(order.issue_221, "OPEN");
   assert.equal(order.bank_changeplan_readiness, "NOT_READY");
+  assert.equal(order.result, "STOP_WITH_FINDINGS");
+  assert.equal(order.run_b_copy_effect_observed, "YES");
   assert.equal(JSON.stringify(order).includes("PROVEN_ABSENT"), false);
 
   const typed = emptyTypedDeltas();
@@ -182,8 +188,9 @@ test("synthetic crossover classes follow slot, copy order, typed content, or che
     { run: "B", slot: "B", offset: 10, after: 2 },
     { run: "B", slot: "C", offset: 10, after: 3 },
   ], { typed_deltas: typed, typed_regions: { work: { 10: "patterns" }, strd: {} } }));
-  assert.equal(content.stable_slot_correlated_field, "NONE");
-  assert.equal(content.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
+  assert.equal(content.stable_slot_correlated_field, "INSUFFICIENT");
+  assert.equal(content.bank_internal_identity, "UNKNOWN");
+  assert.equal(content.result, "STOP_WITH_FINDINGS");
   assert.equal(content.diffs.every((diff) => diff.classification === "CONTENT_DEPENDENT"), true);
   assert.equal(content.diffs[0].typed_field_region, "patterns");
 
@@ -193,18 +200,96 @@ test("synthetic crossover classes follow slot, copy order, typed content, or che
     { run: "B", slot: "B", offset: 30, after: 9 },
     { run: "B", slot: "C", offset: 31, after: 4 },
   ]));
-  assert.equal(checksum.stable_slot_correlated_field, "NONE");
+  assert.equal(checksum.stable_slot_correlated_field, "INSUFFICIENT");
   assert.equal(checksum.raw_delta_classification, "CHECKSUM");
-  assert.equal(checksum.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
-  assert.equal(checksum.internal_id_rewrite_required_by_evidence, "NO");
+  assert.equal(checksum.bank_internal_identity, "UNKNOWN");
+  assert.equal(checksum.result, "STOP_WITH_FINDINGS");
 
   const source = classifyCrossover(syntheticDataset(32, [
     { run: "A", slot: "A", offset: 4, after: 7 },
     { run: "B", slot: "A", offset: 4, after: 7 },
   ]));
   assert.equal(source.source_runtime_correlated, "PRESENT");
-  assert.equal(source.stable_slot_correlated_field, "NONE");
-  assert.equal(source.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
+  assert.equal(source.stable_slot_correlated_field, "INSUFFICIENT");
+  assert.equal(source.bank_internal_identity, "UNKNOWN");
+  assert.equal(source.result, "STOP_WITH_FINDINGS");
+});
+
+test("close review requires the full closure bundle and Run B copy effect", () => {
+  const dataset = syntheticDataset(32, [
+    { run: "A", slot: "B", offset: 10, after: 1 },
+    { run: "A", slot: "C", offset: 10, after: 2 },
+    { run: "B", slot: "C", offset: 10, after: 1 },
+    { run: "B", slot: "B", offset: 10, after: 2 },
+  ], {
+    absolute_captures: syntheticAbsoluteCaptures(32),
+    closure: fullClosure(),
+  });
+  const closed = classifyCrossover(dataset);
+  assert.equal(closed.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
+  assert.equal(closed.readiness_gap_bank_internal_identity, "CLOSE_REVIEW");
+  assert.equal(closed.result, "PASS");
+});
+
+test("committed crossover fixture reanalysis stays fail-closed", () => {
+  const dataset = buildCrossoverDatasetFromFixture(FIXTURE_ROOT, committedCrossoverTypedDeltas(), {
+    closure: fullClosure(),
+    run_a_destinations_post_raw_equal: "YES",
+    run_a_destinations_post_typed_equal: "YES",
+  });
+  const judged = classifyCrossover(dataset);
+  assert.equal(judged.run_a_copy_effect_observed, "YES");
+  assert.equal(judged.run_b_copy_effect_observed, "NO");
+  assert.equal(judged.absolute_slot_comparison, "PASS");
+  assert.equal(judged.bank_d_runtime_control, "PRESENT");
+  assert.equal(judged.stable_slot_correlated_field, "NONE_OBSERVED");
+  assert.equal(judged.copy_order_correlated_field, "NONE_OBSERVED");
+  assert.equal(judged.source_runtime_correlated, "PRESENT");
+  assert.equal(judged.crossover_completeness, "PARTIAL");
+  assert.equal(judged.crossover_negative_evidence, "INSUFFICIENT");
+  assert.equal(judged.bank_internal_identity, "UNKNOWN");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(judged.bank_internal_identity, "NO_INTERNAL_IDENTITY_OBSERVED");
+});
+
+test("fixture root symlink rejects manifest writes without touching outside", () => {
+  const parent = mkdtempSync(path.join(tmpdir(), "pse-xover-parent-"));
+  const outside = path.join(parent, "outside");
+  mkdirSync(outside);
+  const linkRoot = path.join(parent, "link-root");
+  symlinkSync(outside, linkRoot);
+  materializeCaptureTree(linkRoot);
+  assert.throws(() => writeManifest("run_a_pre", linkRoot), /Symlink not allowed/);
+  assert.equal(readdirSync(outside).includes("SHA256SUMS.json"), false);
+});
+
+test("partial manifest artifacts are removed when writing fails", () => {
+  const root = materializeReady();
+  const captureDir = path.join(root, "run_a_pre");
+  const destination = path.join(captureDir, "SHA256SUMS.json");
+  setManifestWriteImpl(() => {
+    throw new Error("forced write failure");
+  });
+  try {
+    assert.throws(
+      () => writeRegularFileAtomic(destination, "{}\n"),
+      /forced write failure/,
+    );
+    const partials = readdirSync(captureDir).filter((name) => name.includes(".partial-"));
+    assert.equal(partials.length, 0);
+  } finally {
+    setManifestWriteImpl(null);
+  }
+});
+
+test("rejected captures keep run metadata for summary fields", () => {
+  const root = materializeReady({ projectText: projectStatesTemplate(0) });
+  const status = crossoverStatus(root);
+  assert.equal(status.device_capture, "REJECTED");
+  assert.equal(status.run_a_pre, "REJECTED");
+  const row = status.captures.find((entry) => entry.capture_label === "run_a_pre");
+  assert.equal(row.run_id, "A");
+  assert.equal(row.phase, "PRE");
 });
 
 test("offset 585459 stays content-dependent even when the bytes follow a slot", () => {
@@ -215,7 +300,7 @@ test("offset 585459 stays content-dependent even when the bytes follow a slot", 
     { run: "B", slot: "C", offset: PINNED, after: 3 },
   ]));
   assert.equal(judged.offset_585459_classification, "CONTENT_DEPENDENT");
-  assert.equal(judged.stable_slot_correlated_field, "NONE");
+  assert.equal(judged.stable_slot_correlated_field, "INSUFFICIENT");
   assert.notEqual(judged.bank_internal_identity, "CANDIDATE_PRESENT");
   assert.equal(judged.diffs.every((diff) => diff.classification === "CONTENT_DEPENDENT"), true);
 });
@@ -272,7 +357,7 @@ function syntheticDataset(length, edits, extra = {}) {
   const runs = {};
   for (const run of ["A", "B"]) {
     const slots = {};
-    for (const slot of ["A", "B", "C"]) {
+    for (const slot of ["A", "B", "C", "D"]) {
       slots[slot] = {
         work: pair(length, edits.filter((edit) => edit.run === run && edit.slot === slot && edit.suffix !== "strd")),
         strd: pair(length, edits.filter((edit) => edit.run === run && edit.slot === slot && edit.suffix === "strd")),
@@ -287,7 +372,50 @@ function syntheticDataset(length, edits, extra = {}) {
     runs,
     typed_deltas: extra.typed_deltas ?? emptyTypedDeltas(),
     typed_regions: extra.typed_regions ?? { work: {}, strd: {} },
+    absolute_captures: extra.absolute_captures ?? null,
+    closure: extra.closure ?? null,
+    run_a_destinations_post_raw_equal: extra.run_a_destinations_post_raw_equal ?? null,
+    run_a_destinations_post_typed_equal: extra.run_a_destinations_post_typed_equal ?? null,
   };
+}
+
+function syntheticAbsoluteCaptures(length) {
+  const buf = Buffer.alloc(length, 7);
+  const captures = {};
+  for (const captureName of ["run_a_pre", "run_a_post", "run_b_pre", "run_b_post"]) {
+    captures[captureName] = {
+      B: { work: Buffer.from(buf), strd: Buffer.from(buf) },
+      C: { work: Buffer.from(buf), strd: Buffer.from(buf) },
+      D: { work: Buffer.from(buf), strd: Buffer.from(buf) },
+    };
+  }
+  return captures;
+}
+
+function fullClosure() {
+  return {
+    device_capture_valid: true,
+    manifest_verified: true,
+    current_bank_d: true,
+    bank_roundtrip: true,
+    pre_post_typed_classified: true,
+    pre_post_raw_classified: true,
+    bank_d_negative_control: true,
+    same_content_absolute_completed: true,
+  };
+}
+
+function materializeCaptureTree(root, { projectText } = {}) {
+  const project = projectText ?? projectStatesTemplate(3);
+  for (const planned of PLANNED_CAPTURES) {
+    const dir = path.join(root, planned.name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "capture.meta.json"), JSON.stringify(readyMeta(planned)));
+    for (const name of REQUIRED_FILES) {
+      if (name.startsWith("project.")) writeFileSync(path.join(dir, name), project);
+      else writeFileSync(path.join(dir, name), Buffer.from(`stub-${name}`));
+    }
+  }
 }
 
 function pair(length, edits) {
