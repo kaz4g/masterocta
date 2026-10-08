@@ -3,6 +3,11 @@
   "capture": "run_a_post",
   "files": [
     {
+      "path": "capture.meta.json",
+      "sha256": "c9c6f10a72ef6573ff2b7144e8c60e5dda24695dca350e1a044ba23815fcb588",
+      "size": 712
+    },
+    {
       "path": "project.work",
       "sha256": "4b75e747853d605d62a42746184b07749fd61dec4725e111d2ac6b704032003f",
       "size": 3048

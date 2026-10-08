@@ -38,17 +38,23 @@ mod tests {
         if starts.len() != 1 {
             return None;
         }
-        let bank_values: Vec<u8> = lines
-            .iter()
-            .skip(starts[0] + 1)
-            .take_while(|line| line.trim() != "[/STATES]")
-            .filter_map(|line| {
-                let rest = line.trim().strip_prefix("BANK=")?;
-                let value = rest.parse::<u16>().ok()?;
-                u8::try_from(value).ok()
-            })
-            .collect();
-        if bank_values.len() == 1 {
+        let mut bank_values = Vec::new();
+        let mut closed = false;
+        for line in lines.iter().skip(starts[0] + 1) {
+            let trimmed = line.trim();
+            if trimmed == "[/STATES]" {
+                closed = true;
+                break;
+            }
+            if let Some(rest) = trimmed.strip_prefix("BANK=") {
+                if let Ok(value) = rest.parse::<u16>() {
+                    if let Ok(byte) = u8::try_from(value) {
+                        bank_values.push(byte);
+                    }
+                }
+            }
+        }
+        if closed && bank_values.len() == 1 {
             Some(bank_values[0])
         } else {
             None
@@ -103,6 +109,7 @@ mod tests {
             parse_states_bank_raw("[STATES]\nBANK=3\n[/STATES]\n[STATES]\nBANK=3\n[/STATES]\n"),
             None
         );
+        assert_eq!(parse_states_bank_raw("[STATES]\nBANK=3\n"), None);
     }
 
     #[test]

@@ -8,10 +8,17 @@
   "device_generated": true,
   "synthetic_modification": false,
   "source_bank_ui": "A",
-  "comparison_banks": ["A", "B", "C"],
+  "comparison_banks": [
+    "A",
+    "B",
+    "C"
+  ],
   "current_bank_ui": "D",
-  "copy_order": ["B", "C"],
-  "project_reloaded": false,
+  "copy_order": [
+    "B",
+    "C"
+  ],
+  "project_reloaded": null,
   "capture_date": "2026-10-08",
   "operator_note": "Copied from the device after A to B then A to C and the instructed save, with current bank D. project.work reads OS_VERSION R0173 1.40 and a single [STATES] BANK=3. Reload was not reported. Menu labels were not transcribed."
 }

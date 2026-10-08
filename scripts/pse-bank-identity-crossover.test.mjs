@@ -355,7 +355,7 @@ test("committed templates match the planned capture contract", () => {
     assert.equal(onDisk.schema, template.schema);
     assert.equal(onDisk.device_generated, true);
     assert.equal(onDisk.os_version, "1.40 (R0173)");
-    assert.equal(onDisk.project_reloaded, false);
+    assert.equal(onDisk.project_reloaded, null);
     assert.equal(onDisk.synthetic_modification, false);
     assert.equal(onDisk.current_bank_ui, "D");
     assert.equal(lstatSync(path.join(FIXTURE_ROOT, planned.name)).isSymbolicLink(), false);
@@ -423,6 +423,7 @@ function materializeCaptureTree(root, { projectText } = {}) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "capture.meta.json"), JSON.stringify(readyMeta(planned)));
     for (const name of REQUIRED_FILES) {
+      if (name === "capture.meta.json") continue;
       if (name.startsWith("project.")) writeFileSync(path.join(dir, name), project);
       else writeFileSync(path.join(dir, name), Buffer.from(`stub-${name}`));
     }
@@ -455,6 +456,7 @@ function materializeReady({ projectText } = {}) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(dir, "capture.meta.json"), JSON.stringify(readyMeta(planned)));
     for (const name of REQUIRED_FILES) {
+      if (name === "capture.meta.json") continue;
       if (name.startsWith("project.")) writeFileSync(path.join(dir, name), project);
       else writeFileSync(path.join(dir, name), Buffer.from(`stub-${name}`));
     }

@@ -44,6 +44,7 @@ const SUFFIXES = ["work", "strd"];
 const ABSOLUTE_CAPTURES = ["run_a_pre", "run_a_post", "run_b_pre", "run_b_post"];
 
 export const REQUIRED_FILES = [
+  "capture.meta.json",
   "project.work",
   "project.strd",
   "bank01.work",
@@ -96,6 +97,31 @@ export const PLANNED_CAPTURES = [
 
 export function plannedCapture(captureName) {
   return PLANNED_CAPTURES.find((entry) => entry.name === captureName) ?? null;
+}
+
+export function parseCrossoverStatesSection(text) {
+  const lines = text.split(/\n/).map((line) => line.replace(/\r$/, ""));
+  const starts = lines
+    .map((line, index) => (line.trim() === "[STATES]" ? index : -1))
+    .filter((index) => index >= 0);
+  if (starts.length !== 1) {
+    return { bank: "UNKNOWN", closed: false };
+  }
+  const bank = [];
+  let closed = false;
+  for (let index = starts[0] + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line === "[/STATES]") {
+      closed = true;
+      break;
+    }
+    const bankMatch = line.match(/^BANK=([0-9]+)$/);
+    if (bankMatch) bank.push(Number(bankMatch[1]));
+  }
+  if (!closed || bank.length !== 1 || bank[0] > 255) {
+    return { bank: "UNKNOWN", closed: false };
+  }
+  return { bank: bank[0], closed: true };
 }
 
 export function assertPlannedCaptureName(captureName) {
@@ -238,7 +264,11 @@ function provenanceReady(meta, planned, captureDir) {
   if (!arraysEqual(meta.copy_order, planned.copy_order)) {
     throw new Error("copy_order does not match the capture label");
   }
-  if (typeof meta.project_reloaded !== "boolean") {
+  if (
+    meta.project_reloaded !== true
+    && meta.project_reloaded !== false
+    && meta.project_reloaded !== null
+  ) {
     throw new Error("capture provenance is incomplete");
   }
   for (const key of ["os_version", "capture_date", "operator_note"]) {
@@ -252,7 +282,7 @@ function provenanceReady(meta, planned, captureDir) {
   if (projectStat.size > PROJECT_WORK_CAP_BYTES) {
     throw new Error("project.work exceeds 1 MiB");
   }
-  const states = parseStatesSection(readFileSync(projectPath, "latin1"));
+  const states = parseCrossoverStatesSection(readFileSync(projectPath, "latin1"));
   if (states.bank !== bankRawForUi("D")) {
     throw new Error("project.work BANK does not match declared current_bank_ui");
   }
@@ -794,13 +824,19 @@ export function analyzeAbsoluteSlotComparison(dataset) {
       const leftB = cap.B[suffix];
       const leftC = cap.C[suffix];
       if (absoluteTypedContentEqual(dataset, captureName, "B", "C")) {
-        diffs.push(...compareAbsoluteBuffers(leftB, leftC, suffix, captureName, "B", "C").diffs);
+        const compared = compareAbsoluteBuffers(leftB, leftC, suffix, captureName, "B", "C");
+        if (!compared.same_length) return { status: "INSUFFICIENT", slot_candidate: false, diffs };
+        diffs.push(...compared.diffs);
       }
       if (cap.D && absoluteTypedContentEqual(dataset, captureName, "B", "D")) {
-        diffs.push(...compareAbsoluteBuffers(leftB, cap.D[suffix], suffix, captureName, "B", "D").diffs);
+        const compared = compareAbsoluteBuffers(leftB, cap.D[suffix], suffix, captureName, "B", "D");
+        if (!compared.same_length) return { status: "INSUFFICIENT", slot_candidate: false, diffs };
+        diffs.push(...compared.diffs);
       }
       if (cap.D && absoluteTypedContentEqual(dataset, captureName, "C", "D")) {
-        diffs.push(...compareAbsoluteBuffers(leftC, cap.D[suffix], suffix, captureName, "C", "D").diffs);
+        const compared = compareAbsoluteBuffers(leftC, cap.D[suffix], suffix, captureName, "C", "D");
+        if (!compared.same_length) return { status: "INSUFFICIENT", slot_candidate: false, diffs };
+        diffs.push(...compared.diffs);
       }
     }
   }
@@ -996,6 +1032,7 @@ export function classifyCrossover(dataset) {
     && !stableAbsolute
     && !orderPresent
     && !runtimePresent
+    && copyEffects.run_a_copy_effect_observed === "YES"
     && copyEffects.run_b_copy_effect_observed === "YES"
     && absoluteStatus === "PASS";
 

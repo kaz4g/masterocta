@@ -3,6 +3,11 @@
   "capture": "run_b_pre",
   "files": [
     {
+      "path": "capture.meta.json",
+      "sha256": "0b789a873866b7ff17a6a41ba66a77c9a833b5846ab1451d33a4ca1f8519da1e",
+      "size": 647
+    },
+    {
       "path": "project.work",
       "sha256": "c289b95cc0cda331f905e9e8dcb7130e23a1135c765f616982b569a23b9159f3",
       "size": 3050
