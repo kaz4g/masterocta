@@ -680,6 +680,16 @@ export function buildTransitionMatrix(stages) {
   };
 }
 
+function rawSideEffects(matrix, prefix) {
+  const hits = matrix.transitions.flatMap((transition) => {
+    const files = transition.cells
+      .filter((cell) => cell.file.startsWith(prefix) && !cell.raw_equal)
+      .map((cell) => cell.file);
+    return files.length === 0 ? [] : [{ transition: transition.transition, files }];
+  });
+  return hits.length === 0 ? "NONE" : hits;
+}
+
 function changedOn(transition, fileName) {
   const cell = transition?.cells.find((entry) => entry.file === fileName);
   if (!cell) return "NOT_RUN";
@@ -719,6 +729,9 @@ function observationLabel(workAt, strdAt, confirmed, anyDestChange) {
   if (workAt === "CONTROL_SWITCH" && strdAt === "CONTROL_SWITCH") {
     return "OBSERVED_FLUSH_ON_LEAVING_DESTINATION_CANDIDATE";
   }
+  if (workAt === "CONTROL_SWITCH" && strdAt === "PROJECT_SAVE") {
+    return "OBSERVED_WORK_FLUSH_ON_CONTROL_SWITCH_STRD_ON_PROJECT_SAVE";
+  }
   if (workAt === "PROJECT_SAVE" && strdAt === "PROJECT_SAVE") return "OBSERVED_PROJECT_SAVE_PERSISTENCE_CANDIDATE";
   if (workAt === "PROJECT_RELOAD" || strdAt === "PROJECT_RELOAD") return "OBSERVED_PROJECT_RELOAD_DELTA";
   if (workAt === "NONE" && strdAt === "NONE") return "OBSERVED_NO_DESTINATION_DISK_CHANGE";
@@ -738,6 +751,7 @@ export function classifyPatternPaste(dataset) {
     dest_strd_changed_on_pattern_paste: "NOT_RUN",
     dest_typed_changed_on_pattern_paste: dataset?.dest_typed_changed_on_pattern_paste ?? "NOT_RUN",
     pattern_paste_survives_project_reload: "UNKNOWN",
+    working_checkpoint_separation_observed: "NOT_RUN",
     cross_bank_pattern_paste_persistence: "NOT_RUN",
     project_state_destination_select: null,
     project_state_pattern_paste: null,
@@ -771,6 +785,26 @@ export function classifyPatternPaste(dataset) {
   shell.project_state_control_switch = projectStateTransition(byId.S2, byId.S3);
   shell.project_state_save = projectStateTransition(byId.S3, byId.S4);
   shell.project_state_reload = projectStateTransition(byId.S4, byId.S5);
+  const parsedStates = stages.map((stage) => ({
+    stage_id: stage.stage_id,
+    ...parsePersistenceStatesSection(stage.files["project.work"].toString("latin1")),
+  }));
+  shell.project_bank_sequence = Object.fromEntries(parsedStates.map((entry) => [entry.stage_id, entry.ok ? entry.bank : null]));
+  shell.project_pattern_sequence = Object.fromEntries(parsedStates.map((entry) => [entry.stage_id, entry.ok ? entry.pattern : null]));
+  const bankS2 = shell.project_bank_sequence.S2;
+  const bankS3 = shell.project_bank_sequence.S3;
+  const bankS4 = shell.project_bank_sequence.S4;
+  shell.project_work_active_bank_write_lag_observed = bankS2 != null && bankS2 === bankS3 && bankS3 !== bankS4
+    ? "YES"
+    : "NO";
+  shell.project_bank_selection_first_persisted_at = shell.project_work_active_bank_write_lag_observed === "YES"
+    ? "PROJECT_SAVE"
+    : "NOT_OBSERVED";
+  shell.bank_c_side_effects = rawSideEffects(matrix, "bank03.");
+  shell.bank_d_side_effects = rawSideEffects(matrix, "bank04.");
+  shell.runtime_or_save_side_effect = shell.bank_c_side_effects === "NONE" && shell.bank_d_side_effects === "NONE"
+    ? "NONE"
+    : "PRESENT";
   const transportUnknown = stages.some((stage) => stage.meta.capture_transport === "unknown"
     || stage.meta.capture_transport == null
     || stage.meta.capture_transport === "");
@@ -805,6 +839,10 @@ export function classifyPatternPaste(dataset) {
     "YES",
     anyDestChange,
   );
+  shell.working_checkpoint_separation_observed = shell.cross_bank_pattern_paste_persistence
+    === "OBSERVED_WORK_FLUSH_ON_CONTROL_SWITCH_STRD_ON_PROJECT_SAVE"
+    ? "YES"
+    : "NO";
   shell.persistence_judgment = "OBSERVATION_ONLY";
   return { ...shell, result: "STOP_WITH_FINDINGS" };
 }

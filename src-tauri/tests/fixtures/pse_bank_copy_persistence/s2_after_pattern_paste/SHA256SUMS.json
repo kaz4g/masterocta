@@ -1,0 +1,61 @@
+{
+  "schema": "masterocta-pse-pattern-paste-persistence-manifest:v1",
+  "capture": "s2_after_pattern_paste",
+  "files": [
+    {
+      "path": "capture.meta.json",
+      "sha256": "989d0e2ed2d30042f98d70e8c96961a737def0c2f2ec2f2cf8bc38c8401bcfb9",
+      "size": 1382
+    },
+    {
+      "path": "project.work",
+      "sha256": "fd2e4bfa408274bbba704aaf9c524d2dfed293230109e709c95ad2a7d723c3c8",
+      "size": 3043
+    },
+    {
+      "path": "project.strd",
+      "sha256": "fd2e4bfa408274bbba704aaf9c524d2dfed293230109e709c95ad2a7d723c3c8",
+      "size": 3043
+    },
+    {
+      "path": "bank01.work",
+      "sha256": "d74991dd83032a36f1548e6f0f5ddc05fec9e8418867cd822c2276cf8a5806da",
+      "size": 636113
+    },
+    {
+      "path": "bank01.strd",
+      "sha256": "d74991dd83032a36f1548e6f0f5ddc05fec9e8418867cd822c2276cf8a5806da",
+      "size": 636113
+    },
+    {
+      "path": "bank02.work",
+      "sha256": "9aa4781f8f68c407b81364840aa33be6dbd9e83b4ba6339ffc6936b0f5a04e4e",
+      "size": 636113
+    },
+    {
+      "path": "bank02.strd",
+      "sha256": "9aa4781f8f68c407b81364840aa33be6dbd9e83b4ba6339ffc6936b0f5a04e4e",
+      "size": 636113
+    },
+    {
+      "path": "bank03.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank03.strd",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank04.work",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    },
+    {
+      "path": "bank04.strd",
+      "sha256": "0030470e3b23635af5721b817b022e7a28aea10d1162e73b83abc634a11f10c1",
+      "size": 636113
+    }
+  ]
+}

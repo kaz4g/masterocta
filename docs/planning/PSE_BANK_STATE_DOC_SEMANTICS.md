@@ -20,7 +20,7 @@ ISSUE_183_STATE_MISMATCH = YES
 
 `ReadinessGap::WorkingSavedCheckpointRule` in `ot_plan::bank_mutation` stays **open** (`ReadinessEvidence::current_main()` unchanged).
 
-Cross-bank Pattern Copy/Paste receptacle `MO-PSE-CROSS-BANK-PATTERN-PASTE-PERSISTENCE-1` (legacy `MO-PSE-BANK-COPY-PERSISTENCE-1`, [#217](https://github.com/kaz4g/masterocta/issues/217)) corrects stage order before evidence promotion. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. See [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md).
+Cross-bank Pattern Copy/Paste on disposable `P_BANK_PERSIST` (MkII `R0173` / `1.40`) observed `bank02.work` first changing at control-bank switch and `bank02.strd` first changing at project save. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. See [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md).
 
 ## Issue #183 vs implementation
 

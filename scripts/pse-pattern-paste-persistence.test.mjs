@@ -129,21 +129,43 @@ test("template fixture is not promoted and analyze does not rewrite bytes", () =
   const analyzed = analyzePatternPaste(FIXTURE_ROOT);
   assert.equal(status.persistence_harness, "READY");
   assert.equal(status.scope_correction, "PASS");
-  assert.equal(status.capture_sequence_proven, "NO");
-  assert.equal(status.device_evidence_promotion, "BLOCKED");
   assert.equal(status.copy_saved_checkpoint_semantics, "UNKNOWN");
   assert.equal(analyzed.fixture_no_write, "PASS");
   const hasBytes = MATRIX_PRESENT(FIXTURE_ROOT);
-  assert.equal(
-    status.result,
-    hasBytes ? "STOP_FOR_OPERATOR_CONFIRMATION" : "WAITING_FOR_REAL_DEVICE",
-  );
+  const promoted = status.capture_sequence_proven === "YES";
+  if (!promoted) {
+    assert.equal(status.capture_sequence_proven, "NO");
+    assert.equal(status.device_evidence_promotion, "BLOCKED");
+    assert.equal(status.result, hasBytes ? "STOP_FOR_OPERATOR_CONFIRMATION" : "WAITING_FOR_REAL_DEVICE");
+  } else {
+    assert.equal(status.device_evidence_promotion, "ALLOWED");
+    assert.equal(status.device_capture, "PASS");
+    assert.equal(status.pattern_paste_effect_confirmed_on_device, "YES");
+    assert.equal(status.dest_work_first_changed_at, "CONTROL_SWITCH");
+    assert.equal(status.dest_strd_first_changed_at, "PROJECT_SAVE");
+    assert.equal(status.dest_work_changed_on_pattern_paste, "NO");
+    assert.equal(status.dest_strd_changed_on_pattern_paste, "NO");
+    assert.equal(
+      status.cross_bank_pattern_paste_persistence,
+      "OBSERVED_WORK_FLUSH_ON_CONTROL_SWITCH_STRD_ON_PROJECT_SAVE",
+    );
+    assert.equal(status.working_checkpoint_separation_observed, "YES");
+    assert.equal(status.pattern_paste_survives_project_reload, "UNKNOWN");
+    assert.equal(status.capture_transport_limitation, "UNKNOWN");
+    assert.equal(status.copy_saved_checkpoint_semantics, "UNKNOWN");
+    assert.equal(status.issue_217, "OPEN");
+    assert.equal(status.issue_221, "OPEN");
+    assert.equal(status.bank_changeplan_readiness, "NOT_READY");
+    assert.equal(JSON.stringify(status).includes("CLOSE_REVIEW"), false);
+    assert.deepEqual(status.project_bank_sequence, { S0: 0, S1: 1, S2: 1, S3: 1, S4: 3, S5: 3 });
+    assert.deepEqual(status.project_pattern_sequence, { S0: 0, S1: 0, S2: 0, S3: 0, S4: 0, S5: 0 });
+  }
   for (const planned of PLANNED_CAPTURES) {
     const meta = JSON.parse(readFileSync(path.join(FIXTURE_ROOT, planned.name, "capture.meta.json"), "utf8"));
-    assert.equal(meta.device_generated, false);
     assert.equal(meta.schema, META_SCHEMA);
     assert.equal(meta.operation_kind, OPERATION_KIND);
-    assert.equal(meta.capture_sequence_proven, null);
+    assert.equal(meta.device_generated, promoted);
+    assert.equal(meta.capture_sequence_proven, promoted ? true : null);
   }
   assert.equal(snapshotTree(FIXTURE_ROOT), before);
 });
@@ -289,6 +311,27 @@ function materializeReadyCapture() {
   }
   return root;
 }
+
+test("committed captures verify manifests and keep unknown transport and reload sentinel", () => {
+  assert.equal(MATRIX_PRESENT(FIXTURE_ROOT), true);
+  for (const planned of PLANNED_CAPTURES) {
+    assert.equal(verifyManifest(planned.name, FIXTURE_ROOT).ok, true);
+    const meta = JSON.parse(readFileSync(path.join(FIXTURE_ROOT, planned.name, "capture.meta.json"), "utf8"));
+    assert.equal(meta.capture_transport, "unknown");
+    assert.equal(meta.destination_ui_sentinel_after_reload, null);
+    assert.equal(meta.offset_585459_classification, undefined);
+  }
+  const judged = classifyPatternPaste({
+    stages: syntheticStages({ destWorkAt: "S3", destStrdAt: "S4" }),
+  });
+  assert.equal(
+    judged.cross_bank_pattern_paste_persistence,
+    "OBSERVED_WORK_FLUSH_ON_CONTROL_SWITCH_STRD_ON_PROJECT_SAVE",
+  );
+  assert.equal(judged.working_checkpoint_separation_observed, "YES");
+  assert.equal(judged.copy_saved_checkpoint_semantics, "UNKNOWN");
+  assert.equal(judged.pattern_paste_survives_project_reload, "UNKNOWN");
+});
 
 test("injected write cleanup uses the harness hook", async () => {
   const harness = await import("./pse-pattern-paste-persistence.mjs");

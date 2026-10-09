@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use ot_tools_io::BankFile;
+    use ot_tools_io::{BankFile, OctatrackFileIO};
     use serde_json::Value;
     use sha2::{Digest, Sha256};
     use std::fs;
@@ -147,10 +147,95 @@ mod tests {
             assert!(!metadata.file_type().is_symlink());
             let meta: Value =
                 serde_json::from_str(&fs::read_to_string(&path).expect("meta")).expect("json");
-            assert_eq!(meta["device_generated"], false);
             assert_eq!(meta["operation_kind"], "CROSS_BANK_PATTERN_COPY_PASTE");
-            assert_eq!(meta["capture_sequence_proven"], Value::Null);
+            if meta["device_generated"] == false {
+                assert_eq!(meta["capture_sequence_proven"], Value::Null);
+            } else {
+                assert_eq!(meta["capture_sequence_proven"], true);
+            }
         }
         assert_eq!(meta_digest(), before);
+    }
+
+    const EVIDENCE_FILES: &[&str] = &[
+        "project.work",
+        "project.strd",
+        "bank01.work",
+        "bank01.strd",
+        "bank02.work",
+        "bank02.strd",
+        "bank03.work",
+        "bank03.strd",
+        "bank04.work",
+        "bank04.strd",
+    ];
+
+    fn decode_roundtrip(stage: &str, name: &str) -> BankFile {
+        let path = fixture_root().join(stage).join(name);
+        let bytes = fs::read(&path).unwrap_or_else(|_| panic!("missing {stage}/{name}"));
+        let decoded =
+            BankFile::from_bytes(&bytes).unwrap_or_else(|_| panic!("decode {stage}/{name}"));
+        assert_eq!(
+            decoded.encode().expect("encode"),
+            bytes,
+            "roundtrip {stage}/{name}"
+        );
+        decoded
+    }
+
+    #[test]
+    fn committed_device_banks_roundtrip() {
+        for stage in CAPTURES {
+            let meta: Value = serde_json::from_str(
+                &fs::read_to_string(fixture_root().join(stage).join("capture.meta.json"))
+                    .expect("meta"),
+            )
+            .expect("json");
+            assert_eq!(meta["device_generated"], true, "{stage}");
+            for name in EVIDENCE_FILES {
+                if name.starts_with("project.") {
+                    continue;
+                }
+                let _ = decode_roundtrip(stage, name);
+            }
+        }
+    }
+
+    #[test]
+    fn destination_pattern_paste_typed_deltas_follow_decoded_banks() {
+        let s1_work = decode_roundtrip("s1_destination_selected_before_paste", "bank02.work");
+        let s2_work = decode_roundtrip("s2_after_pattern_paste", "bank02.work");
+        let s1_strd = decode_roundtrip("s1_destination_selected_before_paste", "bank02.strd");
+        let s2_strd = decode_roundtrip("s2_after_pattern_paste", "bank02.strd");
+        assert!(typed_field_delta(&s1_work, &s2_work).is_empty());
+        assert!(typed_field_delta(&s1_strd, &s2_strd).is_empty());
+
+        let s3_work = decode_roundtrip("s3_after_control_switch", "bank02.work");
+        let s4_strd = decode_roundtrip("s4_after_project_save", "bank02.strd");
+        let work_delta = typed_field_delta(&s2_work, &s3_work);
+        let strd_delta = typed_field_delta(
+            &decode_roundtrip("s3_after_control_switch", "bank02.strd"),
+            &s4_strd,
+        );
+        assert_eq!(work_delta, vec!["patterns"]);
+        assert_eq!(strd_delta, vec!["patterns"]);
+        assert_eq!(s3_work.patterns, s4_strd.patterns);
+    }
+
+    #[test]
+    fn control_banks_have_no_typed_side_effects_across_adjacent_stages() {
+        let banks = ["bank03.work", "bank03.strd", "bank04.work", "bank04.strd"];
+        for pair in CAPTURES.windows(2) {
+            for name in banks {
+                let pre = decode_roundtrip(pair[0], name);
+                let post = decode_roundtrip(pair[1], name);
+                assert!(
+                    typed_field_delta(&pre, &post).is_empty(),
+                    "{} -> {} {name}",
+                    pair[0],
+                    pair[1]
+                );
+            }
+        }
     }
 }

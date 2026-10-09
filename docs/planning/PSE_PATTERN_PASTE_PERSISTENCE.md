@@ -33,6 +33,18 @@ S0→S1 includes clipboard copy plus destination selection. It is not a pure ban
 
 S5 binaries are captured immediately after reload, before opening Bank B to check the sentinel. Record `destination_ui_sentinel_after_reload` in metadata after that UI check, then rebuild the manifest.
 
+## Observed sequence on disposable `P_BANK_PERSIST`
+
+Octatrack MkII, `project.work` OS evidence `R0173` / `1.40`. This is one observed cross-bank Pattern Paste sequence, not a firmware guarantee and not Bank Copy semantics.
+
+Pattern Paste itself (S1→S2) left `bank02.work` and `bank02.strd` byte-identical, and the decoded destination fields were unchanged. `bank02.work` first changed when leaving Bank B for Bank D (`CONTROL_SWITCH`), and that typed delta is `patterns` only. `bank02.strd` first changed at explicit Project Save, again `patterns` only. The Pattern payload decoded from S3 `bank02.work` matches S4 `bank02.strd`.
+
+`project.work` `[STATES] BANK` reads `0, 1, 1, 1, 3, 3` across S0–S5. `PATTERN` stays `0`. The control-bank value `3` first appears in `project.work` at Project Save.
+
+Bank C and Bank D compared files did not change across the six stages. Capture transport was not recorded. The post-reload Bank B / Pattern B01 UI sentinel was not recorded, so reload survival stays `UNKNOWN`.
+
+`CROSS_BANK_PATTERN_PASTE_PERSISTENCE = OBSERVED_WORK_FLUSH_ON_CONTROL_SWITCH_STRD_ON_PROJECT_SAVE`. `WORKING_CHECKPOINT_SEPARATION_OBSERVED = YES` for this sequence only. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. `#217` and `#221` stay **OPEN**.
+
 ## Promotion
 
 `device_generated` stays false until the operator confirms the capture sequence, OS, sentinels, transport, and a rebuilt manifest. File bytes alone are not reclassified. While sequence provenance is unproven and compared files are already on disk, status is `STOP_FOR_OPERATOR_CONFIRMATION` and `DEVICE_EVIDENCE_PROMOTION = BLOCKED`.
