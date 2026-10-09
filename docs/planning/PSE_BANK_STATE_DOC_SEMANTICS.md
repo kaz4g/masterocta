@@ -20,7 +20,7 @@ ISSUE_183_STATE_MISMATCH = YES
 
 `ReadinessGap::WorkingSavedCheckpointRule` in `ot_plan::bank_mutation` stays **open** (`ReadinessEvidence::current_main()` unchanged).
 
-Bank Copy persistence receptacle `MO-PSE-BANK-COPY-PERSISTENCE-1` ([#217](https://github.com/kaz4g/masterocta/issues/217)) is harness-ready with `DEVICE_CAPTURE = WAITING_FOR_REAL_DEVICE`; `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN** until six verified device stages pass the copy-success gate. See [`PSE_BANK_COPY_PERSISTENCE.md`](./PSE_BANK_COPY_PERSISTENCE.md).
+Cross-bank Pattern Copy/Paste receptacle `MO-PSE-CROSS-BANK-PATTERN-PASTE-PERSISTENCE-1` (legacy `MO-PSE-BANK-COPY-PERSISTENCE-1`, [#217](https://github.com/kaz4g/masterocta/issues/217)) corrects stage order before evidence promotion. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. See [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md).
 
 ## Issue #183 vs implementation
 

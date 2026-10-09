@@ -3,10 +3,10 @@
 !README.md
 !s0_baseline_saved/
 !s0_baseline_saved/capture.meta.json
-!s1_after_copy/
-!s1_after_copy/capture.meta.json
-!s2_after_destination_switch/
-!s2_after_destination_switch/capture.meta.json
+!s1_destination_selected_before_paste/
+!s1_destination_selected_before_paste/capture.meta.json
+!s2_after_pattern_paste/
+!s2_after_pattern_paste/capture.meta.json
 !s3_after_control_switch/
 !s3_after_control_switch/capture.meta.json
 !s4_after_project_save/

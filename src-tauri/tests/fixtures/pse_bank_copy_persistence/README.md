@@ -1,40 +1,24 @@
-# PSE Bank Copy persistence receptacle
+# Cross-bank Pattern Copy/Paste receptacle
 
-Work ID: `MO-PSE-BANK-COPY-PERSISTENCE-1`  
-GitHub: [#217](https://github.com/kaz4g/masterocta/issues/217) (Working / SavedCheckpoint; child of [#181](https://github.com/kaz4g/masterocta/issues/181))
+Work ID: `MO-PSE-CROSS-BANK-PATTERN-PASTE-PERSISTENCE-1`  
+Legacy: `MO-PSE-BANK-COPY-PERSISTENCE-1`
 
-Disposable project only: `P_BANK_PERSIST`. Do not reuse a live project. Do not modify `pse_bank_identity_crossover/` or other identity fixtures.
-
-Six stages observe Bank Copy persistence boundaries on Octatrack MkII. Until real-device bytes are captured, only `capture.meta.json` templates are committed (`device_generated: false`, `WAITING_FOR_REAL_DEVICE`).
+Originally scaffolded as Bank Copy persistence. Scope corrected before device-evidence promotion because the observed Octatrack operation is Pattern A01 Copy, Bank B / Pattern B01 selection, then Pattern Paste. This is not Bank Copy.
 
 ```text
-s0_baseline_saved/           saved baseline before copy
-s1_after_copy/               after A → B copy
-s2_after_destination_switch/ after switching to destination bank B
-s3_after_control_switch/     after switching to control bank D
-s4_after_project_save/       after project save
-s5_after_project_reload/     after project reload
+s0_baseline_saved/
+s1_destination_selected_before_paste/
+s2_after_pattern_paste/
+s3_after_control_switch/
+s4_after_project_save/
+s5_after_project_reload/
 ```
 
-Copy banks on the device only. Do not `cp` bank files on the Mac.
-
-Each capture directory stays flat and, once captured, holds:
-
-```text
-capture.meta.json
-project.work
-project.strd
-bank01.work … bank04.strd
-SHA256SUMS.json
-```
-
-`[STATES]` must contain exactly one `BANK=` and one `PATTERN=` between `[/STATES]`. Read values from files; do not embed expected states in metadata.
+Do not copy bank binaries on the Mac. Do not set `device_generated` until the operator confirms this sequence. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays `UNKNOWN`.
 
 ```bash
-node scripts/pse-bank-copy-persistence.mjs status
-node scripts/pse-bank-copy-persistence.mjs analyze
-node scripts/pse-bank-copy-persistence.mjs write-manifest s0_baseline_saved
-node scripts/pse-bank-copy-persistence.mjs verify-manifest s0_baseline_saved
+node scripts/pse-pattern-paste-persistence.mjs status
+node scripts/pse-pattern-paste-persistence.mjs analyze
+node scripts/pse-pattern-paste-persistence.mjs write-manifest s0_baseline_saved
+node scripts/pse-pattern-paste-persistence.mjs verify-manifest s0_baseline_saved
 ```
-
-`BANK_CHANGEPLAN_READINESS` stays `NOT_READY`. `#217` / `COPY_SAVED_CHECKPOINT_SEMANTICS` stay open until six verified device captures and the copy-success gate pass. This receptacle does not implement Bank Copy / Move / Swap Apply.

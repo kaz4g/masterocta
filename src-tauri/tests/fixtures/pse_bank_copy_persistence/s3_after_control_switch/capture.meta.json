@@ -1,16 +1,24 @@
 {
-  "schema": "masterocta.pse-bank-copy-persistence-capture:v1",
+  "schema": "masterocta.pse-pattern-paste-persistence-capture:v1",
+  "work_id": "MO-PSE-CROSS-BANK-PATTERN-PASTE-PERSISTENCE-1",
+  "legacy_work_id": "MO-PSE-BANK-COPY-PERSISTENCE-1",
+  "operation_kind": "CROSS_BANK_PATTERN_COPY_PASTE",
   "stage_id": "S3",
+  "stage_semantics": "CONTROL_SWITCH",
   "prior_transition": "CONTROL_SWITCH",
   "project_name": "P_BANK_PERSIST",
   "device": "Octatrack MkII",
   "os_version": "",
   "device_generated": false,
   "synthetic_modification": false,
+  "capture_sequence_proven": null,
   "role_source_bank_ui": "A",
   "role_destination_bank_ui": "B",
   "role_untouched_bank_ui": "C",
   "role_control_bank_ui": "D",
+  "source_pattern_ui": "A01",
+  "destination_pattern_ui": "B01",
+  "source_pattern_copy_to_clipboard_performed": null,
   "source_sentinel_present_a": null,
   "dest_sentinel_present_b": null,
   "destination_ui_sentinel": null,
@@ -22,5 +30,5 @@
   "capture_required_mode_change": "unknown",
   "capture_may_flush_device_state": "unknown",
   "capture_date": "",
-  "operator_note": "TEMPLATE. Replace after the real-device capture. Keep device_generated false until copied files and operator notes are in place. Do not invent menu labels before measurement."
+  "operator_note": "TEMPLATE. Pattern A01 Copy, then Bank B / Pattern B01 select, then Pattern Paste. Not Bank Copy. Keep device_generated false until sequence provenance, OS, sentinels, and transport are recorded."
 }
