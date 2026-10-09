@@ -331,9 +331,13 @@ function provenanceReady(meta, planned, captureDir) {
       throw new Error("capture provenance is incomplete");
     }
   }
-  const projectStat = assertRegularFile(path.join(captureDir, "project.work"), "project.work");
+  const projectPath = path.join(captureDir, "project.work");
+  const projectStat = assertRegularFile(projectPath, "project.work");
   if (!projectStat) throw new Error("capture provenance is incomplete");
-  const states = parsePersistenceStatesSection(readFileSync(path.join(captureDir, "project.work"), "latin1"));
+  if (projectStat.size > PROJECT_WORK_CAP_BYTES) {
+    throw new Error("project.work exceeds 1 MiB");
+  }
+  const states = parsePersistenceStatesSection(readFileSync(projectPath, "latin1"));
   if (!states.ok) throw new Error("project.work [STATES] must contain one BANK and one PATTERN");
   return true;
 }
@@ -530,9 +534,13 @@ export function persistenceStatus(root = FIXTURE_ROOT) {
   const captures = PLANNED_CAPTURES.map((planned) => captureRow(planned, root));
   const bytesPresent = PLANNED_CAPTURES.some((planned) => stageHasComparedBytes(root, planned.name));
   const sequenceProven = sequenceProvenFromMeta(root);
-  const device_evidence_promotion = sequenceProven && captures.every((row) => row.capture_status === "PRESENT")
-    ? "ALLOWED"
-    : "BLOCKED";
+  const rejected = captures.some((row) => row.capture_status === "REJECTED");
+  const allPresent = captures.every((row) => row.capture_status === "PRESENT");
+  const dataset = sequenceProven && allPresent && !rejected
+    ? buildPatternPasteDatasetFromFixture(root)
+    : null;
+  const gate = dataset ? patternPasteSuccessGate(dataset.stages) : { ok: false, reason: null };
+  const device_evidence_promotion = sequenceProven && allPresent && gate.ok ? "ALLOWED" : "BLOCKED";
   const base = {
     ...frozenPolicyFields(),
     capture_sequence_proven: sequenceProven ? "YES" : "NO",
@@ -543,7 +551,7 @@ export function persistenceStatus(root = FIXTURE_ROOT) {
     persistence_judgment: "NOT_RUN",
     cross_bank_pattern_paste_persistence: "NOT_RUN",
   };
-  if (captures.some((row) => row.capture_status === "REJECTED")) {
+  if (rejected) {
     return { ...base, device_capture: "REJECTED", result: "STOP_WITH_FINDINGS" };
   }
   if (!sequenceProven) {
@@ -553,10 +561,15 @@ export function persistenceStatus(root = FIXTURE_ROOT) {
       result: bytesPresent ? "STOP_FOR_OPERATOR_CONFIRMATION" : "WAITING_FOR_REAL_DEVICE",
     };
   }
-  if (!captures.every((row) => row.capture_status === "PRESENT")) {
-    return { ...base, device_capture: "INCOMPLETE", result: "STOP_FOR_OPERATOR_CONFIRMATION" };
+  if (!allPresent || !gate.ok) {
+    return {
+      ...base,
+      device_capture: "INCOMPLETE",
+      result: "STOP_FOR_OPERATOR_CONFIRMATION",
+      pattern_paste_gate_reason: gate.reason,
+    };
   }
-  const judged = classifyPatternPaste(buildPatternPasteDatasetFromFixture(root));
+  const judged = classifyPatternPaste(dataset);
   return {
     ...base,
     device_capture: "PASS",

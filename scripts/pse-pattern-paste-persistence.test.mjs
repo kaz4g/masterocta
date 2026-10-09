@@ -203,11 +203,45 @@ test("manifest becomes stale after metadata changes", () => {
 
 test("symlink capture directory is rejected with stage metadata", () => {
   const root = mkdtempSync(path.join(tmpdir(), "pse-paste-link-"));
-  mkdirSync(path.join(root, "outside"));
-  symlinkSync(path.join(root, "outside"), path.join(root, "s0_baseline_saved"));
-  const row = persistenceStatus(root).captures.find((entry) => entry.stage_id === "S0");
-  assert.equal(row.capture_status, "REJECTED");
-  assert.equal(row.stage_semantics, "BASELINE_SAVED");
+  try {
+    mkdirSync(path.join(root, "outside"));
+    symlinkSync(path.join(root, "outside"), path.join(root, "s0_baseline_saved"));
+    const row = persistenceStatus(root).captures.find((entry) => entry.stage_id === "S0");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.equal(row.stage_semantics, "BASELINE_SAVED");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("missing S2 sentinel blocks evidence promotion", () => {
+  const root = materializeReadyCapture();
+  try {
+    const metaPath = path.join(root, "s2_after_pattern_paste", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.destination_ui_sentinel = null;
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const status = persistenceStatus(root);
+    assert.equal(status.device_evidence_promotion, "BLOCKED");
+    assert.equal(status.device_capture, "INCOMPLETE");
+    assert.equal(status.pattern_paste_gate_reason, "S2_UI_SENTINEL");
+    assert.notEqual(status.device_capture, "PASS");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("oversized project.work is rejected before it is parsed", () => {
+  const root = materializeReadyCapture();
+  try {
+    writeFileSync(path.join(root, "s0_baseline_saved", "project.work"), Buffer.alloc(1024 * 1024 + 1));
+    const row = persistenceStatus(root).captures.find((entry) => entry.stage_id === "S0");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.match(row.error, /exceeds 1 MiB/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("pattern paste gate accepts the canonical sentinel shape", () => {
