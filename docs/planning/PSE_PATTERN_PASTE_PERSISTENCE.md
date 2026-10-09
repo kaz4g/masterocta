@@ -47,7 +47,7 @@ Bank C and Bank D compared files did not change across the six stages. Capture t
 
 ## Promotion
 
-`device_generated` stays false until the operator confirms the capture sequence, OS, sentinels, transport, and a rebuilt manifest. File bytes alone are not reclassified. While sequence provenance is unproven and compared files are already on disk, status is `STOP_FOR_OPERATOR_CONFIRMATION` and `DEVICE_EVIDENCE_PROMOTION = BLOCKED`.
+`device_generated` stays false until the operator confirms the capture sequence, OS, and the S2 sentinel, and the manifest is rebuilt. File bytes alone are not reclassified. An unrecorded `capture_transport` stays `unknown`: that blocks generalizing Working/SavedCheckpoint semantics and keeps `#217` open. It does not block promoting this one observed sequence. While sequence provenance is unproven and compared files are already on disk, status is `STOP_FOR_OPERATOR_CONFIRMATION` and `DEVICE_EVIDENCE_PROMOTION = BLOCKED`.
 
 ## Commands
 

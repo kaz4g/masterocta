@@ -5,6 +5,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  rmSync,
   readdirSync,
   symlinkSync,
   unlinkSync,
@@ -172,24 +173,32 @@ test("template fixture is not promoted and analyze does not rewrite bytes", () =
 
 test("old schema is rejected once device_generated is set", () => {
   const root = materializeReadyCapture();
-  const metaPath = path.join(root, "s0_baseline_saved", "capture.meta.json");
-  const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-  meta.schema = "masterocta.pse-bank-copy-persistence-capture:v1";
-  writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
-  const row = persistenceStatus(root).captures.find((entry) => entry.capture_label === "s0_baseline_saved");
-  assert.equal(row.capture_status, "REJECTED");
-  assert.match(row.error, /schema/);
+  try {
+    const metaPath = path.join(root, "s0_baseline_saved", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.schema = "masterocta.pse-bank-copy-persistence-capture:v1";
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    const row = persistenceStatus(root).captures.find((entry) => entry.capture_label === "s0_baseline_saved");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.match(row.error, /schema/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("manifest becomes stale after metadata changes", () => {
   const root = materializeReadyCapture();
-  writeManifest("s2_after_pattern_paste", root);
-  assert.equal(verifyManifest("s2_after_pattern_paste", root).ok, true);
-  const metaPath = path.join(root, "s2_after_pattern_paste", "capture.meta.json");
-  const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-  meta.operator_note = "metadata changed after manifest";
-  writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
-  assert.equal(verifyManifest("s2_after_pattern_paste", root).ok, false);
+  try {
+    writeManifest("s2_after_pattern_paste", root);
+    assert.equal(verifyManifest("s2_after_pattern_paste", root).ok, true);
+    const metaPath = path.join(root, "s2_after_pattern_paste", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.operator_note = "metadata changed after manifest";
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    assert.equal(verifyManifest("s2_after_pattern_paste", root).ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("symlink capture directory is rejected with stage metadata", () => {
@@ -341,11 +350,12 @@ test("injected write cleanup uses the harness hook", async () => {
   });
   try {
     assert.throws(() => harness.writeManifest("s0_baseline_saved", root), /injected write failure/);
+    assert.equal(
+      readdirSync(path.join(root, "s0_baseline_saved")).some((name) => name.includes(".partial-")),
+      false,
+    );
   } finally {
     harness.setManifestWriteImpl(null);
+    rmSync(root, { recursive: true, force: true });
   }
-  assert.equal(
-    readdirSync(path.join(root, "s0_baseline_saved")).some((name) => name.includes(".partial-")),
-    false,
-  );
 });
