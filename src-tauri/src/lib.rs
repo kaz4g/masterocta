@@ -40,6 +40,8 @@ mod pse_bank_internal_identity_audit;
 #[cfg(test)]
 mod pse_bank_multi_device_fixtures;
 #[cfg(test)]
+mod pse_pattern_paste_persistence;
+#[cfg(test)]
 mod sample_slot_boundary;
 
 use audio_pool::{

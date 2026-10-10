@@ -20,6 +20,8 @@ ISSUE_183_STATE_MISMATCH = YES
 
 `ReadinessGap::WorkingSavedCheckpointRule` in `ot_plan::bank_mutation` stays **open** (`ReadinessEvidence::current_main()` unchanged).
 
+Cross-bank Pattern Copy/Paste on disposable `P_BANK_PERSIST` (MkII `R0173` / `1.40`) observed `bank02.work` first changing at control-bank switch and `bank02.strd` first changing at project save. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. See [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md).
+
 ## Issue #183 vs implementation
 
 GitHub [#183](https://github.com/kaz4g/masterocta/issues/183) `[PSE] Bank Fixture Apply` is **CLOSED**, but there is no production Bank Apply runner, Prepare writer, or Tauri command that executes Copy / Move / Swap on fixtures. Only the #182 safety contract (`evaluate_apply_entry`, envelope checks) and disabled legacy writers exist. This audit records `ISSUE_183_STATE_MISMATCH = YES` and does not reopen or mutate the issue.
