@@ -285,6 +285,7 @@ function readMeta(captureDir) {
   const metaPath = path.join(captureDir, "capture.meta.json");
   const st = assertRegularFile(metaPath, "capture.meta.json");
   if (!st) throw Object.assign(new Error("capture.meta.json is missing"), { code: "ENOENT" });
+  if (st.size > META_CAP_BYTES) throw new Error("capture.meta.json exceeds its size cap");
   const meta = JSON.parse(readFileSync(metaPath, "utf8"));
   if (meta.synthetic_modification !== false) {
     throw new Error("synthetic_modification capture is not evidence");
@@ -307,6 +308,19 @@ function provenanceReady(meta, planned, captureDir) {
   }
   if (meta.device !== "Octatrack MkII" || meta.project_name !== "P_BANK_PERSIST") {
     throw new Error("capture provenance is incomplete");
+  }
+  if (
+    meta.role_source_bank_ui !== "A"
+    || meta.role_destination_bank_ui !== "B"
+    || meta.role_untouched_bank_ui !== "C"
+    || meta.role_control_bank_ui !== "D"
+  ) {
+    throw new Error("bank roles do not match the receptacle");
+  }
+  if (planned.stage_id === "S5") {
+    if (meta.project_reloaded !== true) throw new Error("S5 must record project reload");
+  } else if (meta.project_reloaded !== false) {
+    throw new Error("S0-S4 must record project reload as not performed");
   }
   if (meta.source_pattern_ui !== "A01" || meta.destination_pattern_ui !== "B01") {
     throw new Error("pattern UI labels do not match the receptacle");
@@ -444,6 +458,7 @@ export function verifyManifest(captureName, root = FIXTURE_ROOT) {
   const sidecar = path.join(captureDir, "SHA256SUMS.json");
   const st = assertRegularFile(sidecar, "SHA256SUMS.json");
   if (!st) throw new Error("SHA256SUMS.json is missing");
+  if (st.size > META_CAP_BYTES) throw new Error("SHA256SUMS.json exceeds its size cap");
   const recorded = JSON.parse(readFileSync(sidecar, "utf8"));
   const fresh = buildManifest(captureName, root);
   const fileSetOk = Array.isArray(recorded.files)
@@ -554,7 +569,12 @@ export function persistenceStatus(root = FIXTURE_ROOT) {
     ? buildPatternPasteDatasetFromFixture(root)
     : null;
   const gate = dataset ? patternPasteSuccessGate(dataset.stages) : { ok: false, reason: null };
-  const device_evidence_promotion = sequenceProven && allPresent && gate.ok ? "ALLOWED" : "BLOCKED";
+  const osConsistent = dataset
+    ? dataset.stages.every((stage) => stage.meta.os_version === dataset.stages[0].meta.os_version)
+    : false;
+  const device_evidence_promotion = sequenceProven && allPresent && gate.ok && osConsistent
+    ? "ALLOWED"
+    : "BLOCKED";
   const base = {
     ...frozenPolicyFields(),
     capture_sequence_proven: sequenceProven ? "YES" : "NO",
@@ -575,7 +595,7 @@ export function persistenceStatus(root = FIXTURE_ROOT) {
       result: bytesPresent ? "STOP_FOR_OPERATOR_CONFIRMATION" : "WAITING_FOR_REAL_DEVICE",
     };
   }
-  if (!allPresent || !gate.ok) {
+  if (!allPresent || !gate.ok || !osConsistent) {
     return {
       ...base,
       device_capture: "INCOMPLETE",

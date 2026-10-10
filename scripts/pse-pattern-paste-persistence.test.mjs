@@ -255,6 +255,47 @@ test("S1 without clipboard copy is not promoted", () => {
   }
 });
 
+test("wrong bank role or mixed OS version is not promoted", () => {
+  const roleRoot = materializeReadyCapture();
+  try {
+    const metaPath = path.join(roleRoot, "s2_after_pattern_paste", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.role_destination_bank_ui = "C";
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, roleRoot);
+    const status = persistenceStatus(roleRoot);
+    const row = status.captures.find((entry) => entry.stage_id === "S2");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.match(row.error, /bank roles/);
+    assert.equal(status.device_evidence_promotion, "BLOCKED");
+  } finally {
+    rmSync(roleRoot, { recursive: true, force: true });
+  }
+  const osRoot = materializeReadyCapture();
+  try {
+    const metaPath = path.join(osRoot, "s5_after_project_reload", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.os_version = "other-os";
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, osRoot);
+    const status = persistenceStatus(osRoot);
+    assert.equal(status.device_evidence_promotion, "BLOCKED");
+    assert.equal(status.device_capture, "INCOMPLETE");
+  } finally {
+    rmSync(osRoot, { recursive: true, force: true });
+  }
+});
+
+test("verify-manifest rejects an oversized sidecar before parsing it", () => {
+  const root = materializeReadyCapture();
+  try {
+    writeFileSync(path.join(root, "s0_baseline_saved", "SHA256SUMS.json"), Buffer.alloc(256 * 1024 + 1));
+    assert.throws(() => verifyManifest("s0_baseline_saved", root), /SHA256SUMS\.json exceeds its size cap/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("manifest hashing rejects an oversized bank before reading it", () => {
   const root = materializeReadyCapture();
   try {
@@ -361,6 +402,7 @@ function syntheticStages(options) {
         ? "PRESENT"
         : null,
       destination_ui_sentinel_after_reload: planned.stage_id === "S5" ? reloadSentinel : null,
+      project_reloaded: planned.stage_id === "S5",
     };
     return {
       capture_name: planned.name,
