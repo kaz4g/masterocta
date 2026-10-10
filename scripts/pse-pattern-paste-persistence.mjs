@@ -37,6 +37,7 @@ export const RETIRED_TRANSITIONS = ["COPY", "DESTINATION_SWITCH"];
 
 const PROJECT_WORK_CAP_BYTES = 1024 * 1024;
 const BANK_FILE_CAP_BYTES = 2 * 1024 * 1024;
+const META_CAP_BYTES = 256 * 1024;
 const CAPTURE_NAME = /^[a-z0-9_]+$/;
 
 export const REQUIRED_FILES = [
@@ -317,6 +318,13 @@ function provenanceReady(meta, planned, captureDir) {
   ) {
     throw new Error("capture provenance is incomplete");
   }
+  if (planned.stage_id === "S0") {
+    if (meta.source_pattern_copy_to_clipboard_performed !== false) {
+      throw new Error("S0 must record clipboard copy as not yet performed");
+    }
+  } else if (meta.source_pattern_copy_to_clipboard_performed !== true) {
+    throw new Error("S1-S5 must record clipboard copy as performed");
+  }
   for (const key of ["os_version", "capture_date", "operator_note"]) {
     if (typeof meta[key] !== "string" || meta[key].trim() === "") {
       throw new Error("capture provenance is incomplete");
@@ -350,6 +358,12 @@ function sha256File(filePath) {
   return sha256Buffer(readFileSync(filePath));
 }
 
+function sizeCap(name) {
+  if (name === "capture.meta.json" || name === "SHA256SUMS.json") return META_CAP_BYTES;
+  if (name.startsWith("project.")) return PROJECT_WORK_CAP_BYTES;
+  return BANK_FILE_CAP_BYTES;
+}
+
 export function buildManifest(captureName, root = FIXTURE_ROOT) {
   assertPlannedCaptureName(captureName);
   const captureDir = resolveCaptureDir(captureName, root);
@@ -357,6 +371,7 @@ export function buildManifest(captureName, root = FIXTURE_ROOT) {
     const full = path.join(captureDir, name);
     const st = assertRegularFile(full, name);
     if (!st) return [];
+    if (st.size > sizeCap(name)) throw new Error(`${name} exceeds its size cap`);
     return [{ path: name, sha256: sha256File(full), size: st.size }];
   });
   return { schema: MANIFEST_SCHEMA, capture: captureName, files };
@@ -476,8 +491,7 @@ function captureRow(planned, root) {
     for (const name of REQUIRED_FILES) {
       const st = assertRegularFile(path.join(captureDir, name), name);
       if (!st) throw new Error(`device_generated capture is missing ${name}`);
-      const cap = name.startsWith("project.") ? PROJECT_WORK_CAP_BYTES : BANK_FILE_CAP_BYTES;
-      if (st.size > cap) throw new Error(`${name} exceeds its size cap`);
+      if (st.size > sizeCap(name)) throw new Error(`${name} exceeds its size cap`);
     }
     const verified = verifyManifest(planned.name, root);
     if (!verified.ok) throw new Error("SHA256SUMS.json is stale");
@@ -810,7 +824,14 @@ export function classifyPatternPaste(dataset) {
   shell.project_work_active_bank_write_lag_observed = bankS2 != null && bankS2 === bankS3 && bankS3 !== bankS4
     ? "YES"
     : "NO";
-  shell.project_bank_selection_first_persisted_at = shell.project_work_active_bank_write_lag_observed === "YES"
+  const bankByStage = shell.project_bank_sequence;
+  const firstPersisted = ADJACENT_TRANSITIONS.find((edge) => {
+    const fromId = PLANNED_CAPTURES.find((planned) => planned.name === edge.from)?.stage_id;
+    const toId = PLANNED_CAPTURES.find((planned) => planned.name === edge.to)?.stage_id;
+    return bankByStage[fromId] != null && bankByStage[toId] != null && bankByStage[fromId] !== bankByStage[toId];
+  });
+  shell.project_bank_selection_first_persisted_at = firstPersisted?.label ?? "NONE";
+  shell.control_bank_selection_persisted_at = shell.project_work_active_bank_write_lag_observed === "YES"
     ? "PROJECT_SAVE"
     : "NOT_OBSERVED";
   shell.bank_c_side_effects = rawSideEffects(matrix, "bank03.");
