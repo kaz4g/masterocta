@@ -21,6 +21,7 @@ pub mod project_manager;
 mod project_reader;
 mod project_structure_command;
 mod project_structure_reader;
+pub mod pse_bank_copy_state_doc_validate;
 mod purge;
 mod rename_planning_facts;
 mod rename_recovery_runtime;
@@ -37,6 +38,8 @@ mod bank_mutation_contract;
 mod gate_c_clone_rescan;
 #[cfg(test)]
 mod pse_bank_changeplan;
+#[cfg(test)]
+mod pse_bank_copy_state_doc_evidence;
 #[cfg(test)]
 mod pse_bank_identity_crossover;
 mod pse_bank_internal_identity_audit;
