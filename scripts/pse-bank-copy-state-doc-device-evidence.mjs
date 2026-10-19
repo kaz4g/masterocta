@@ -241,6 +241,8 @@ export function metaTemplate(planned) {
     capture_flush_exclusion: "",
     capture_run_id: "",
     continues_from_previous_stage: "",
+    source_ui_sentinel: "",
+    prior_destination_ui_sentinel: "",
     destination_ui_sentinel: "",
     capture_date: "",
     operator_note:
@@ -379,17 +381,41 @@ function postCopySessionContinuity(stages) {
   return "PROVEN";
 }
 
-function sentinelRecorded(meta) {
-  const value = meta?.destination_ui_sentinel;
-  if (typeof value !== "string") return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized !== "" && normalized !== "unknown" && normalized !== "not_recorded";
+function sentinelValue(meta, key) {
+  const value = meta?.[key];
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  const placeholder = normalized.toLowerCase();
+  if (normalized === "" || placeholder === "unknown" || placeholder === "not_recorded") return null;
+  return normalized;
+}
+
+function sameSentinel(left, right) {
+  return left != null && left === right;
+}
+
+function agreedSentinel(stages, stageIds, key) {
+  const values = stageIds.map((stageId) => {
+    const stage = stages.find((entry) => entry.stage_id === stageId);
+    return sentinelValue(stage?.meta, key);
+  });
+  if (values.some((value) => value == null)) return null;
+  const [first] = values;
+  if (values.some((value) => !sameSentinel(value, first))) return null;
+  return first;
 }
 
 function destinationSentinelStatus(stages) {
-  const needed = stages.filter((stage) => stage.stage_id === "S2" || stage.stage_id === "S5");
-  if (needed.length !== 2 || needed.some((stage) => !sentinelRecorded(stage.meta))) return "NOT_RECORDED";
-  return "RECORDED";
+  const source = agreedSentinel(stages, ["S0", "S1"], "source_ui_sentinel");
+  const priorDestination = agreedSentinel(stages, ["S0", "S1"], "prior_destination_ui_sentinel");
+  if (!source || !priorDestination || sameSentinel(source, priorDestination)) return "NOT_RECORDED";
+  const observed = ["S2", "S5"].map((stageId) => {
+    const stage = stages.find((entry) => entry.stage_id === stageId);
+    return sentinelValue(stage?.meta, "destination_ui_sentinel");
+  });
+  if (observed.some((value) => value == null)) return "NOT_RECORDED";
+  if (observed.every((value) => sameSentinel(value, source))) return "RECORDED";
+  return "MISMATCH";
 }
 
 export function assertPinnedFirmware(meta) {

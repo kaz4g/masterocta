@@ -219,6 +219,33 @@ test("missing destination sentinel blocks promotion", () => {
   assert.notEqual(judged.device_capture, "PASS");
 });
 
+test("destination sentinel must be the copied source identity", () => {
+  const matched = classifyBankCopyEvidence({
+    stages: syntheticStages({ transport: "recorded" }),
+  });
+  assert.equal(matched.destination_ui_sentinel, "RECORDED");
+
+  const unrelated = classifyBankCopyEvidence({
+    stages: syntheticStages({
+      transport: "recorded",
+      destinationSentinelByStage: { S2: "DEST-PRIOR", S5: "UNRELATED" },
+    }),
+  });
+  assert.equal(unrelated.destination_ui_sentinel, "MISMATCH");
+  assert.equal(unrelated.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(unrelated.device_capture, "PASS");
+
+  const indistinct = classifyBankCopyEvidence({
+    stages: syntheticStages({
+      transport: "recorded",
+      sourceSentinel: "SAME",
+      priorDestinationSentinel: "SAME",
+    }),
+  });
+  assert.equal(indistinct.destination_ui_sentinel, "NOT_RECORDED");
+  assert.notEqual(indistinct.device_capture, "PASS");
+});
+
 test("missing S2 copy_operation keeps copy_operation_proven NO", () => {
   const stages = syntheticStages({ destWorkAt: "S2", transport: "recorded" });
   stages[2].meta.copy_operation = "";
@@ -234,6 +261,7 @@ test("complete synthetic capture promotes analysis when transport is recorded", 
     const status = evidenceStatus(root);
     assert.equal(status.device_evidence_promotion, "ALLOWED");
     assert.equal(status.device_capture, "PASS");
+    assert.equal(status.destination_ui_sentinel, "RECORDED");
     assert.equal(status.copy_state_doc_rule, "BLOCKED");
     assert.equal(status.copy_saved_checkpoint_semantics, "UNKNOWN");
     assert.equal(analyzeBankCopyEvidence(root).fixture_no_write, "PASS");
@@ -402,12 +430,21 @@ function transportMeta(options) {
 }
 
 function sessionMeta(planned, options) {
+  const sourceSentinel = options.sourceSentinel === undefined ? "SRC-SENTINEL" : options.sourceSentinel;
+  const priorDestination = options.priorDestinationSentinel === undefined ? "DEST-PRIOR" : options.priorDestinationSentinel;
+  const stageOverride = options.destinationSentinelByStage?.[planned.stage_id];
+  const copied = stageOverride !== undefined
+    ? stageOverride
+    : (options.destinationSentinel === undefined ? sourceSentinel : options.destinationSentinel);
+  const preCopy = planned.stage_id === "S0" || planned.stage_id === "S1";
   return {
     capture_run_id: options.captureRunId === undefined ? "synthetic-run-1" : options.captureRunId,
     continues_from_previous_stage: planned.stage_id === "S3" || planned.stage_id === "S4" || planned.stage_id === "S5"
       ? (options.continuesFromPrevious ?? "yes")
       : "",
-    destination_ui_sentinel: options.destinationSentinel === undefined ? "SRC-SENTINEL" : options.destinationSentinel,
+    source_ui_sentinel: sourceSentinel,
+    prior_destination_ui_sentinel: priorDestination,
+    destination_ui_sentinel: preCopy ? priorDestination : copied,
   };
 }
 

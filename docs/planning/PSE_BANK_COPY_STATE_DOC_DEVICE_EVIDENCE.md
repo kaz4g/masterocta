@@ -128,7 +128,7 @@ node scripts/pse-bank-copy-state-doc-device-evidence.mjs verify-manifest s2_imme
 ## Operator runbook (ordered)
 
 A. Prepare disposable project **P_BANK_COPY_STATE** on Octatrack MkII (`R0173` / `1.40`).  
-B. Establish distinguishable sentinels on Bank **A** (source) and Bank **D** (destination).  
+B. Establish distinguishable sentinels on Bank **A** (source) and Bank **D** (destination). Record both on S0 and S1 as `source_ui_sentinel` and `prior_destination_ui_sentinel`. The two values must differ.
 C. Select source Bank **A** and a **non-zero** Pattern (preferred UI **A04**, raw `PATTERN=3` — record actual UI + raw). Pattern UI is bank-qualified (`A04`, `B01`, `D01`). An `A` prefix on Bank B or D is rejected.
 D. Explicit **Project Save** (baseline).  
 E. Capture **S0** (+ `save_operation` text).  
@@ -144,7 +144,7 @@ N. Explicit **Project Save** (+ `save_operation`).
 O. Capture **S4**.  
 P. **Project Reload** (recommended) (+ `reload_operation`).  
 Q. Capture **S5** (binaries before extra UI navigation where practical).  
-R. Record destination UI sentinel.  
+R. Record `destination_ui_sentinel` on S2 and S5. Promotion requires both to equal `source_ui_sentinel`. The prior destination value, or a different S5 value, stays unpromoted.
 S. Rebuild and verify all manifests; set `device_generated` / `capture_sequence_proven` only after operator confirmation.
 
 ## Phase B findings (summary)
