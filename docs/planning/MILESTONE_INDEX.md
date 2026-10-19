@@ -2,8 +2,9 @@
 
 - Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
 - Status: Active canonical index
-- Updated: 2026-09-30 (proposed Project Structure track link only; M5–M11 numbers unchanged)
+- Updated: 2026-10-19 (M6 final exit audit link; M5–M11 numbers unchanged)
 - Implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M6 completion map: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (IN_PROGRESS; #178)
 - M7 completion map: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 
 ## Role of this document
@@ -76,6 +77,7 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 
 **Canonical supporting docs:**
 
+- [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19; `main` `6f68ff1`; M6 remains IN_PROGRESS)
 - [`POST_M5_FEATURE_RESTART_AUDIT.md`](./POST_M5_FEATURE_RESTART_AUDIT.md) (historical investigation; #103–#105 reopen ban)
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) (M7 WF2; depends on M6 layout)
 - Testing: `docs/testing/MO_UI_WORKSPACE_*`, `MO_UI_LIBRARY_INSPECTOR_*`, `MO_UI_OPERATIONS_DRAWER_*`, `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`
@@ -212,6 +214,7 @@ Sample/Slice worktree. Scene has no current read model.
 ## Related indexes
 
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M6 exit audit: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - Project structure proposal: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)
 - Sample Slot ↔ AudioAsset boundary (#187): [`SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md`](./SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md)

@@ -1,12 +1,14 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1`; prior: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`
-- Updated: 2026-10-06 (M7 **COMPLETE**; final audit @ `8bedd19c`)
-- Product baseline: GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
+- Updated: 2026-10-19 (M6 exit audit link @ `6f68ff1`; M7 **COMPLETE** unchanged @ `8bedd19c`)
+- Product baseline (M7 completion): GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
+- M6 exit-audit snapshot: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - Integrated Native session 5 @ **`40ba99c4`**: [`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) **PASS**. Session 4 @ **`a84433c0`** and session 3 @ **`04725cb3`** stay historical **STOP** records.
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
+**M6 completion map:** [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (IN_PROGRESS).
 **M7 completion map:** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 ## Status vocabulary
@@ -25,7 +27,7 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-10-06)
 
-Final audit baseline **`8bedd19c`**. Integrated Native session 5 at execution SHA **`40ba99c4`** is **PASS** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)). **M7 Exit Gate = 5/5 PASS**. **M7 = COMPLETE**. M7-07 and M7-08 remain **DEFERRED** to M11. Issue #177 closed after INT5 canonical merge (#215). **M6** stays **IN_PROGRESS** independently.
+Final audit baseline **`8bedd19c`**. Integrated Native session 5 at execution SHA **`40ba99c4`** is **PASS** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)). **M7 Exit Gate = 5/5 PASS**. **M7 = COMPLETE**. M7-07 and M7-08 remain **DEFERRED** to M11. Issue #177 closed after INT5 canonical merge (#215). **M6** stays **IN_PROGRESS** independently. M6 docs-only re-audit (2026-10-19, #178) at **`6f68ff1`**: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md).
 
 ## Historical reconciliation snapshot (session 4, 2026-10-06)
 
@@ -93,11 +95,11 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-03 Navigation Pane | **COMPLETE** | #132 | CI | Native doc | Location nav |
 | M6-04 Sample Browser v2 | **COMPLETE** | #122, #132 | CI + frontend tests | Native doc | Search/sort/pagination |
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
-| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 Operations **Drawer** (not modal) | CI | — | v0.1 exit: remove always-visible prepared-operation panel. **Gate C rename/clone/copy still uses Change Drawer** (`RenameOperatorPanel` etc.). Drawer consolidates low-frequency ops; not identical to v0.1 “Operation Modal” acceptance |
+| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 Operations **Drawer** (not modal) | CI | Native writes **NOT_RUN** | Exit-gate “always-visible prepared panel gone” **PASS**. Production mount is one `OperationsDrawerHost` (operator panels inside the drawer, not a second bottom shell). v0.1 central Modal unmatched. Decision **PENDING** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
-| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); keyboard partial | CI | Narrow layout verified #140 | **Pane persistence to localStorage** not evidenced as M6-08 complete |
+| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); keyboard partial | CI | Narrow layout verified #140 | **Pane persistence to localStorage** not evidenced. Library Up/Down, Space preview, Cmd+K **STOP**. Audit: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §4.8 |
 
-**M6 exit gate (v0.1):** Partially met; **M6-06** and **M6-08** prevent calling M6 **COMPLETE**.
+**M6 exit gate (v0.1):** Responsibility rows 1–6 **PASS** at `6f68ff1`; **M6-06** and **M6-08** WPs still prevent calling M6 **COMPLETE**. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md).
 
 ---
 
@@ -257,8 +259,8 @@ at **`04725cb3`**. Do not rewrite it.
 
 ## Unresolved ambiguities
 
-1. **M6-06:** Operations Drawer (#134) vs v0.1 Operation Modal vs Gate C Change Drawer — three UX surfaces coexist; document operator path in future UX ADR if consolidating.
-2. **M6-08:** Persisted pane widths / workspace layout — no canonical acceptance doc marking COMPLETE.
+1. **M6-06:** Audit 2026-10-19: one production mount (`OperationsDrawerHost`). Names “Modal / Drawer / Change Drawer” are spec vs chrome vs panel vocabulary, not three shells. User decision **PENDING** (options A/B/C in [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6). Recommended **(C)** accept Drawer, do not build a central Modal.
+2. **M6-08:** Persisted pane widths / Library keyboard palette — still incomplete; follow-ups FU-2 / FU-3 in the M6 audit. Theme/locale localStorage is not this WP.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.
@@ -271,6 +273,7 @@ at **`04725cb3`**. Do not rewrite it.
 | --- | --- |
 | Milestone numbers | [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md) |
 | This status | [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) |
+| M6 exit audit | [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) |
 | M7 exit audit | [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | ADR list | [`ADR_INDEX.md`](./ADR_INDEX.md) |
 | v0.1 verbatim | [`sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md`](./sources/MASTA_OCTA_OCTA_NODE_IMPLEMENTATION_PLAN_v0.1.md) |
