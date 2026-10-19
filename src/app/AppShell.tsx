@@ -157,6 +157,7 @@ export function AppShell({
               </SplitPane.Primary>
               <SplitPane.Divider
                 className={innerDividerHidden ? 'mo-split-pane__divider--stack-hidden' : undefined}
+                data-testid="app-shell-inner-divider"
                 resizeAriaLabel={t('workspace.splitResizeAria')}
                 aria-hidden={innerDividerHidden}
                 tabIndex={innerDividerHidden ? -1 : undefined}
