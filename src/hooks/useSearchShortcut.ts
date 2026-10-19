@@ -1,8 +1,42 @@
 import { useEffect, useRef } from 'react'
 
+/** Library workspace search outranks page-level search on the same route. */
+export const WORKSPACE_SEARCH_SHORTCUT_PRIORITY = 1
+
 export interface SearchShortcutOptions {
-  /** When true, ignore Ctrl/Cmd+F and Escape. Held in a ref so callers need not memoise. */
+  /**
+   * When this returns true, Ctrl/Cmd+F is still consumed so the webview find
+   * bar stays closed, but the input is not focused. Escape is ignored.
+   * Held in a ref so callers need not memoise.
+   */
   isBlocked?: () => boolean
+  /**
+   * Higher values win when more than one search shortcut is mounted.
+   * The winner consumes Ctrl/Cmd+F; lower-priority listeners do not focus.
+   */
+  priority?: number
+}
+
+let nextSearchShortcutOwnerId = 1
+const searchShortcutOwners = new Map<number, number>()
+
+function winningSearchShortcutOwner(): number | null {
+  let winner: number | null = null
+  let priority = Number.NEGATIVE_INFINITY
+  for (const [id, ownerPriority] of searchShortcutOwners) {
+    if (
+      ownerPriority > priority
+      || (ownerPriority === priority && (winner === null || id > winner))
+    ) {
+      priority = ownerPriority
+      winner = id
+    }
+  }
+  return winner
+}
+
+function isFindShortcut(event: KeyboardEvent): boolean {
+  return (event.ctrlKey || event.metaKey) && (event.key === 'f' || event.key === 'F')
 }
 
 /**
@@ -28,20 +62,28 @@ export function useSearchShortcut(
   onClearRef.current = onClear
   const isBlockedRef = useRef(options?.isBlocked)
   isBlockedRef.current = options?.isBlocked
+  const priority = options?.priority ?? 0
 
   useEffect(() => {
+    const ownerId = nextSearchShortcutOwnerId
+    nextSearchShortcutOwnerId += 1
+    searchShortcutOwners.set(ownerId, priority)
+
     const onKey = (e: KeyboardEvent) => {
       const input = inputRef.current
       if (!input) return
-      if (isBlockedRef.current?.()) return
 
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-        if (input.disabled) return
+      if (isFindShortcut(e)) {
+        if (winningSearchShortcutOwner() !== ownerId) return
         e.preventDefault()
+        if (isBlockedRef.current?.()) return
+        if (input.disabled) return
         input.focus()
         input.select()
         return
       }
+
+      if (isBlockedRef.current?.()) return
 
       if (e.key === 'Escape' && document.activeElement === input) {
         if (input.value) onClearRef.current()
@@ -50,6 +92,9 @@ export function useSearchShortcut(
     }
 
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [inputRef])
+    return () => {
+      searchShortcutOwners.delete(ownerId)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [inputRef, priority])
 }

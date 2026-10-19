@@ -2,7 +2,10 @@ import { useRef } from "react";
 import type { RootSession } from "../../api";
 import { Button, StatusBadge, ThemeSwitcher } from "../../design-system";
 import { isOpenDialogPresent } from "../../hooks/keyboardShortcutGuards";
-import { useSearchShortcut } from "../../hooks/useSearchShortcut";
+import {
+  WORKSPACE_SEARCH_SHORTCUT_PRIORITY,
+  useSearchShortcut,
+} from "../../hooks/useSearchShortcut";
 import { LanguageSwitcher, useTranslate } from "../../i18n";
 import type { CatalogBrowseContext } from "../library/CatalogLibraryBrowser";
 import "./WorkspaceTopBar.css";
@@ -50,6 +53,7 @@ export function WorkspaceTopBar({
   // Library search uses Ctrl/Cmd+F (same as Home / Audio Pool), not v0.1 Cmd+K.
   useSearchShortcut(searchInputRef, () => onSearchChange(""), {
     isBlocked: () => isOpenDialogPresent(),
+    priority: WORKSPACE_SEARCH_SHORTCUT_PRIORITY,
   });
 
   return (

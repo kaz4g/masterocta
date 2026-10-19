@@ -168,6 +168,7 @@ export function WaveformPreview({
   const [rangePlaying, setRangePlaying] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const previewRequest = useRef(0);
+  const headPlayAttempt = useRef(0);
   const autoplayHeadAfterLoadRef = useRef(false);
   const rangeRequest = useRef(0);
   const waveformRequest = useRef(0);
@@ -243,6 +244,7 @@ export function WaveformPreview({
   }, [detachRangeListeners]);
 
   const pauseHeadPreview = useCallback(() => {
+    headPlayAttempt.current += 1;
     headAudioRef.current?.pause();
     setHeadPlaying(false);
   }, []);
@@ -540,6 +542,9 @@ export function WaveformPreview({
   ]);
 
   useEffect(() => {
+    previewRequest.current += 1;
+    autoplayHeadAfterLoadRef.current = false;
+    setPreviewing(false);
     stopAllPlayback();
   }, [stopPlaybackToken, stopAllPlayback]);
 
@@ -755,6 +760,19 @@ export function WaveformPreview({
     }
   }
 
+  function startHeadPlayback(element: HTMLMediaElement) {
+    const attempt = headPlayAttempt.current + 1;
+    headPlayAttempt.current = attempt;
+    void element.play().then(() => {
+      if (headPlayAttempt.current !== attempt) return;
+      setHeadPlaying(true);
+    }).catch((error: unknown) => {
+      if (headPlayAttempt.current !== attempt) return;
+      setHeadPlaying(false);
+      setPreviewError(errorMessage(error));
+    });
+  }
+
   function toggleLibraryPreviewPlayback() {
     if (headPlaying || rangePlaying || rangeLoading || previewing) {
       previewRequest.current += 1;
@@ -764,7 +782,7 @@ export function WaveformPreview({
       return;
     }
     if (previewUrl !== null && headAudioRef.current !== null) {
-      void headAudioRef.current.play().then(() => setHeadPlaying(true));
+      startHeadPlayback(headAudioRef.current);
       return;
     }
     autoplayHeadAfterLoadRef.current = true;
@@ -779,7 +797,7 @@ export function WaveformPreview({
     const element = headAudioRef.current;
     if (element === null) return;
     autoplayHeadAfterLoadRef.current = false;
-    void element.play().then(() => setHeadPlaying(true)).catch(() => undefined);
+    startHeadPlayback(element);
   }, [previewUrl]);
 
   useEffect(() => {
@@ -790,6 +808,7 @@ export function WaveformPreview({
       if (shouldIgnoreLibraryShortcut(event)) return;
       if (isActivationKeyboardTarget(event.target)) return;
       event.preventDefault();
+      if (event.repeat) return;
       toggleLibraryPreviewPlaybackRef.current();
     };
     window.addEventListener("keydown", onKeyDown);

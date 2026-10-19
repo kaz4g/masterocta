@@ -257,7 +257,7 @@ at **`04725cb3`**. Do not rewrite it.
 ## Unresolved ambiguities
 
 1. **M6-06:** Operations Drawer (#134) vs v0.1 Operation Modal vs Gate C Change Drawer — three UX surfaces coexist; document operator path in future UX ADR if consolidating.
-2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). Library keyboard (FU-3) remains, so M6-08 stays **IN_PROGRESS**.
+2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable shortcuts remain, so M6-08 stays **IN_PROGRESS**.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.

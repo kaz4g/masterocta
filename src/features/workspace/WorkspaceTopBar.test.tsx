@@ -51,7 +51,8 @@ describe("WorkspaceTopBar search shortcut", () => {
     dialog.setAttribute("aria-modal", "true");
     document.body.append(dialog);
 
-    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    const notPrevented = fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    expect(notPrevented).toBe(false);
     expect(document.activeElement).not.toBe(search);
     dialog.remove();
   });
@@ -60,7 +61,8 @@ describe("WorkspaceTopBar search shortcut", () => {
     renderTopBar({ catalogReady: false });
     const search = screen.getByLabelText(tJa("library.searchAria"));
     expect(search).toBeDisabled();
-    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    const notPrevented = fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    expect(notPrevented).toBe(false);
     expect(document.activeElement).not.toBe(search);
   });
 });
