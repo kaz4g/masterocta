@@ -11,28 +11,40 @@ export interface SearchShortcutOptions {
    */
   isBlocked?: () => boolean
   /**
-   * Higher values win when more than one search shortcut is mounted.
-   * The winner consumes Ctrl/Cmd+F; lower-priority listeners do not focus.
+   * Higher values win when more than one search shortcut can focus.
+   * A disabled input yields to the next shortcut. A blocked shortcut still
+   * consumes Ctrl/Cmd+F so a lower-priority field does not take focus.
    */
   priority?: number
 }
 
-let nextSearchShortcutOwnerId = 1
-const searchShortcutOwners = new Map<number, number>()
+type SearchShortcutOwner = {
+  id: number
+  priority: number
+  isBlocked: () => boolean
+  canFocus: () => boolean
+}
 
-function winningSearchShortcutOwner(): number | null {
-  let winner: number | null = null
-  let priority = Number.NEGATIVE_INFINITY
-  for (const [id, ownerPriority] of searchShortcutOwners) {
-    if (
-      ownerPriority > priority
-      || (ownerPriority === priority && (winner === null || id > winner))
-    ) {
-      priority = ownerPriority
-      winner = id
-    }
+let nextSearchShortcutOwnerId = 1
+const searchShortcutOwners = new Map<number, SearchShortcutOwner>()
+
+function orderedSearchShortcutOwners(): SearchShortcutOwner[] {
+  return [...searchShortcutOwners.values()].sort((left, right) => {
+    if (right.priority !== left.priority) return right.priority - left.priority
+    return right.id - left.id
+  })
+}
+
+/** The owner that handles this Ctrl/Cmd+F, or null when nothing is mounted. */
+function resolveFindShortcutOwner(): { id: number; consumeOnly: boolean } | null {
+  const owners = orderedSearchShortcutOwners()
+  for (const owner of owners) {
+    if (owner.isBlocked()) return { id: owner.id, consumeOnly: true }
+    if (owner.canFocus()) return { id: owner.id, consumeOnly: false }
   }
-  return winner
+  const consumer = owners[0]
+  if (consumer === undefined) return null
+  return { id: consumer.id, consumeOnly: true }
 }
 
 function isFindShortcut(event: KeyboardEvent): boolean {
@@ -67,22 +79,31 @@ export function useSearchShortcut(
   useEffect(() => {
     const ownerId = nextSearchShortcutOwnerId
     nextSearchShortcutOwnerId += 1
-    searchShortcutOwners.set(ownerId, priority)
+    searchShortcutOwners.set(ownerId, {
+      id: ownerId,
+      priority,
+      isBlocked: () => isBlockedRef.current?.() ?? false,
+      canFocus: () => {
+        const input = inputRef.current
+        return input !== null && !input.disabled && !(isBlockedRef.current?.() ?? false)
+      },
+    })
 
     const onKey = (e: KeyboardEvent) => {
-      const input = inputRef.current
-      if (!input) return
-
       if (isFindShortcut(e)) {
-        if (winningSearchShortcutOwner() !== ownerId) return
+        const decision = resolveFindShortcutOwner()
+        if (decision?.id !== ownerId) return
         e.preventDefault()
-        if (isBlockedRef.current?.()) return
-        if (input.disabled) return
+        if (decision.consumeOnly) return
+        const input = inputRef.current
+        if (input === null || input.disabled) return
         input.focus()
         input.select()
         return
       }
 
+      const input = inputRef.current
+      if (!input) return
       if (isBlockedRef.current?.()) return
 
       if (e.key === 'Escape' && document.activeElement === input) {

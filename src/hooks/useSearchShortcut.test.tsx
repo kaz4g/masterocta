@@ -133,6 +133,25 @@ describe('useSearchShortcut', () => {
     expect(document.activeElement).not.toBe(screen.getByLabelText('Project search'))
   })
 
+  it('yields Ctrl+F to the page search when the higher-priority input is disabled', () => {
+    function DisabledWorkspaceHarness() {
+      const pageRef = useRef<HTMLInputElement>(null)
+      const workspaceRef = useRef<HTMLInputElement>(null)
+      useSearchShortcut(pageRef, onClear)
+      useSearchShortcut(workspaceRef, onClear, { priority: WORKSPACE_SEARCH_SHORTCUT_PRIORITY })
+      return (
+        <div>
+          <input ref={pageRef} aria-label="Project search" />
+          <input ref={workspaceRef} aria-label="Library search" disabled />
+        </div>
+      )
+    }
+    render(<DisabledWorkspaceHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(false)
+    expect(document.activeElement).toBe(screen.getByLabelText('Project search'))
+  })
+
   it('does not let the page search take Ctrl+F while the workspace shortcut is blocked', () => {
     function BlockedWorkspaceHarness() {
       const pageRef = useRef<HTMLInputElement>(null)
