@@ -62,7 +62,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | Milestone | Status | Summary |
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
-| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
+| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06 overlay **DECIDED (C)** (Drawer; Native/close tests remain); M6-08 persistence/keyboard/configurable shortcuts |
 | **M7** | **COMPLETE** | Exit Gate **5/5 PASS**; Integrated Native session 5 **PASS** @ `40ba99c4`. M7-01–M7-06 **COMPLETE**; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
@@ -95,11 +95,11 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-03 Navigation Pane | **COMPLETE** | #132 | CI | Native doc | Location nav |
 | M6-04 Sample Browser v2 | **COMPLETE** | #122, #132 | CI + frontend tests | Native doc | Search/sort/pagination |
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
-| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 Operations **Drawer** (not modal) | CI | Native writes **NOT_RUN** | Exit-gate “always-visible prepared panel gone” **PASS**. Production mount is one `OperationsDrawerHost` (operator panels inside the drawer, not a second bottom shell). v0.1 central Modal unmatched. Decision **PENDING** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
+| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 Operations **Drawer** | CI | Native writes **NOT_RUN** | **DECIDED (C)** 2026-10-19 (user): Drawer is the single overlay; no central Modal; operator panels stay inside the Drawer. Historical WP name “Operation Modal”. Remaining: Native write smoke + close-without-cancel (FU-1). Configurable shortcuts moved to **M6-08**. [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
-| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); keyboard partial | CI | Narrow layout verified #140 | **Pane persistence to localStorage** not evidenced. Library Up/Down, Space preview, Cmd+K **STOP**. Audit: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §4.8 |
+| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); keyboard partial | CI | Narrow layout verified #140 | **Pane persistence to localStorage** not evidenced. Library Up/Down, Space preview, Cmd+K **STOP**. **Copy/Rename configurable** moved here from M6-06 by (C) (FU-9). Audit: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §4.8 |
 
-**M6 exit gate (v0.1):** Responsibility rows 1–6 **PASS** at `6f68ff1`; **M6-06** and **M6-08** WPs still prevent calling M6 **COMPLETE**. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md).
+**M6 exit gate (v0.1):** Responsibility rows 1–6 **PASS** at `6f68ff1`; **M6-06** (Native/close tests) and **M6-08** (persistence / keyboard / configurable shortcuts) still prevent calling M6 **COMPLETE**. Overlay shape is **DECIDED (C)**. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md).
 
 ---
 
@@ -259,8 +259,8 @@ at **`04725cb3`**. Do not rewrite it.
 
 ## Unresolved ambiguities
 
-1. **M6-06:** Audit 2026-10-19: one production mount (`OperationsDrawerHost`). Names “Modal / Drawer / Change Drawer” are spec vs chrome vs panel vocabulary, not three shells. User decision **PENDING** (options A/B/C in [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6). Recommended **(C)** accept Drawer, do not build a central Modal.
-2. **M6-08:** Persisted pane widths / Library keyboard palette — still incomplete; follow-ups FU-2 / FU-3 in the M6 audit. Theme/locale localStorage is not this WP.
+1. **M6-06:** **DECIDED (C)** 2026-10-19 (user). One production mount (`OperationsDrawerHost`). Drawer is the single overlay; no central Modal; operator panels stay inside the Drawer. `MO-M6-06-OPERATION-MODAL-1` **not adopted**. Remaining: Native write smoke + close-without-cancel ([`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.3, FU-1).
+2. **M6-08:** Persisted pane widths / Library keyboard palette / **Copy/Rename configurable** (moved from M6-06). Follow-ups FU-2 / FU-3 / FU-9. Theme/locale localStorage is not this WP.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.

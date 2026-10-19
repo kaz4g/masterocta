@@ -67,17 +67,19 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 | M6-03 | Navigation Pane |
 | M6-04 | Sample Browser v2 |
 | M6-05 | Sample Inspector v2 |
-| M6-06 | Operation Modal |
+| M6-06 | Operation Modal（歴史名。**DECIDED (C):** 受入面は Operations Drawer。中央 Modal は作らない） |
 | M6-07 | AudioAsset domain baseline |
-| M6-08 | keyboard / resize / persisted UI state |
+| M6-08 | keyboard / resize / persisted UI state（**含む:** Copy/Rename configurable。M6-06 から移管） |
 
 **Exit gate (v0.1):** Source management in top context / dialog; browser dominates layout; waveform usable size in Inspector; prepared-operation always-visible panel removed; write safety preserved; AudioAsset represents existing Octatrack samples.
+
+**M6-06 overlay (DECIDED (C), 2026-10-19, user):** Operations Drawer is the single overlay; operator panels stay inside it; no central Modal. Configurable shortcuts belong to M6-08. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.3.
 
 **Current status:** [DEVELOPMENT_STATUS § M6](./DEVELOPMENT_STATUS.md#m6--library-workspace--audioasset-foundation).
 
 **Canonical supporting docs:**
 
-- [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19; `main` `6f68ff1`; M6 remains IN_PROGRESS)
+- [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19; `main` `6f68ff1`; M6-06 **DECIDED (C)**; M6 remains IN_PROGRESS)
 - [`POST_M5_FEATURE_RESTART_AUDIT.md`](./POST_M5_FEATURE_RESTART_AUDIT.md) (historical investigation; #103–#105 reopen ban)
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) (M7 WF2; depends on M6 layout)
 - Testing: `docs/testing/MO_UI_WORKSPACE_*`, `MO_UI_LIBRARY_INSPECTOR_*`, `MO_UI_OPERATIONS_DRAWER_*`, `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`

@@ -7,7 +7,9 @@
 - Audit baseline: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`**（merge PR #236）
 - Native workspace harness（歴史記録）: [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](../testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) @ `0f39f5056c25e996f1e3ff69b7a51ca20b0c45bb`（PR #142）
 
-本文書は **現行 `main` に対する M6 完了判定の正本**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。最終決定（とくに M6-06 の Drawer 受容）はユーザーに属する。**PENDING**。
+本文書は **現行 `main` に対する M6 完了判定の正本**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。
+
+**M6-06 決定: DECIDED (C)** — 2026-10-19、ユーザー。Operations Drawer が唯一の操作 overlay。中央 Modal は作らない。operator パネルは Drawer 内に残す。configurable shortcut は M6-06 から外し **M6-08** へ移す。`MO-M6-06-OPERATION-MODAL-1` は **不採用**。
 
 判定語彙は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) に合わせ、WP は **責務**で見る（v0.1 のウィジェット名そのものではない）。Exit Gate 原文は v0.1 §17 をそのまま使う。
 
@@ -27,7 +29,7 @@ open issue:      #178 OPEN（本監査は docs のみ。Issue は作成・close 
 - 残件があれば最小 follow-up 作業単位へ分解（GitHub Issue は作らない）
 - M6 COMPLETE 可否
 
-本監査の結論: **M6 は COMPLETE にできない。** Exit Gate 6 項目は責務判定でおおむね満たすが、WP **M6-06** と **M6-08** が受入基準を残している。
+本監査の結論: **M6 は COMPLETE にできない。** Exit Gate 6 項目は責務判定でおおむね満たす。M6-06 の overlay 形状は (C) で確定したが、Native write smoke と close 契約が残る。**M6-08** は pane persistence、Library キーボード、および M6-06 から移した configurable shortcut が未完。
 
 **範囲外（本線では監査しない）:**
 
@@ -61,9 +63,9 @@ v0.1 §17 / `MILESTONE_INDEX`（WP を足さない）:
 | M6-03 | Navigation Pane |
 | M6-04 | Sample Browser v2 |
 | M6-05 | Sample Inspector v2 |
-| M6-06 | Operation Modal |
+| M6-06 | Operation Modal（歴史名。**DECIDED (C):** 実装面は Operations Drawer） |
 | M6-07 | AudioAsset domain baseline |
-| M6-08 | keyboard / resize / persisted UI state |
+| M6-08 | keyboard / resize / persisted UI state（**含む:** v0.1 §5.9 Copy/Rename configurable。M6-06 から移管） |
 
 **Exit Gate（v0.1 §17 原文）:**
 
@@ -83,13 +85,13 @@ v0.1 §17 / `MILESTONE_INDEX`（WP を足さない）:
 | M6-03 | browse操作が左paneだけで完結 |
 | M6-04 | sample探索が画面主目的として成立 |
 | M6-05 | waveformが実用サイズで表示 |
-| M6-06 | copy / rename / plan review。bottom drawer不要、safety維持 |
+| M6-06 | copy / rename / plan review。bottom drawer不要、safety維持。**(C) 改正:** overlay は Operations Drawer（`role=dialog`）。中央 Modal は要求しない。configurable shortcut は対象外（M6-08） |
 | M6-07 | 現行sampleをmigrationなしでもread可能 |
-| M6-08 | 再起動後に主要UI state復元 |
+| M6-08 | 再起動後に主要UI state復元。keyboard 最小セット + **Copy/Rename configurable** |
 
 v0.1 §5.8 は操作 UI を **Operation Dialog**（COPY/RENAME → Review Plan → Apply → Verify）と書く。§5.9 はキーボード候補（Up/Down、Space、Cmd+K、Enter、Esc、Copy/Rename configurable）。§5.2 推奨比率は Navigation **18 : 52 : 30**。
 
-本監査は Exit Gate と WP を分けて判定する。Exit Gate は「常設 prepared panel をやめ、Browser / Inspector を主役にし、M5 安全境界を迂回しない」ことであり、中央 Modal ウィジェットそのものは Exit Gate 原文に無い。
+本監査は Exit Gate と WP を分けて判定する。Exit Gate は「常設 prepared panel をやめ、Browser / Inspector を主役にし、M5 安全境界を迂回しない」ことであり、中央 Modal ウィジェットそのものは Exit Gate 原文に無い。**(C) により WP 名「Operation Modal」は歴史名として残し、受入面は Operations Drawer とする。**
 
 ---
 
@@ -190,11 +192,11 @@ Inspector 列は伸縮し、波形は専用 Preview に載る。固定 8.75rem �
 | 常設 bottom prepared panel の撤去 | **PASS** | `RootRegistryPanel` は `AppShell.changeDrawer` を渡さない（L755–892）。本番 slot 未使用（`AppShell.tsx` L188–192）。操作は `operationsOpen` のときだけ `OperationsDrawerHost`（L943–975） |
 | copy / rename / plan review | **PASS**（自動） | `OperationsDrawerHost` が `RenameSampleModal`（embedded）+ `RenameOperatorPanel` + `AdditiveCopyChangeDrawer` + `CloneOperatorPanel` を同一 Drawer に載せる（`OperationsDrawerHost.tsx` L113–179） |
 | 安全境界の再利用 | **PASS**（自動） | 同一 `v2_*` IPC / `mutation_gate`。E2E `e2e/rename-prepare.spec.ts`、`e2e/rename-operator.spec.ts` |
-| v0.1 中央 Operation **Modal** | **STOP**（字義） | 実装は右 Drawer（`Drawer.tsx` `role="dialog"` L128、`aria-modal` L129）。`RenameSampleModal` の standalone Modal 経路は本番未使用（embedded のみ、`RenameSampleModal.tsx` L475–478 は embedded で Cancel 非表示） |
-| Native write smoke | **STOP**（受入） | Native 文書「Operations Drawer / writes **NOT_RUN**」 |
-| 設定可能な Copy/Rename shortcut | **STOP** | Library workspace に無し |
+| v0.1 中央 Operation **Modal** | **N/A（(C) 不採用）** | 実装は右 Drawer（`Drawer.tsx` `role="dialog"` L128、`aria-modal` L129）。standalone Modal 経路は本番未使用。**(C) により中央 Modal は M6-06 受入から外す** |
+| Native write smoke | **STOP**（受入・残件） | Native 文書「Operations Drawer / writes **NOT_RUN**」 |
+| 設定可能な Copy/Rename shortcut | **M6-08 へ移管** | Library workspace に無し。M6-06 の残件ではない（FU-9） |
 
-Status ラベル（`DEVELOPMENT_STATUS`）**IMPLEMENTED_NOT_FULLY_ACCEPTED** を維持する。コード上の本番マウントは **1 系統**（Drawer host）。「Change Drawer」はパネルコンポーネント名と Gate C オペレータ語彙であり、第二の bottom shell ではない。
+Status ラベル（`DEVELOPMENT_STATUS`）**IMPLEMENTED_NOT_FULLY_ACCEPTED** を維持する（Native write / close 契約が残る。overlay 形状は (C) で確定）。コード上の本番マウントは **1 系統**（Drawer host）。「Change Drawer」はパネルコンポーネント名と Gate C オペレータ語彙であり、第二の bottom shell ではない。
 
 ### 4.7 M6-07 AudioAsset baseline — **PASS**
 
@@ -219,10 +221,10 @@ Status ラベル（`DEVELOPMENT_STATUS`）**IMPLEMENTED_NOT_FULLY_ACCEPTED** を
 | Search Cmd+K | **STOP** | `WorkspaceTopBar` 検索（L61–70）にグローバルショートカット無し。レガシー `useSearchShortcut` は **Cmd/Ctrl+F** で Home / `AudioFileTable` / `SampleSlotsTable` 向け。Library Top Bar 未配線 |
 | Open folder Enter | **PARTIAL** | 左 nav は `<button>`（ネイティブ Enter）。専用ショートカットは無い |
 | Close dialog Esc | **PASS**（Drawer） | `useModalDismiss` `closeOnEscape: true`（`Drawer.tsx` L97）。`Drawer.test.tsx` `calls onClose from Escape and keeps children mounted when closed` |
-| Copy/Rename configurable | **STOP** | 設定 UI なし |
+| Copy/Rename configurable | **STOP**（**(C) により M6-06 から移管**） | 設定 UI なし。v0.1 §5.9 の当該行は M6-08 の残件（FU-9） |
 | 再起動後の主要 UI state | **STOP** | 選択・検索・sort・page・split はセッション内のみ（`useCatalogBrowse.ts`）。テーマ / locale の localStorage は M6-08 の Library pane 契約ではない |
 
-#132 / #139 / #140 の resize / narrow は実在する。v0.1 §18「再起動後に主要 UI state 復元」は未達。WP 全体は **PARTIAL**（`DEVELOPMENT_STATUS` の **IN_PROGRESS** と一致）。
+#132 / #139 / #140 の resize / narrow は実在する。v0.1 §18「再起動後に主要 UI state 復元」は未達。configurable shortcut は (C) 以降 M6-08 に属する。WP 全体は **PARTIAL**（`DEVELOPMENT_STATUS` の **IN_PROGRESS** と一致）。
 
 ---
 
@@ -241,11 +243,11 @@ Status ラベル（`DEVELOPMENT_STATUS`）**IMPLEMENTED_NOT_FULLY_ACCEPTED** を
 
 **Exit Gate 集計: 6 / 6 PASS**（責務）。
 
-**マイルストーン COMPLETE にしない理由:** WP **M6-06**（字義 Modal / Native write / キーボード設定）と **M6-08**（persistence と Library キーボード）が未完。`DEVELOPMENT_STATUS` は WP 完了を milestone 完了の条件にしており、本監査もそれに従う。
+**マイルストーン COMPLETE にしない理由:** WP **M6-06** の残件は Native write smoke と close-without-cancel 契約（overlay 形状は (C) で確定。中央 Modal は要求しない）。**M6-08** は pane persistence、Library キーボード最小セット、および Copy/Rename configurable が未完。`DEVELOPMENT_STATUS` は WP 完了を milestone 完了の条件にしており、本監査もそれに従う。
 
 ---
 
-## 6. M6-06 決定メモ（ユーザー決定は PENDING）
+## 6. M6-06 決定メモ — **DECIDED (C)**（2026-10-19、ユーザー）
 
 ### 6.1 現状の図
 
@@ -274,14 +276,14 @@ v0.1 §5.8 が求める流れとの対応:
 | キーボード Esc | **PASS** | 同上 |
 | Plan review | Copy「Review plan」、Rename「Review Rename」 | `AdditiveCopyChangeDrawer.test.tsx`、`e2e/rename-prepare.spec.ts` |
 
-欠落（字義 v0.1 / 受入）:
+欠落（(C) 採択後の M6-06 残件）:
 
-- 中央 Modal ではない
-- embedded rename に Cancel ボタンが無い（`RenameSampleModal.tsx` L475–478）
-- close は apply/cancel IPC を呼ばない
-- Copy/Rename ショートカット未設定
+- 中央 Modal ではない → **受入対象外**（(C)）
+- Copy/Rename ショートカット未設定 → **M6-08**（FU-9）
+- embedded rename に Cancel ボタンが無い（`RenameSampleModal.tsx` L475–478）— close は Drawer × / Esc
+- close は apply/cancel IPC を呼ばない（契約としてテスト固定が残件）
 - Native Tauri での Drawer 書き込み **NOT_RUN**
-- Operator パネル本文の i18n は部分的（handoff Remaining）
+- Operator パネル本文の i18n は部分的（handoff Remaining。M6 COMPLETE のブロッカーにしない）
 
 ### 6.2 選択肢
 
@@ -302,7 +304,7 @@ Drawer を「操作 overlay（`role=dialog`）」として正本化する。中�
 1. Native Tauri 合成 fixture での Operations Drawer **書き込み**最小スモーク（clone verify または rename prepare のどれか 1 本。原本媒体禁止）
 2. Drawer close が in-flight prepare を **キャンセルしない**ことの回帰（既存 handoff 契約。フロントテストで固定）
 3. Focus trap + Esc は既存テストで足りる。**追加必須ではない**
-4. v0.1 §5.9「Copy/Rename configurable」を M6-06 から外すか、M6-08 follow-up に移すかを仕様に明記する（未決なら M6-06 COMPLETE にしない）
+4. v0.1 §5.9「Copy/Rename configurable」は **M6-08 へ移管済み**（(C)。M6-06 COMPLETE の条件ではない）
 
 #### (B) v0.1 字義の Operation Modal を新規実装する
 
@@ -316,7 +318,7 @@ Drawer を「操作 overlay（`role=dialog`）」として正本化する。中�
 | リスク | **高**（安全操作 UX の回帰。RC8 は operator panel 語彙で PASS） |
 | 他線への影響 | Gate C harness 文書・rename E2E。Bank Editor には直接影響しないが、将来の Bank Apply UI が「Modal が正」と誤解する余地 |
 
-#### (C) ハイブリッド（推奨）
+#### (C) ハイブリッド — **採択（DECIDED）**
 
 **(A) を核にする。** Drawer を M6-06 の唯一の操作 overlay とする。中央 Modal は作らない。`RenameOperatorPanel` / `AdditiveCopyChangeDrawer` / `CloneOperatorPanel` は Drawer コンテンツとして残す（第二 shell にしない）。仕様改正に次を書く:
 
@@ -334,16 +336,26 @@ Drawer を「操作 overlay（`role=dialog`）」として正本化する。中�
 | リスク | 低 |
 | 他線への影響 | (A) に同じ |
 
-### 6.3 推奨（PENDING — ユーザーが決める）
+### 6.3 決定 — **DECIDED (C)**（2026-10-19、ユーザー）
 
-**推奨は (C)。** 理由:
+ユーザーが **(C)** を採択した。監査時の推奨理由（記録）:
 
 1. Exit Gate 原文は「常設 prepared panel を消す」「write safety を維持する」であり、中央 Modal を要求していない。
 2. 現行 Drawer はすでに `role="dialog"` / `aria-modal` / focus trap / Esc を実装し、plan review と承認ゲートをパネル側で持つ。
 3. (B) は Gate C で PASS したオペレータ導線を動かし、安全 UX の回帰コストが大きい。
 4. Native write NOT_RUN と close-without-cancel 契約は、Modal を新造しなくてもテストで閉じられる。
 
-**最終決定はユーザー。本 PR は仕様を改正しない（監査と選択肢の提示のみ）。** 改正は follow-up 単位で行う。
+**確定した境界:**
+
+| 項目 | 帰属 |
+| --- | --- |
+| 唯一の操作 overlay | Operations Drawer（M6-06） |
+| 中央 Operation Modal | **作らない。** `MO-M6-06-OPERATION-MODAL-1` **不採用** |
+| operator パネル | Drawer 内に残す（第二 shell にしない） |
+| Copy/Rename configurable shortcut | **M6-08**（FU-9） |
+| Native write smoke / close-without-cancel | M6-06 残件（FU-1） |
+
+v0.1 ingest 原文（`sources/MASTA_OCTA_*_v0.1.md`）は書き換えない。差分は本節と `DEVELOPMENT_STATUS` / `MILESTONE_INDEX` の M6 行に置く。Native smoke と close 契約の製品テストは FU-1（本 PR の範囲外）。
 
 ---
 
@@ -353,15 +365,15 @@ PARTIAL / STOP から最小単位へ分解する。実装は本 PR の範囲外�
 
 ### FU-1 `MO-M6-06-DRAWER-SPEC-AND-NATIVE-1`
 
-- **前提:** ユーザーが (A) または (C) を選んだ場合
-- **タイトル:** Operations Drawer を M6-06 正本化し、Native 最小スモークを残す
-- **範囲:** v0.1 / `DEVELOPMENT_STATUS` / 必要なら短い UX メモの改正。合成 fixture 上の Native Drawer 書き込み 1 本（原本媒体禁止）。in-flight close 契約の回帰テスト固定
+- **前提:** **(C) DECIDED。** overlay 形状の正本化は本監査で記録済み。残るのは Native / 回帰テスト
+- **タイトル:** Operations Drawer の Native 最小スモークと close 契約
+- **範囲:** 合成 fixture 上の Native Drawer 書き込み 1 本（原本媒体禁止）。in-flight close 契約の回帰テスト固定。必要なら testing 文書の更新。v0.1 ingest 原文は書き換えない
 - **Acceptance:**
-  - 正本が「Drawer = M6-06 overlay」と書く
+  - Overlay 形状の正本（Drawer = M6-06）は本監査 §6.3 で記録済み。再改正は不要
   - Native: 合成 root で Drawer 経由の rename prepare **または** clone verify が 1 本 PASS
   - close 中の prepare が自動 cancel/apply されない
   - Gate C パネルの IPC を増やさない
-- **想定ファイル:** `docs/planning/DEVELOPMENT_STATUS.md`、`docs/planning/sources/` への注記（原文 ingest は書き換えず、差分表）、`docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`、必要なら `src/features/roots/RootRegistryPanel.test.tsx` / `RenameSampleModal.test.tsx`
+- **想定ファイル:** `docs/testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`、必要なら `src/features/roots/RootRegistryPanel.test.tsx` / `RenameSampleModal.test.tsx`
 
 ### FU-2 `MO-M6-08-PANE-PERSISTENCE-1`
 
@@ -376,7 +388,7 @@ PARTIAL / STOP から最小単位へ分解する。実装は本 PR の範囲外�
 ### FU-3 `MO-M6-08-LIBRARY-KEYBOARD-1`
 
 - **タイトル:** Library workspace の v0.1 キーボード最小セット
-- **範囲:** Sample リスト Up/Down、Preview Space play/stop、検索フォーカス（Cmd+K または Cmd+F を仕様で固定）、Esc は既存 Drawer を維持。Copy/Rename configurable は **含めない**（別単位）
+- **範囲:** Sample リスト Up/Down、Preview Space play/stop、検索フォーカス（Cmd+K または Cmd+F を仕様で固定）、Esc は既存 Drawer を維持。Copy/Rename configurable は **含めない**（FU-9。M6-08 だが本単位の外）
 - **Acceptance:**
   - リストがフォーカス可能なとき Up/Down で選択が動く
   - Preview タブで Space が play/stop（入力中は無効）
@@ -384,13 +396,23 @@ PARTIAL / STOP から最小単位へ分解する。実装は本 PR の範囲外�
   - Vitest および可能なら E2E
 - **想定ファイル:** `CatalogFileList.tsx`、`WorkspaceTopBar.tsx`、`WaveformPreview.tsx` または Inspector、対応 `*.test.tsx`、`docs/I18N.md`（ja/en を同時）
 
-### FU-4 `MO-M6-06-OPERATION-MODAL-1`（(B) 専用。推奨しない）
+### FU-4 `MO-M6-06-OPERATION-MODAL-1` — **不採用**
 
+- **状態:** **NOT ADOPTED**（2026-10-19、(C) DECIDED）
 - **タイトル:** v0.1 中央 Operation Modal
-- **範囲:** 新 Modal host。既存 operator を移すか複製。Drawer の廃止または二重化方針を先に決める
-- **Acceptance:** COPY/RENAME が Modal で Review → Apply → Verify。Gate C 導線を文書化して再通す。focus trap / Esc / 結果・エラー
-- **想定ファイル:** `src/features/changes/*`、`RootRegistryPanel.tsx`、E2E rename-*、Gate C 文書
-- **規模 L。** (C) 採択時は **開かない**
+- **範囲:** 開かない。中央 Modal は作らない。既存 operator パネルを Drawer から移さない
+- 歴史記録として残す。後続作業のキューに入れない
+
+### FU-9 `MO-M6-08-CONFIGURABLE-OPS-SHORTCUTS-1`
+
+- **移管:** (C) により M6-06 から **M6-08** へ
+- **タイトル:** Copy / Rename の設定可能なキーボードショートカット
+- **範囲:** Library workspace で Copy/Rename overlay を開く shortcut をユーザーが設定できる。既定値とドキュメント（ja/en）。M6-06 Drawer の IPC / レイアウトは変えない
+- **Acceptance:**
+  - 未設定時の既定（または「未割り当て」）が文書化されている
+  - 設定した shortcut が Drawer を開く
+  - 入力フィールドにフォーカス中は発火しない
+- **想定ファイル:** workspace / i18n（ja+en）、設定 UI または既存設定面、対応テスト
 
 ### 任意（M6 COMPLETE のブロッカーにしない）
 
@@ -427,15 +449,15 @@ M6 COMPLETE は Bank Apply を待たない。逆に Bank Editor は M6-06 Drawer
 | M6-03 Navigation Pane | **PASS** |
 | M6-04 Sample Browser v2 | **PASS** |
 | M6-05 Sample Inspector v2 | **PASS** |
-| M6-06 Operation Modal | **PARTIAL** |
+| M6-06 Operation Modal | **PARTIAL**（overlay は (C) 確定。残件は Native / close 契約） |
 | M6-07 AudioAsset baseline | **PASS** |
-| M6-08 keyboard / resize / persisted UI | **PARTIAL**（persistence **STOP**） |
+| M6-08 keyboard / resize / persisted UI | **PARTIAL**（persistence **STOP**。configurable shortcut を含む） |
 | Exit Gate 1–6（責務） | **6 / 6 PASS** |
 | **M6 milestone** | **IN_PROGRESS**（COMPLETE にしない） |
-| M6-06 推奨 | **(C)** — Drawer を正、Modal 新造なし、残テストは FU-1。**決定は PENDING** |
+| M6-06 決定 | **DECIDED (C)** — 2026-10-19、ユーザー。Drawer を正。Modal 新造なし。`MO-M6-06-OPERATION-MODAL-1` **不採用** |
 
-#178 の「残件が実装済みなら Native 受入まで完了」は満たしていない。Operations Drawer 書き込み Native は **NOT_RUN**。pane persistence は未実装。
+#178 の「残件が実装済みなら Native 受入まで完了」は満たしていない。Operations Drawer 書き込み Native は **NOT_RUN**。pane persistence と Library キーボード（configurable 含む）は未実装。
 
-次の製品作業はユーザーの M6-06 決定のあと、FU-1（(A)/(C)）または FU-4（(B)）と、独立して進められる FU-2 / FU-3。
+次の製品作業: FU-1（M6-06 残テスト）、独立して FU-2 / FU-3 / FU-9（いずれも M6-08）。FU-4 は開かない。
 
 関連: [#178](https://github.com/kaz4g/masterocta/issues/178)、[`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)、[`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md)、[`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)。
