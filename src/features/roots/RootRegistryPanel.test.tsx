@@ -105,6 +105,30 @@ function fakeRenameApi(): RenameApi {
   };
 }
 
+function librarySurfaceClients(): { audioClient: AudioApi; metadataClient: MetadataApi } {
+  return {
+    audioClient: {
+      getWaveform: vi.fn(),
+      queryWaveform: vi.fn().mockResolvedValue({
+        analyzerVersion: "waveform:v2",
+        sampleRate: 44100,
+        channels: 1,
+        frameCount: "44100",
+        range: { startFrame: "0", endFrameExclusive: "44100" },
+        framesPerPeak: "256",
+        channelPeaks: [[{ min: -0.2, max: 0.4 }]],
+      }),
+      createPreviewToken: vi.fn(),
+      createRangePreviewToken: vi.fn(),
+      readPreview: vi.fn(),
+    },
+    metadataClient: {
+      loadManualAssetMetadata: vi.fn().mockResolvedValue({ tags: [], note: "" }),
+      replaceManualAssetMetadata: vi.fn(),
+    },
+  };
+}
+
 function fakeChangeApi(): ChangeApi {
   return {
     planAdditiveCopy: vi.fn(),
@@ -491,5 +515,131 @@ describe("RootRegistryPanel", () => {
 
     expect(await screen.findByText(tJa("library.fileListRefreshing"))).toBeInTheDocument();
     expect(screen.getByText("KICK.wav")).toBeInTheDocument();
+  });
+
+  it("does not cancel an in-flight rename prepare when the operations drawer closes", async () => {
+    const api = fakeApi();
+    const writeSession: RootSession = {
+      ...session,
+      mode: "write_enabled",
+      writeGrantExpiresInSeconds: 600,
+      capabilities: { ...session.capabilities, write: true },
+    };
+    vi.mocked(api.enableWrite).mockResolvedValue(writeSession);
+    vi.mocked(api.rootStatus).mockResolvedValue(writeSession);
+    const planId = `plan:v1:${"a".repeat(64)}`;
+    const operationId = `operation:v1:${"a".repeat(64)}`;
+    const snapshotId = `snapshot:v1:${"c".repeat(64)}`;
+    const plan = {
+      schema: "rename-plan:v1" as const,
+      planId,
+      operationId,
+      operation: "rename_sample" as const,
+      sourceFileInstanceId: "fileinst:v1:opaque",
+      sourceRelativePath: "LIVE_SET/AUDIO/KICK.wav",
+      sourceByteSize: 2048,
+      sourceContentHash: `sha256:${"a".repeat(64)}`,
+      destinationRelativePath: "LIVE_SET/AUDIO/KICK_DEEP.wav",
+      stateDocumentImpacts: [],
+      usageEdgeImpacts: [],
+      sidecarImpacts: [],
+      backupRelativePaths: ["LIVE_SET/AUDIO/KICK.wav"],
+      estimatedMediaAdditionalBytes: 2048,
+      estimatedLocalStagingBytes: 4096,
+      referenceUpdateCount: 1,
+      warnings: [],
+      requiresExplicitApproval: true as const,
+      overwriteAllowed: false as const,
+      removesSourceOnApply: true,
+    };
+    let releasePrepare: (() => void) | undefined;
+    const renameClient = fakeRenameApi();
+    vi.mocked(renameClient.plan).mockResolvedValue({ outcome: "planned", plan });
+    vi.mocked(renameClient.getPlan).mockResolvedValue(plan);
+    vi.mocked(renameClient.authorize).mockResolvedValue({
+      schema: "rename-authority:v1",
+      authorityId: `authority:v1:${"b".repeat(64)}`,
+      planId,
+      operationId,
+      expiresInSeconds: 600,
+    });
+    vi.mocked(renameClient.createBackup).mockResolvedValue({
+      schema: "rename-backup-status:v1",
+      planId,
+      snapshotId,
+      state: "backup_verified",
+      fileCount: 1,
+      totalBytes: 2048,
+      verified: true,
+    });
+    vi.mocked(renameClient.prepare).mockImplementation(
+      () => new Promise((resolve) => {
+        releasePrepare = () => resolve({
+          schema: "rename-prepare-status:v1",
+          planId,
+          operationId,
+          snapshotId,
+          state: "prepared",
+          stagedFileCount: 1,
+          totalStagedBytes: 2048,
+          projectRewriteCount: 0,
+        });
+      }),
+    );
+    vi.mocked(renameClient.getStatus).mockResolvedValue({
+      schema: "rename-status:v1",
+      operationId,
+      planId,
+      state: "prepared",
+      backupSnapshotId: snapshotId,
+      failureCode: null,
+      planExpired: false,
+      recoveryEligible: false,
+    });
+    const { audioClient, metadataClient } = librarySurfaceClients();
+    renderPanel(
+      <RootRegistryPanel
+        api={api}
+        audioClient={audioClient}
+        metadataClient={metadataClient}
+        changeClient={fakeChangeApi()}
+        cloneClient={fakeCloneApi()}
+        renameClient={renameClient}
+        selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    expect(await screen.findByText("KICK.wav")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.editMode") }));
+    expect(await screen.findByText(tJa("context.editEnabled"))).toBeInTheDocument();
+    fireEvent.click(screen.getByText("KICK.wav"));
+    fireEvent.click(screen.getByRole("button", { name: tJa("inspector.renameAction") }));
+
+    const drawer = await screen.findByRole("dialog");
+    fireEvent.change(within(drawer).getByLabelText("New file name"), {
+      target: { value: "KICK_DEEP.wav" },
+    });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Review Rename" }));
+    await within(drawer).findByRole("button", { name: "Approve & Prepare" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Approve & Prepare" }));
+    await waitFor(() => expect(renameClient.prepare).toHaveBeenCalledOnce());
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(renameClient.prepare).toHaveBeenCalledOnce();
+    expect(renameClient.apply).not.toHaveBeenCalled();
+
+    releasePrepare?.();
+    await waitFor(() => expect(renameClient.getStatus).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: tJa("inspector.renameAction") })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: tJa("inspector.renameAction") }));
+    expect(await screen.findByText("Rename prepared")).toBeInTheDocument();
+    expect(renameClient.prepare).toHaveBeenCalledOnce();
+    expect(renameClient.apply).not.toHaveBeenCalled();
   });
 });
