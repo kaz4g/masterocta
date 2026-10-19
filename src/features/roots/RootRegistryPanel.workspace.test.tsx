@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChangeApi, CloneApi, RenameApi, RootApi } from "../../api";
 import { ThemeProvider } from "../../design-system/themes/ThemeProvider";
 import { LocaleProvider } from "../../i18n/LocaleProvider";
 import { tEn, tJa } from "../../i18n/testStrings";
 import { renameOperatorApiStubs } from "../../test/renameApiStubs";
+import {
+  DEFAULT_MAIN_SPLIT_PERCENT,
+  DEFAULT_SOURCES_SPLIT_PERCENT,
+  PANE_SPLIT_STORAGE_KEY,
+} from "./paneSplitStorage";
 import { RootRegistryPanel } from "./RootRegistryPanel";
 
 function fakeChangeApi(): ChangeApi {
@@ -88,7 +93,80 @@ function renderWorkspace(api: RootApi) {
   );
 }
 
+function catalogWorkspaceApi(): RootApi {
+  return {
+    registerRoot: vi.fn().mockResolvedValue({
+      rootId: "root-opaque",
+      displayName: "Fixture Root",
+      deviceFingerprint: "0123456789abcdef",
+      mode: "read_only",
+      observedRevision: 1,
+      expiresInSeconds: 3600,
+      capabilities: { read: true, write: false, stableDeviceIdentity: true },
+    }),
+    rootStatus: vi.fn(),
+    enableWrite: vi.fn(),
+    disableWrite: vi.fn(),
+    closeRoot: vi.fn(),
+    listLibrary: vi.fn().mockResolvedValue({
+      sets: [{
+        displayName: "LIVE_SET",
+        relativePath: "LIVE_SET",
+        hasAudioPool: true,
+        projects: [{
+          displayName: "PROJECT_A",
+          relativePath: "LIVE_SET/PROJECT_A",
+          hasProjectFile: true,
+          hasBanks: true,
+        }],
+      }],
+      standaloneProjects: [],
+      audioFiles: [
+        {
+          fileInstanceId: "fileinst:v1:pool",
+          assetId: "asset:v1:pool",
+          displayName: "POOL.wav",
+          relativePath: "LIVE_SET/AUDIO/POOL.wav",
+          byteSize: 2048,
+          storageScope: "set_audio_pool",
+        },
+        {
+          fileInstanceId: "fileinst:v1:project",
+          assetId: "asset:v1:project",
+          displayName: "PROJECT.wav",
+          relativePath: "LIVE_SET/PROJECT_A/PROJECT.wav",
+          byteSize: 4096,
+          storageScope: "project_local",
+        },
+      ],
+      usageEdges: [],
+    }),
+  };
+}
+
+function mockSplitRect(element: HTMLElement, width = 200) {
+  vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+    left: 0,
+    width,
+    top: 0,
+    height: 100,
+    right: width,
+    bottom: 100,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  });
+}
+
 describe("RootRegistryPanel workspace layout", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
+  });
+
+  afterEach(() => {
+    window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
+  });
+
   it("updates the center list when a catalog location is selected in the left nav", async () => {
     const api: RootApi = {
       registerRoot: vi.fn().mockResolvedValue({
@@ -319,5 +397,52 @@ describe("RootRegistryPanel workspace layout", () => {
 
     fireEvent.keyDown(document, { key: "f", ctrlKey: true });
     expect(document.activeElement).toBe(screen.getByLabelText(tJa("library.searchAria")));
+  });
+
+  it("restores pane split percentages after resize and remount", async () => {
+    const view = renderWorkspace(catalogWorkspaceApi());
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    expect(await screen.findByText("POOL.wav")).toBeInTheDocument();
+
+    const sources = screen.getByTestId("app-shell-sources");
+    expect(sources).toHaveStyle({ width: `${DEFAULT_SOURCES_SPLIT_PERCENT}%` });
+    expect(document.querySelector(".mo-app-shell__main")).toHaveStyle({
+      width: `${DEFAULT_MAIN_SPLIT_PERCENT}%`,
+    });
+
+    const outer = document.querySelector(".mo-app-shell__outer-split") as HTMLElement;
+    mockSplitRect(outer);
+    fireEvent.mouseDown(screen.getByTestId("app-shell-divider"));
+    fireEvent.mouseMove(document, { clientX: 60 });
+    fireEvent.mouseUp(document);
+    expect(sources).toHaveStyle({ width: "30%" });
+
+    const inner = document.querySelector(".mo-app-shell__inner-split") as HTMLElement;
+    mockSplitRect(inner);
+    fireEvent.mouseDown(screen.getByTestId("app-shell-inner-divider"));
+    fireEvent.mouseMove(document, { clientX: 120 });
+    fireEvent.mouseUp(document);
+    expect(document.querySelector(".mo-app-shell__main")).toHaveStyle({ width: "60%" });
+
+    view.unmount();
+
+    renderWorkspace(catalogWorkspaceApi());
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    expect(await screen.findByText("POOL.wav")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell-sources")).toHaveStyle({ width: "30%" });
+    expect(document.querySelector(".mo-app-shell__main")).toHaveStyle({ width: "60%" });
+  });
+
+  it("falls back to default pane splits when stored JSON is corrupt", async () => {
+    window.localStorage.setItem(PANE_SPLIT_STORAGE_KEY, "{not-json");
+    renderWorkspace(catalogWorkspaceApi());
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    expect(await screen.findByText("POOL.wav")).toBeInTheDocument();
+    expect(screen.getByTestId("app-shell-sources")).toHaveStyle({
+      width: `${DEFAULT_SOURCES_SPLIT_PERCENT}%`,
+    });
+    expect(document.querySelector(".mo-app-shell__main")).toHaveStyle({
+      width: `${DEFAULT_MAIN_SPLIT_PERCENT}%`,
+    });
   });
 });
