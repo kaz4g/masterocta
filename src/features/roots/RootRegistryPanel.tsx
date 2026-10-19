@@ -39,6 +39,10 @@ import {
   type CatalogBrowseContext,
 } from "../library/CatalogLibraryBrowser";
 import { CatalogWorkspaceMain, CatalogWorkspaceNav } from "../library/CatalogWorkspaceViews";
+import {
+  readPaneSplitPercents,
+  writePaneSplitPercents,
+} from "./paneSplitStorage";
 import { applyWideSourcesNavTransition, resetWideSourcesNav } from "./wideSourcesNav";
 import { WorkspaceStatusBar } from "../workspace/WorkspaceStatusBar";
 import { WorkspaceTopBar } from "../workspace/WorkspaceTopBar";
@@ -180,8 +184,8 @@ export function RootRegistryPanel({
   const [navigationOpen, setNavigationOpen] = useState(true);
   const recordedWideOpenRef = useRef<boolean | null>(null);
   const wasNarrowRef = useRef(false);
-  const [sourcesSplitPercent, setSourcesSplitPercent] = useState<number | undefined>(undefined);
-  const [mainSplitPercent, setMainSplitPercent] = useState<number | undefined>(undefined);
+  const [paneSplit, setPaneSplit] = useState(readPaneSplitPercents);
+  const paneSplitRef = useRef(paneSplit);
   const [centerView, setCenterView] = useState<AppShellCenterView>("list");
   const catalogEpochRef = useRef(0);
   const inspectorPaneRef = useRef<HTMLDivElement>(null);
@@ -192,6 +196,24 @@ export function RootRegistryPanel({
   const [expandedSliceHost, setExpandedSliceHost] = useState<HTMLDivElement | null>(null);
   const layoutMatchesNarrow = useMediaQuery("(max-width: 840px)");
   const narrowActive = layoutMatchesNarrow;
+
+  const persistSourcesSplitPercent = useCallback((percent: number) => {
+    const next = writePaneSplitPercents({
+      sources: percent,
+      main: paneSplitRef.current.main,
+    });
+    paneSplitRef.current = next;
+    setPaneSplit(next);
+  }, []);
+
+  const persistMainSplitPercent = useCallback((percent: number) => {
+    const next = writePaneSplitPercents({
+      sources: paneSplitRef.current.sources,
+      main: percent,
+    });
+    paneSplitRef.current = next;
+    setPaneSplit(next);
+  }, []);
 
   const registerSliceAnalysisCancel = useCallback((cancel: (() => void) | null) => {
     sliceCancelRef.current = cancel;
@@ -770,10 +792,10 @@ export function RootRegistryPanel({
       narrowLayout={narrowWorkspace}
       navigationOpen={navigationOpen}
       onNavigationOpenChange={setNavigationOpen}
-      sourcesSize={sourcesSplitPercent}
-      onSourcesSizeChange={setSourcesSplitPercent}
-      mainSize={mainSplitPercent}
-      onMainSizeChange={setMainSplitPercent}
+      sourcesSize={paneSplit.sources}
+      onSourcesSizeChange={persistSourcesSplitPercent}
+      mainSize={paneSplit.main}
+      onMainSizeChange={persistMainSplitPercent}
       centerView={centerView}
       onCenterViewChange={setCenterView}
       sources={
