@@ -333,6 +333,72 @@ describe("RootRegistryPanel workspace layout", () => {
     expect(screen.getByTestId("catalog-workspace-main-host")).not.toHaveAttribute("hidden");
   });
 
+  it("moves list selection with arrows and focuses Top Bar search with Ctrl+F", async () => {
+    const api: RootApi = {
+      registerRoot: vi.fn().mockResolvedValue({
+        rootId: "root-opaque",
+        displayName: "Fixture Root",
+        deviceFingerprint: "0123456789abcdef",
+        mode: "read_only",
+        observedRevision: 1,
+        expiresInSeconds: 3600,
+        capabilities: { read: true, write: false, stableDeviceIdentity: true },
+      }),
+      rootStatus: vi.fn(),
+      enableWrite: vi.fn(),
+      disableWrite: vi.fn(),
+      closeRoot: vi.fn(),
+      listLibrary: vi.fn().mockResolvedValue({
+        sets: [{
+          displayName: "LIVE_SET",
+          relativePath: "LIVE_SET",
+          hasAudioPool: true,
+          projects: [],
+        }],
+        standaloneProjects: [],
+        audioFiles: [
+          {
+            fileInstanceId: "fileinst:v1:kick",
+            assetId: "asset:v1:kick",
+            displayName: "KICK.wav",
+            relativePath: "LIVE_SET/AUDIO/KICK.wav",
+            byteSize: 2048,
+            storageScope: "set_audio_pool",
+          },
+          {
+            fileInstanceId: "fileinst:v1:snare",
+            assetId: "asset:v1:snare",
+            displayName: "SNARE.wav",
+            relativePath: "LIVE_SET/AUDIO/SNARE.wav",
+            byteSize: 4096,
+            storageScope: "set_audio_pool",
+          },
+        ],
+        usageEdges: [],
+      }),
+    };
+
+    renderWorkspace(api);
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    const kick = await screen.findByText("KICK.wav");
+    fireEvent.click(kick);
+    const rows = screen.getAllByRole("row").filter((row) =>
+      row.classList.contains("catalog-file-table__row"),
+    );
+    expect(rows[0]).toHaveAttribute("aria-selected", "true");
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    await waitFor(() => {
+      const nextRows = screen.getAllByRole("row").filter((row) =>
+        row.classList.contains("catalog-file-table__row"),
+      );
+      expect(nextRows[1]).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(document, { key: "f", ctrlKey: true });
+    expect(document.activeElement).toBe(screen.getByLabelText(tJa("library.searchAria")));
+  });
+
   it("restores pane split percentages after resize and remount", async () => {
     const view = renderWorkspace(catalogWorkspaceApi());
     fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));

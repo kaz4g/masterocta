@@ -95,7 +95,7 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
 | M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 Operations **Drawer** (not modal) | CI | — | v0.1 exit: remove always-visible prepared-operation panel. **Gate C rename/clone/copy still uses Change Drawer** (`RenameOperatorPanel` etc.). Drawer consolidates low-frequency ops; not identical to v0.1 “Operation Modal” acceptance |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
-| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); keyboard partial | CI | Narrow layout verified #140 | Pane split % persists across restart. Library keyboard (FU-3) remains |
+| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search) | CI | Narrow layout verified #140 | Pane split % persists across restart. Library keyboard minimum set is included. M6-08 stays **IN_PROGRESS** |
 
 **M6 exit gate (v0.1):** Partially met; **M6-06** and **M6-08** prevent calling M6 **COMPLETE**.
 
@@ -257,7 +257,7 @@ at **`04725cb3`**. Do not rewrite it.
 ## Unresolved ambiguities
 
 1. **M6-06:** Operations Drawer (#134) vs v0.1 Operation Modal vs Gate C Change Drawer — three UX surfaces coexist; document operator path in future UX ADR if consolidating.
-2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). Library keyboard (FU-3) remains, so M6-08 stays **IN_PROGRESS**.
+2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable shortcuts remain, so M6-08 stays **IN_PROGRESS**.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.
