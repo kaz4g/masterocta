@@ -2,28 +2,67 @@
 
 Operator capture root (local, not in git): `~/octa-captures/P_BANK_COPY_STATE`
 Generated: 2026-10-19 (harness `MO-PSE-BANK-COPY-STATE-DOC-DEVICE-EVIDENCE-1`)
-S3/S4/S5 redone after control-bank correction.
+Revalidated: 2026-10-19. Hash rows below are stored-directory diffs. They are not attributed effects where this judgment says **INCONCLUSIVE**.
 
-## Analyze summary
+## Judgment
 
-```json
-{
-  "device_capture": "PASS",
-  "device_evidence_promotion": "ALLOWED",
-  "result": "READY_FOR_REVIEW",
-  "capture_transport_confidence": "PROVEN_NON_MUTATING",
-  "pre_source_work_strd_divergence": "PASS",
-  "immediate_copy_timing_attribution": "PASS",
-  "dest_work_first_changed_at": "NATIVE_BANK_COPY",
-  "dest_strd_first_changed_at": "NATIVE_BANK_COPY",
-  "dest_work_provenance": "DERIVED_OTHER",
-  "dest_strd_provenance": "DERIVED_OTHER",
-  "copy_project_bank_effect": "CHANGED_TO_DESTINATION",
-  "copy_project_pattern_effect": "CHANGED",
-  "control_bank_immediate_change": "NO",
-  "copy_state_doc_rule": "BLOCKED"
-}
+```text
+DEVICE_CAPTURE = REJECTED
+DEVICE_EVIDENCE_PROMOTION = BLOCKED
+RESULT = STOP_WITH_FINDINGS
+PATTERN_UI_QUALIFICATION = FAIL
+PRE_SOURCE_WORK_STRD_DIVERGENCE = PASS
+SOURCE_ONLY_PRECONDITION = CONTAMINATED
+CAPTURE_TRANSPORT_CONFIDENCE = UNKNOWN
+IMMEDIATE_COPY_TIMING_ATTRIBUTION = INCONCLUSIVE
+POST_COPY_SESSION_CONTINUITY = NOT_PROVEN
+CONTROL_SWITCH_ATTRIBUTION = INCONCLUSIVE
+PROJECT_SAVE_ATTRIBUTION = INCONCLUSIVE
+PROJECT_RELOAD_ATTRIBUTION = INCONCLUSIVE
+DESTINATION_UI_SENTINEL = NOT_RECORDED
+COPY_EFFECT_ATTRIBUTION = INCONCLUSIVE
+COPY_STATE_DOC_RULE = BLOCKED
 ```
+
+`bank01.work` ≠ `bank01.strd` at S1 remains true. That single inequality does not make the source-only step a controlled baseline.
+
+Harness `analyze` on this operator root rejects S2–S5 because `current_pattern_ui` is `A01` while `[STATES]` selects Bank D or Bank B. Rewriting those labels to **D01** / **B01** does not clear transport, contamination, continuity, or sentinel.
+
+## Review gates
+
+### Bank-qualified pattern labels
+
+| Stage | BANK raw | PATTERN raw | Bank UI | Pattern UI from raw | Operator `current_pattern_ui` |
+| --- | --- | --- | --- | --- | --- |
+| S0 | 0 | 3 | A | A04 | A04 |
+| S1 | 0 | 3 | A | A04 | A04 |
+| S2 | 3 | 0 | D | D01 | A01 (rejected) |
+| S3 | 1 | 0 | B | B01 | A01 (rejected) |
+| S4 | 1 | 0 | B | B01 | A01 (rejected) |
+| S5 | 1 | 0 | B | B01 | A01 (rejected) |
+
+### Transport (all six stages)
+
+| Field | Recorded value |
+| --- | --- |
+| `capture_transport` | Operator copied P_BANK_COPY_STATE bytes from CF to macOS capture tree |
+| `capture_required_mode_change` | `no` |
+| `capture_may_flush_device_state` | `no` |
+| `capture_flush_exclusion` | absent |
+
+CF copy can enter an acquisition mode that flushes device state. `may_flush=no` with no exclusion reason is not proof that this transport is non-mutating. **CAPTURE_TRANSPORT_CONFIDENCE = UNKNOWN**. S1→S2 timing is **INCONCLUSIVE**.
+
+### Source-only precondition
+
+S0→S1 is a working-only edit on source Bank A. `bank01.work` changes and `bank01.strd` does not, and `bank04.work` also changes (`1e5031ca8b0a03105a4e065a7a9f653f9937641ea1e8914307f018e60d9d2a19` → `cba6f40e5922f3b35478db438ac2c570f37b45f68ea89c6c5e58b05dac01d4b8`) while `bank04.strd` stays on the first hash. The cause is unrecorded. **SOURCE_ONLY_PRECONDITION = CONTAMINATED**. Copy provenance is not established.
+
+### S2→S3 and later continuity
+
+S3 `operator_note` is `S3 redo: control Bank B`. S4 is `S4 recaptured after S3 redo`. S5 is `S5 recaptured after S3 redo`. No `capture_run_id` is recorded. The redo procedure allows replaying Copy A→D instead of continuing from this stored S2 tree. Hash equality on the left side of S2→S3 is the stored S2 directory, not a device-session boundary. **POST_COPY_SESSION_CONTINUITY = NOT_PROVEN**. CONTROL_SWITCH, PROJECT_SAVE, and PROJECT_RELOAD are **INCONCLUSIVE**.
+
+### Destination sentinel
+
+No stage records `destination_ui_sentinel`. Whether a source sentinel was visible on Bank D at S2, or still visible after reload at S5, is **NOT_RECORDED**.
 
 ## project.work [STATES] by stage
 
@@ -31,14 +70,18 @@ S3/S4/S5 redone after control-bank correction.
 | --- | --- | --- | --- | --- | --- |
 | S0 | s0_baseline_saved | 0 | 3 | A | A04 |
 | S1 | s1_source_working_diverged_pre_copy | 0 | 3 | A | A04 |
-| S2 | s2_immediately_after_bank_copy | 3 | 0 | D | A01 |
-| S3 | s3_after_control_switch | 1 | 0 | B | A01 |
-| S4 | s4_after_project_save | 1 | 0 | B | A01 |
-| S5 | s5_after_project_reload | 1 | 0 | B | A01 |
+| S2 | s2_immediately_after_bank_copy | 3 | 0 | D | D01 |
+| S3 | s3_after_control_switch | 1 | 0 | B | B01 |
+| S4 | s4_after_project_save | 1 | 0 | B | B01 |
+| S5 | s5_after_project_reload | 1 | 0 | B | B01 |
+
+Pattern UI is the bank-qualified label implied by `[STATES]`. Operator metadata still says `A01` for S2–S5 and fails the corrected matcher.
 
 ## Transition: SOURCE_WORKING_ONLY_EDIT
 
 `s0_baseline_saved` → `s1_source_working_diverged_pre_copy`
+
+**CONTAMINATED.** `bank04.work` changes on a step that may change only `bank01.work`. Cause unrecorded. This pair is not a controlled pre-copy baseline.
 
 Changed files: **2** / 10
 
@@ -59,6 +102,8 @@ Changed files: **2** / 10
 
 `s1_source_working_diverged_pre_copy` → `s2_immediately_after_bank_copy`
 
+Directory diff only. Timing attribution is **INCONCLUSIVE** (transport exclusion absent; source-only step contaminated).
+
 Changed files: **6** / 10
 
 | File | Changed | Size before | Size after | SHA256 before | SHA256 after |
@@ -77,6 +122,8 @@ Changed files: **6** / 10
 ## Transition: CONTROL_SWITCH
 
 `s2_immediately_after_bank_copy` → `s3_after_control_switch`
+
+**INCONCLUSIVE.** S3–S5 were recaptured. Nothing records that the recapture continued from this S2 tree. These diffs stay unattributed.
 
 Changed files: **3** / 10
 
@@ -97,6 +144,8 @@ Changed files: **3** / 10
 
 `s3_after_control_switch` → `s4_after_project_save`
 
+**INCONCLUSIVE.** S4 was recaptured after the S3 redo, with no run id tying it to the stored S2.
+
 Changed files: **1** / 10
 
 | File | Changed | Size before | Size after | SHA256 before | SHA256 after |
@@ -116,6 +165,8 @@ Changed files: **1** / 10
 
 `s4_after_project_save` → `s5_after_project_reload`
 
+**INCONCLUSIVE.** S5 was recaptured after the S3 redo. A zero-diff between the stored directories does not prove reload persistence for the S2 session.
+
 Changed files: **0** / 10
 
 | File | Changed | Size before | Size after | SHA256 before | SHA256 after |
@@ -131,9 +182,9 @@ Changed files: **0** / 10
 | bank04.work | no | 636113 | 636113 | 0cbf7186227991fc52c4eb8a0907f9c69c506483dee16625e1d96f1bd1781fee | 0cbf7186227991fc52c4eb8a0907f9c69c506483dee16625e1d96f1bd1781fee |
 | bank04.strd | no | 636113 | 636113 | 0cbf7186227991fc52c4eb8a0907f9c69c506483dee16625e1d96f1bd1781fee | 0cbf7186227991fc52c4eb8a0907f9c69c506483dee16625e1d96f1bd1781fee |
 
-## First change attribution (destination bank04 vs S1 baseline)
+## First hash difference vs stored S1 (not an attributed persistence transition)
 
-- bank04.work: **NATIVE_BANK_COPY**
-- bank04.strd: **NATIVE_BANK_COPY**
+- bank04.work first differs from stored S1 at the stored S2 directory
+- bank04.strd first differs from stored S1 at the stored S2 directory
 
-Machine-readable: `evidence-transition-matrix.json`
+**COPY_EFFECT_ATTRIBUTION = INCONCLUSIVE.** The source-only step already changed `bank04.work`, transport flush exclusion is absent, and no destination UI sentinel is recorded.
