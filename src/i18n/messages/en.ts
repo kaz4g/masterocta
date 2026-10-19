@@ -133,6 +133,7 @@ export const enMessages = {
   'library.searchLabel': 'Search this location',
   'library.searchAria': 'Search samples in this location',
   'library.searchPlaceholder': 'Name or folder…',
+  'library.searchShortcutHint': 'Focus search with Ctrl+F or ⌘F',
   'library.sortLabel': 'Sort',
   'library.sortAria': 'Sort samples',
   'library.sortName': 'Name',

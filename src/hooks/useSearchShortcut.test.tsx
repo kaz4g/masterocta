@@ -89,6 +89,29 @@ describe('useSearchShortcut', () => {
     expect(onClear).not.toHaveBeenCalled()
   })
 
+  it('does not focus when isBlocked returns true', () => {
+    function BlockedHarness() {
+      const ref = useRef<HTMLInputElement>(null)
+      useSearchShortcut(ref, onClear, { isBlocked: () => true })
+      return <input ref={ref} aria-label="Search" />
+    }
+    render(<BlockedHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(true)
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Search'))
+  })
+
+  it('does not focus a disabled search input', () => {
+    function DisabledHarness() {
+      const ref = useRef<HTMLInputElement>(null)
+      useSearchShortcut(ref, onClear)
+      return <input ref={ref} aria-label="Search" disabled />
+    }
+    render(<DisabledHarness />)
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Search'))
+  })
+
   it('removes its listener on unmount', () => {
     const { unmount } = render(<Harness onClear={onClear} />)
     unmount()

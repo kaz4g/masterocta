@@ -1166,4 +1166,83 @@ describe("WaveformPreview", () => {
     await Promise.resolve();
     expect(screen.queryByRole("img", { name: tJa("waveform.plotAria") })).not.toBeInTheDocument();
   });
+
+  it("loads and plays head preview when Space is pressed", async () => {
+    const client = api();
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.keyDown(window, { key: " " });
+    await waitFor(() => expect(client.createPreviewToken).toHaveBeenCalledWith(
+      "root-opaque",
+      "asset:v1:opaque",
+    ));
+    await waitFor(() => expect(playSpy).toHaveBeenCalled());
+  });
+
+  it("stops head preview on a second Space", async () => {
+    const client = api();
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.click(screen.getByRole("button", { name: tJa("waveform.loadPreview") }));
+    const head = await screen.findByLabelText(
+      tJa("waveform.previewAria", { displayName: "kick.wav" }),
+    ) as HTMLAudioElement;
+    const pauseSpy = vi.spyOn(head, "pause");
+    fireEvent.play(head);
+    fireEvent.keyDown(window, { key: " " });
+    expect(pauseSpy).toHaveBeenCalled();
+  });
+
+  it("does not play from Space while typing, while a dialog is open, or when the Preview tab is hidden", async () => {
+    const client = api();
+    const view = render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+
+    const start = screen.getByLabelText(tJa("waveform.startFrame"));
+    start.focus();
+    fireEvent.keyDown(start, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    fireEvent.keyDown(window, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+    dialog.remove();
+
+    view.rerender(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+        layoutVisible={false}
+      />,
+    );
+    fireEvent.keyDown(window, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+  });
 });
