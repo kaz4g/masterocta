@@ -317,6 +317,58 @@ describe("RenameSampleModal", () => {
     await waitFor(() => expect(onBusyChange).toHaveBeenCalledWith(false));
   });
 
+  it("does not cancel an in-flight prepare when the embedded drawer hides", async () => {
+    const api = fakeApi();
+    let releasePrepare: (() => void) | undefined;
+    vi.mocked(api.prepare).mockImplementation(
+      () => new Promise((resolve) => {
+        releasePrepare = () => resolve({
+          schema: "rename-prepare-status:v1",
+          planId,
+          operationId,
+          snapshotId,
+          state: "prepared",
+          stagedFileCount: 2,
+          totalStagedBytes: 4096,
+          projectRewriteCount: 1,
+        });
+      }),
+    );
+    const props = {
+      presentation: "embedded" as const,
+      session: session(true),
+      selectedAsset,
+      changeRecovery: recoveryClear,
+      renameRecovery: renameRecoveryClear,
+      api,
+      onClose: vi.fn(),
+      refreshSession: vi.fn().mockResolvedValue(session(true)),
+      onPrepared: vi.fn(),
+    };
+    const { rerender } = render(<RenameSampleModal {...props} visible />);
+
+    fireEvent.change(screen.getByLabelText("New file name"), {
+      target: { value: "KICK_DEEP.wav" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review Rename" }));
+    await screen.findByRole("button", { name: "Approve & Prepare" });
+    fireEvent.click(screen.getByRole("button", { name: "Approve & Prepare" }));
+    await waitFor(() => expect(api.prepare).toHaveBeenCalledOnce());
+
+    rerender(<RenameSampleModal {...props} visible={false} />);
+    expect(api.prepare).toHaveBeenCalledOnce();
+    expect(api.apply).not.toHaveBeenCalled();
+    expect(props.onClose).not.toHaveBeenCalled();
+
+    releasePrepare?.();
+    await waitFor(() => expect(props.onPrepared).toHaveBeenCalledOnce());
+    rerender(<RenameSampleModal {...props} visible />);
+    expect(await screen.findByText("Rename prepared")).toBeInTheDocument();
+    expect(screen.getByText(/No Octatrack media changes have been applied/i)).toBeInTheDocument();
+    expect(api.prepare).toHaveBeenCalledOnce();
+    expect(api.apply).not.toHaveBeenCalled();
+  });
+
   it("does not call backup when authorize fails", async () => {
     const api = fakeApi();
     vi.mocked(api.authorize).mockRejectedValue({ code: "ROOT_CHANGED", message: "changed" });

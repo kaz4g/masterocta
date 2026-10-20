@@ -70,6 +70,8 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 | M6-07 | AudioAsset domain baseline |
 | M6-08 | keyboard / resize / persisted UI state |
 
+M6-06 **historical name** is Operation Modal. Adopted implementation (2026-10-19, option C) is the **Operations Drawer** (`OperationsDrawerHost`, `role=dialog`). Configurable Copy/Rename shortcuts belong to **M6-08**. Acceptance: [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
+
 **Exit gate (v0.1):** Source management in top context / dialog; browser dominates layout; waveform usable size in Inspector; prepared-operation always-visible panel removed; write safety preserved; AudioAsset represents existing Octatrack samples.
 
 **Current status:** [DEVELOPMENT_STATUS § M6](./DEVELOPMENT_STATUS.md#m6--library-workspace--audioasset-foundation).
@@ -77,8 +79,9 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 **Canonical supporting docs:**
 
 - [`POST_M5_FEATURE_RESTART_AUDIT.md`](./POST_M5_FEATURE_RESTART_AUDIT.md) (historical investigation; #103–#105 reopen ban)
+- [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) (M6-06 option C; Native smoke still **NOT_RUN**)
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) (M7 WF2; depends on M6 layout)
-- Testing: `docs/testing/MO_UI_WORKSPACE_*`, `MO_UI_LIBRARY_INSPECTOR_*`, `MO_UI_OPERATIONS_DRAWER_*`, `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`
+- Testing: `docs/testing/MO_UI_WORKSPACE_*`, `MO_UI_LIBRARY_INSPECTOR_*`, `MO_UI_OPERATIONS_DRAWER_*`, `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`, `MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`
 
 ---
 
@@ -212,6 +215,7 @@ Sample/Slice worktree. Scene has no current read model.
 ## Related indexes
 
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M6-06 Drawer acceptance: [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - Project structure proposal: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)
 - Sample Slot ↔ AudioAsset boundary (#187): [`SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md`](./SAMPLE_SLOT_AUDIOASSET_BOUNDARY.md)
