@@ -137,6 +137,7 @@ export const jaMessages: Record<MessageKey, string> = {
   'library.searchLabel': 'この場所を検索',
   'library.searchAria': 'この場所のサンプルを検索',
   'library.searchPlaceholder': '名前またはフォルダ…',
+  'library.searchShortcutHint': 'Ctrl+F または ⌘F で検索にフォーカス',
   'library.sortLabel': '並び替え',
   'library.sortAria': 'サンプルの並び替え',
   'library.sortName': '名前',
