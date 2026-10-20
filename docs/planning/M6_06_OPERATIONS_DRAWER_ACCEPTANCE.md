@@ -62,10 +62,10 @@ A row may be **COMPLETE** only when all of the following hold. This PR locks the
 | B | Focus trap; Tab does not enter hidden kind sections | `Drawer.test.tsx` `focus trap ignores hidden inactive sections`; `focusable.test.ts` | — |
 | C | Esc (and ×) close the Drawer | `Drawer.test.tsx`; Library E2E | Operator Esc |
 | D | Copy / rename expose plan review and an explicit approval gate before prepare / apply | `RenameSampleModal.test.tsx`; `AdditiveCopyChangeDrawer.test.tsx`; `e2e/rename-prepare.spec.ts` | Native smoke §5 |
-| E | Close is display-only: no apply / cancel / recover IPC. In-flight **prepare is not cancelled**. Result remains observable after close (reopen same session, or status-bar Operations) | `RenameSampleModal.test.tsx`; `RootRegistryPanel.test.tsx`; `e2e/operations-drawer-prepare-close.spec.ts` | Native protocol step “close during prepare” optional |
+| E | Close is display-only: no apply / cancel / recover IPC. In-flight **prepare is not cancelled**. After the result is PREPARED or recovery-required, reopen the same session or use status-bar Operations. Status bar does not reopen while the prepare request is still pending | `RenameSampleModal.test.tsx`; `RootRegistryPanel.test.tsx`; `e2e/operations-drawer-prepare-close.spec.ts` | Native N7 |
 | F | Always-visible prepared-operation panel remains absent | Architecture of `RootRegistryPanel` (no `changeDrawer`) | Native layout |
 | G | No new Gate C IPC; no Bank Editor line | Diff review | — |
-| H | Synthetic-fixture Native **write** through the Drawer (clone create **or** rename prepare), never original media | Fixture generator + prepare script (CI) | [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) |
+| H | Synthetic-fixture Native **write** through the Drawer requires **both** managed clone create and rename prepare, never original media. Either stage alone is insufficient | Fixture generator + prepare script (CI) | [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) N3 and N6 |
 
 Configurable Copy/Rename shortcuts are **not** in this table.
 
@@ -76,8 +76,8 @@ From [`../testing/MO_UI_OPERATIONS_DRAWER_1_PR.md`](../testing/MO_UI_OPERATIONS_
 - Close hides the panel; children stay mounted.
 - Close does **not** call apply / cancel / recover.
 - There is **no** `v2_rename_cancel` (or equivalent) IPC.
-- Rename prepare in flight: Drawer may close; `renamePrepareBusy` still blocks root close, pin swap, and Inspector Rename re-entry. Status bar **Open operations** may reopen the same Drawer.
-- After prepare completes, embedded rename state still shows PREPARED when the Drawer is reopened in the same session.
+- Rename prepare in flight: Drawer may close; `renamePrepareBusy` still blocks root close, pin swap, and Inspector Rename re-entry. Status bar **Open operations** does not reopen that Drawer while the request is pending: `resolveRenameDrawerPin({ operatorOnly: true })` returns `{ open: false }` until a prepared or recovery-required operation exists.
+- After prepare completes, status bar **Open operations** reopens the operator view, and embedded rename state still shows PREPARED.
 
 If product code were found to cancel prepare on close, stop and report; do not “fix” that by adding cancel IPC in this WP.
 

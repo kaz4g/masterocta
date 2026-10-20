@@ -8,8 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve, sep } from "node:path";
 
 const FIXTURE_ROOT_BASENAME = "octatrack-set-root";
 
@@ -40,6 +40,97 @@ export function isPathInside(childCanonical, parentCanonical) {
   if (childCanonical === parentCanonical) return true;
   const prefix = parentCanonical.endsWith(sep) ? parentCanonical : `${parentCanonical}${sep}`;
   return childCanonical.startsWith(prefix);
+}
+
+/**
+ * Operator homes that an isolated acceptance directory must not overlap.
+ * @returns {string[]} canonical home directories
+ */
+export function operatorHomeRoots() {
+  const homes = new Set();
+  for (const candidate of [process.env.HOME, process.env.REAL_HOME, homedir()]) {
+    if (typeof candidate !== "string" || candidate.trim() === "") continue;
+    try {
+      homes.add(realpathSync(candidate));
+    } catch {
+      /* ignore missing */
+    }
+  }
+  return [...homes];
+}
+
+/**
+ * Accept only a not-yet-created directory under a trusted temp root.
+ * Rejects `$HOME`, existing directories, symlinks, and non-temporary paths
+ * before any acceptance script writes logs or manifests there.
+ * @param {string} requestedPath
+ * @returns {string} canonical path to create
+ */
+export function assertFreshTempDirectory(requestedPath) {
+  if (typeof requestedPath !== "string" || requestedPath.trim() === "" || requestedPath !== requestedPath.trim()) {
+    throw new Error("isolated home path is required");
+  }
+  if (requestedPath.includes("\0")) {
+    throw new Error("isolated home path is invalid");
+  }
+  const normalized = resolve(requestedPath);
+  const parent = dirname(normalized);
+  if (parent === normalized) {
+    throw new Error("isolated home must not be a filesystem root");
+  }
+  if (!existsSync(parent)) {
+    throw new Error(`isolated home parent must exist (${parent})`);
+  }
+  assertNotSymlink(parent, "isolated home parent");
+  let parentCanonical;
+  try {
+    parentCanonical = realpathSync(parent);
+  } catch {
+    throw new Error(`isolated home parent could not be canonicalized (${parent})`);
+  }
+  assertNotSymlink(parentCanonical, "canonical isolated home parent");
+  const leaf = basename(normalized);
+  if (leaf === "" || leaf === "." || leaf === "..") {
+    throw new Error("isolated home leaf is invalid");
+  }
+  const candidate = join(parentCanonical, leaf);
+  let existing = false;
+  try {
+    lstatSync(candidate);
+    existing = true;
+  } catch (error) {
+    if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  if (existing) {
+    throw new Error(`isolated home must not already exist (${candidate})`);
+  }
+  const trusted = trustedTempRoots();
+  if (!trusted.some((root) => isPathInside(candidate, root))) {
+    throw new Error(`isolated home must live under a trusted temp directory (got ${candidate})`);
+  }
+  for (const home of operatorHomeRoots()) {
+    if (candidate === home || isPathInside(candidate, home)) {
+      throw new Error("isolated home must not be inside the operator home directory");
+    }
+  }
+  return candidate;
+}
+
+/**
+ * @param {string} requestedPath
+ * @returns {string} canonical created directory
+ */
+export function createFreshTempDirectory(requestedPath) {
+  const candidate = assertFreshTempDirectory(requestedPath);
+  mkdirSync(candidate);
+  assertNotSymlink(candidate, "isolated home");
+  const created = realpathSync(candidate);
+  if (created !== candidate) {
+    throw new Error(`isolated home canonical path changed after create (${created})`);
+  }
+  return created;
 }
 
 /** @param {string} path */

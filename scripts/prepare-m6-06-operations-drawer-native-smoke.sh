@@ -13,9 +13,21 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
 SHORT="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-ISOLATED_HOME="${MASTEROCTA_NATIVE_ACCEPTANCE_HOME:-/tmp/masterocta-m6-06-native-${SHORT}-${STAMP}}"
-
-mkdir -p "${ISOLATED_HOME}"
+export REQUESTED_HOME="${MASTEROCTA_NATIVE_ACCEPTANCE_HOME:-/tmp/masterocta-m6-06-native-${SHORT}-${STAMP}}"
+# Create the directory only after it canonicalizes to a new temp path.
+# An inherited $HOME, symlink, or existing directory is rejected before any log write.
+ISOLATED_HOME="$(
+  cd "${ROOT_DIR}" && node --input-type=module -e '
+    import { createFreshTempDirectory } from "./scripts/ui-workspace-fixture-safe.mjs";
+    const requested = process.env.REQUESTED_HOME;
+    try {
+      process.stdout.write(createFreshTempDirectory(requested ?? ""));
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(2);
+    }
+  '
+)"
 
 echo "work_id=MO-M6-06-DRAWER-SPEC-AND-NATIVE-1"
 echo "commit=${COMMIT}"
@@ -43,6 +55,11 @@ if [[ "${PREP_STATUS}" -ne 0 ]]; then
 fi
 
 FIXTURE_ROOT="$(awk -F= '/^fixture_root=/{print substr($0, index($0,$2)); found=1} END{if(!found) exit 1}' "${PREP_LOG}")"
+SOURCE_INVENTORY="${ISOLATED_HOME}/source-inventory.json"
+if ! node "${ROOT_DIR}/scripts/verify-ui-workspace-source-inventory.mjs" --write "${SOURCE_INVENTORY}" "${FIXTURE_ROOT}"; then
+  echo "source_inventory=FAIL" >&2
+  exit 1
+fi
 
 cat <<EOF
 
@@ -56,6 +73,9 @@ Never:                original Octatrack media, operator music folders, \$HOME p
 Launch:
   REAL_HOME="\${REAL_HOME:-\$HOME}" \\
     ${ROOT_DIR}/scripts/launch-native-acceptance-tauri.sh $(printf '%q' "${ISOLATED_HOME}") $(printf '%q' "${ROOT_DIR}")
+
+Source inventory (before the session; compare again after N6):
+  node ${ROOT_DIR}/scripts/verify-ui-workspace-source-inventory.mjs --expect $(printf '%q' "${SOURCE_INVENTORY}") $(printf '%q' "${FIXTURE_ROOT}")
 
 Protocol: docs/testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md
 Acceptance: docs/planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md

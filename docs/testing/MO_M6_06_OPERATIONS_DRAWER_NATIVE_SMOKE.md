@@ -16,7 +16,7 @@ Mock IPC / Vitest / Playwright success is **not** Native acceptance.
 | Media | Synthetic Set only. Never original Octatrack cards, never operator music folders, never `$HOME` production catalog |
 | Fixture root | Managed temp from `generate-ui-workspace-native-fixture.mjs` (no CLI output path) |
 | App `HOME` | Isolated directory from the prepare script |
-| WAV bytes | Not committed. Verify RANGE SHA with the existing verifier after the session |
+| WAV bytes | Not committed. Before launch, record the source fixture inventory. After the session it must match, including `ops_rename_src.wav`, `project.work`, and `RANGE.wav` |
 | Writes | Disposable managed clone under app data / clone runtime. Do **not** Apply a rename |
 
 ---
@@ -69,12 +69,21 @@ Clone-first, then one Drawer write (rename **prepare**, not Apply).
 | N4 | Enable Edit on the clone | context edit-enabled |
 | N5 | Select `ops_rename_src.wav` → Inspector **リネーム** | Rename Drawer; plan review form |
 | N6 | New name (example `ops_rename_dst.wav`) → Review Rename → Approve & Prepare | PREPARED; copy that **no Octatrack media Apply** occurred |
-| N7 | Esc or × while a later session may keep a prepare in flight | Close does not Apply; reopen via status **操作を開く** still shows PREPARED |
-| N8 | RANGE.wav SHA unchanged | `node scripts/verify-ui-workspace-range-sha.mjs "<fixture_root>/SET/AUDIO/RANGE.wav"` |
+| N7 | Esc or × | Close does not Apply. While rename prepare is still pending, status **操作を開く** does not reopen the Drawer. After the result is PREPARED, **操作を開く** reopens it and still shows PREPARED |
+| N8 | Source fixture unchanged | Compare the prepare-script inventory, then re-check RANGE.wav. Both are required |
 
 Do not run Apply / Continue-to-media. Do not point the picker at a real card.
 
-**PASS criterion (one write):** N3 clone create **and** N6 rename prepare both succeed on the synthetic clone. Either step alone is insufficient for this smoke (clone is the write of a disposable tree; prepare is the M6-06 plan-review gate).
+Before launch the prepare script writes `<isolated_home>/source-inventory.json`: every relative path under `fixture_root`, with kind, byte size, and SHA-256 for regular files. Symlinks are recorded and not followed. After the session:
+
+```bash
+node scripts/verify-ui-workspace-source-inventory.mjs --expect "<isolated_home>/source-inventory.json" "<fixture_root>"
+node scripts/verify-ui-workspace-range-sha.mjs "<fixture_root>/SET/AUDIO/RANGE.wav"
+```
+
+A clone that moves, deletes, or modifies `ops_rename_src.wav`, `project.work`, or any other source file fails N8 even when RANGE.wav alone still matches.
+
+**PASS criterion:** N0–N8 are all PASS, and the record template below is PASS on every safety field: `lsof catalog` PASS, N3 PASS, N6 PASS, `Apply invoked` **NO**, source inventory PASS, RANGE SHA PASS. N3 or N6 alone is insufficient. Any FAIL, or Apply invoked, makes the overall result **STOP**, not PASS.
 
 ---
 
@@ -88,10 +97,12 @@ Isolated HOME:         (sanitized /tmp/... only)
 Fixture root:          (sanitized)
 Catalog path observed:
 lsof catalog:          PASS | FAIL | NOT_RUN
+N0–N8:                 PASS | FAIL | NOT_RUN
 N3 managed clone:      PASS | FAIL | NOT_RUN
 N6 rename prepare:     PASS | FAIL | NOT_RUN
 Apply invoked:         NO (required)
+Source inventory:      PASS | FAIL | NOT_RUN
 RANGE SHA after:       PASS | FAIL | NOT_RUN
 ```
 
-Until a macOS operator fills this block on a named SHA, keep **`NOT_RUN`**.
+`Native run: PASS` requires every N0–N8 step PASS and every safety field above PASS, with `Apply invoked: NO`. Any other combination is **STOP** (or remains **NOT_RUN** when the macOS session was not executed). Until a macOS operator fills this block on a named SHA, keep **`NOT_RUN`**.

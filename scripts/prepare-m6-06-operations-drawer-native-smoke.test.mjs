@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,8 +11,9 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(REPO_ROOT, "scripts/prepare-m6-06-operations-drawer-native-smoke.sh");
 const REAL_NODE = process.execPath;
 
-function spawnPrepare({ extraArgs = [], env = {}, timeout = 30000 } = {}) {
-  const isolatedHome = mkdtempSync(join(tmpdir(), "mo-m6-06-home-"));
+function spawnPrepare({ extraArgs = [], env = {}, timeout = 30000, home } = {}) {
+  const parent = mkdtempSync(join(tmpdir(), "mo-m6-06-home-"));
+  const isolatedHome = home ?? join(parent, "isolated");
   const result = spawnSync("/bin/bash", [SCRIPT, ...extraArgs], {
     cwd: REPO_ROOT,
     encoding: "utf8",
@@ -23,7 +24,7 @@ function spawnPrepare({ extraArgs = [], env = {}, timeout = 30000 } = {}) {
       ...env,
     },
   });
-  return { ...result, isolatedHome };
+  return { ...result, parent, isolatedHome };
 }
 
 function runWithStubbedGenerator(generatorStdout) {
@@ -55,19 +56,19 @@ exec "$REAL_NODE" "$@"
 }
 
 test("refuses CLI fixture or HOME path arguments", () => {
-  const { status, stderr, isolatedHome } = spawnPrepare({
+  const { status, stderr, parent } = spawnPrepare({
     extraArgs: ["/tmp/not-a-safe-output"],
   });
   try {
     assert.equal(status, 2);
     assert.match(stderr, /does not take a fixture or HOME path/);
   } finally {
-    rmSync(isolatedHome, { recursive: true, force: true });
+    rmSync(parent, { recursive: true, force: true });
   }
 });
 
 test("prints M6-06 work id, Drawer protocol, and native NOT_RUN", () => {
-  const { status, stdout, isolatedHome } = spawnPrepare();
+  const { status, stdout, parent, isolatedHome } = spawnPrepare();
   let fixtureRoot = "";
   try {
     assert.equal(status, 0);
@@ -78,21 +79,53 @@ test("prints M6-06 work id, Drawer protocol, and native NOT_RUN", () => {
     assert.match(stdout, /Do not Apply/);
     assert.match(stdout, /original Octatrack media/);
     assert.match(stdout, /launch-native-acceptance-tauri\.sh/);
+    assert.match(stdout, /source_inventory=RECORDED/);
+    assert.match(stdout, /--expect /);
     const match = stdout.match(/^fixture_root=(.*)$/m);
     assert.ok(match);
     fixtureRoot = match[1];
+    const inventory = JSON.parse(readFileSync(join(isolatedHome, "source-inventory.json"), "utf8"));
+    const paths = inventory.entries.map((entry) => entry.relativePath);
+    assert.ok(paths.includes("SET/AUDIO/ops_rename_src.wav"));
+    assert.ok(paths.includes("SET/ACCEPT_PROJ/project.work"));
+    assert.ok(paths.includes("SET/AUDIO/RANGE.wav"));
   } finally {
     if (fixtureRoot) cleanupOwnedFixtureRoot(fixtureRoot);
-    rmSync(isolatedHome, { recursive: true, force: true });
+    rmSync(parent, { recursive: true, force: true });
   }
 });
 
 test("fails closed when the shared UI native prepare fails", () => {
-  const { status, stderr, isolatedHome } = runWithStubbedGenerator("");
+  const { status, stderr, parent } = runWithStubbedGenerator("");
   try {
     assert.notEqual(status, 0);
     assert.match(stderr, /shared UI workspace native prepare failed|empty manifest/);
   } finally {
-    rmSync(isolatedHome, { recursive: true, force: true });
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("rejects an existing directory, a symlink, the operator home, and a non-temp path", () => {
+  const scratch = mkdtempSync(join(tmpdir(), "mo-m6-06-reject-"));
+  const existing = mkdtempSync(join(scratch, "existing-"));
+  const target = mkdtempSync(join(scratch, "target-"));
+  writeFileSync(join(target, "canary.txt"), "keep");
+  const link = join(scratch, "link");
+  symlinkSync(target, link);
+  try {
+    for (const home of [existing, link, process.env.HOME, REPO_ROOT]) {
+      const { status, stderr, parent } = spawnPrepare({ home });
+      try {
+        assert.notEqual(status, 0, String(home));
+        assert.match(stderr, /isolated home/);
+        assert.equal(readFileSync(join(target, "canary.txt"), "utf8"), "keep");
+        assert.equal(existsSync(join(target, "shared-prepare.log")), false);
+        assert.equal(existsSync(join(target, "fixture-manifest.json")), false);
+      } finally {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
 });
