@@ -23,6 +23,10 @@ import {
   formatFileDurationLabel,
   formatFrameSpanDurationLabel,
 } from "../../i18n/formatSpanDuration";
+import {
+  isActivationKeyboardTarget,
+  shouldIgnoreLibraryShortcut,
+} from "../../hooks/keyboardShortcutGuards";
 import { useTranslate, type TranslateFn } from "../../i18n";
 import {
   defaultLibraryPreviewEndFrame,
@@ -164,6 +168,8 @@ export function WaveformPreview({
   const [rangePlaying, setRangePlaying] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
   const previewRequest = useRef(0);
+  const headPlayAttempt = useRef(0);
+  const autoplayHeadAfterLoadRef = useRef(false);
   const rangeRequest = useRef(0);
   const waveformRequest = useRef(0);
   const plotContainerRef = useRef<HTMLDivElement | null>(null);
@@ -238,6 +244,7 @@ export function WaveformPreview({
   }, [detachRangeListeners]);
 
   const pauseHeadPreview = useCallback(() => {
+    headPlayAttempt.current += 1;
     headAudioRef.current?.pause();
     setHeadPlaying(false);
   }, []);
@@ -535,6 +542,9 @@ export function WaveformPreview({
   ]);
 
   useEffect(() => {
+    previewRequest.current += 1;
+    autoplayHeadAfterLoadRef.current = false;
+    setPreviewing(false);
     stopAllPlayback();
   }, [stopPlaybackToken, stopAllPlayback]);
 
@@ -743,11 +753,67 @@ export function WaveformPreview({
       setPreviewUrl(url);
       setTruncated(ticket.truncated);
     } catch (error) {
+      autoplayHeadAfterLoadRef.current = false;
       if (previewRequest.current === request) setPreviewError(errorMessage(error));
     } finally {
       if (previewRequest.current === request) setPreviewing(false);
     }
   }
+
+  function startHeadPlayback(element: HTMLMediaElement) {
+    const attempt = headPlayAttempt.current + 1;
+    headPlayAttempt.current = attempt;
+    void element.play().then(() => {
+      if (headPlayAttempt.current !== attempt) return;
+      setHeadPlaying(true);
+    }).catch((error: unknown) => {
+      if (headPlayAttempt.current !== attempt) return;
+      setHeadPlaying(false);
+      setPreviewError(errorMessage(error));
+    });
+  }
+
+  function toggleLibraryPreviewPlayback() {
+    if (headPlaying || rangePlaying || rangeLoading || previewing) {
+      previewRequest.current += 1;
+      autoplayHeadAfterLoadRef.current = false;
+      setPreviewing(false);
+      stopAllPlayback();
+      return;
+    }
+    if (previewUrl !== null && headAudioRef.current !== null) {
+      startHeadPlayback(headAudioRef.current);
+      return;
+    }
+    autoplayHeadAfterLoadRef.current = true;
+    void loadPreview();
+  }
+
+  const toggleLibraryPreviewPlaybackRef = useRef(toggleLibraryPreviewPlayback);
+  toggleLibraryPreviewPlaybackRef.current = toggleLibraryPreviewPlayback;
+
+  useEffect(() => {
+    if (!autoplayHeadAfterLoadRef.current || previewUrl === null) return;
+    const element = headAudioRef.current;
+    if (element === null) return;
+    autoplayHeadAfterLoadRef.current = false;
+    startHeadPlayback(element);
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (!layoutVisible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== " " && event.key !== "Spacebar") return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (shouldIgnoreLibraryShortcut(event)) return;
+      if (isActivationKeyboardTarget(event.target)) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      toggleLibraryPreviewPlaybackRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [layoutVisible]);
 
   async function playSelectedRange(explicit?: LibraryCommittedGeometryRange) {
     if (fileMetadata === null) return;

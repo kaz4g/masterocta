@@ -7,7 +7,9 @@
 - Audit baseline: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`**（merge PR #236）
 - Native workspace harness（歴史記録）: [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](../testing/MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) @ `0f39f5056c25e996f1e3ff69b7a51ca20b0c45bb`（PR #142）
 
-本文書は **現行 `main` に対する M6 完了判定の正本**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。
+本文書は baseline **`6f68ff1` に対する M6 完了判定の記録**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。
+
+その後の `main` は判定表を書き換えない。#239 で pane split の localStorage 復元、#240 で Library キーボード最小セット（Up/Down、Space、Ctrl/Cmd+F）、#241 で Drawer 受入と close-without-cancel が入った。現行の M6 行は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) を見る。M6 は引き続き **IN_PROGRESS**（Native write smoke と configurable Copy/Rename）。
 
 **M6-06 決定: DECIDED (C)** — 2026-10-19、ユーザー。Operations Drawer が唯一の操作 overlay。中央 Modal は作らない。operator パネルは Drawer 内に残す。configurable shortcut は M6-06 から外し **M6-08** へ移す。`MO-M6-06-OPERATION-MODAL-1` は **不採用**。
 

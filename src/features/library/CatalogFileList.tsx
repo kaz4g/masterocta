@@ -1,5 +1,7 @@
+import { useRef, type KeyboardEvent } from "react";
 import type { LibraryAudioFile } from "../../api";
 import { Button } from "../../design-system";
+import { shouldIgnoreLibraryShortcut } from "../../hooks/keyboardShortcutGuards";
 import { useTranslate } from "../../i18n";
 import {
   fileExtensionFromName,
@@ -43,6 +45,7 @@ export function CatalogFileList({
   catalogError = null,
 }: CatalogFileListProps) {
   const t = useTranslate();
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const emptyFilesMessage = locationFiles.length === 0
     ? t("library.noFilesHere")
@@ -53,6 +56,38 @@ export function CatalogFileList({
   const selectedOffPage = selectedFileInstanceId !== null
     && !fileQuery.visible.some((file) => file.fileInstanceId === selectedFileInstanceId)
     && locationFiles.some((file) => file.fileInstanceId === selectedFileInstanceId);
+
+  const selectedVisibleIndex = fileQuery.visible.findIndex(
+    (file) => file.fileInstanceId === selectedFileInstanceId,
+  );
+  const rovingIndex = selectedVisibleIndex >= 0 ? selectedVisibleIndex : 0;
+
+  function focusVisibleRow(fileInstanceId: string) {
+    const row = rowRefs.current.get(fileInstanceId);
+    row?.focus();
+    row?.scrollIntoView({ block: "nearest" });
+  }
+
+  function moveVisibleSelection(delta: number) {
+    const visible = fileQuery.visible;
+    if (visible.length === 0) return;
+    const nextIndex = selectedVisibleIndex < 0
+      ? (delta > 0 ? 0 : visible.length - 1)
+      : Math.max(0, Math.min(visible.length - 1, selectedVisibleIndex + delta));
+    const next = visible[nextIndex];
+    if (next === undefined) return;
+    if (next.fileInstanceId !== selectedFileInstanceId) {
+      onSelectFile(next.fileInstanceId);
+    }
+    focusVisibleRow(next.fileInstanceId);
+  }
+
+  function onGridKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (shouldIgnoreLibraryShortcut(event)) return;
+    event.preventDefault();
+    moveVisibleSelection(event.key === "ArrowDown" ? 1 : -1);
+  }
 
   return (
     <div className="catalog-library-column catalog-library-files" aria-label={t("library.audioFilesAria")}>
@@ -110,6 +145,7 @@ export function CatalogFileList({
         role="grid"
         aria-rowcount={fileQuery.visible.length + 1}
         aria-colcount={3}
+        onKeyDown={onGridKeyDown}
       >
         <div className="catalog-file-table__header" role="row" aria-rowindex={1}>
           <span className="catalog-file-table__cell catalog-file-table__cell--name" role="columnheader">
@@ -130,14 +166,23 @@ export function CatalogFileList({
                 className="catalog-file-table__row"
                 role="row"
                 aria-rowindex={index + 2}
-                tabIndex={0}
+                tabIndex={index === rovingIndex ? 0 : -1}
                 aria-selected={selected}
                 key={file.fileInstanceId}
+                ref={(element) => {
+                  if (element === null) rowRefs.current.delete(file.fileInstanceId);
+                  else rowRefs.current.set(file.fileInstanceId, element);
+                }}
                 onClick={() => onSelectFile(file.fileInstanceId)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (event.key === "Enter") {
                     event.preventDefault();
                     onSelectFile(file.fileInstanceId);
+                    return;
+                  }
+                  if (event.key === " ") {
+                    // Keep Space from scrolling; play/stop is owned by Preview.
+                    event.preventDefault();
                   }
                 }}
               >

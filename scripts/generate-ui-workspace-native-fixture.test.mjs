@@ -41,6 +41,8 @@ test("managed generation matches M7 RANGE.wav SHA and sample B length", async ()
     assert.equal(sha256FileHex(rangePath), M7_RANGE_SHA256);
     verifyRangeWavSha256(rangePath);
     assert.ok(manifest.acceptanceLocations.emptyList.relativePath.includes("ACCEPT_PROJ"));
+    assert.ok(manifest.files.some((f) => f.role === "opsRename" && f.pathRelative === "SET/AUDIO/ops_rename_src.wav"));
+    assert.ok(manifest.files.some((f) => f.role === "opsClone" && f.pathRelative === "SET/AUDIO/ops_clone_src.wav"));
   } finally {
     cleanupOwnedFixtureRoot(manifest.fixtureRoot);
   }

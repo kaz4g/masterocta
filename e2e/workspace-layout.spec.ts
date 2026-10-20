@@ -3,6 +3,7 @@ import { catalogFileRowLocator, clickCatalogFileRow } from "./catalogFileRow";
 import { uiText } from "./i18n";
 import { expectNarrowShellClass, expectNoDocumentHorizontalOverflow, showInspectorFromContextBar } from "./narrowWorkspace";
 import { LOCALE_STORAGE_KEY } from "../src/i18n/registry";
+import { PANE_SPLIT_STORAGE_KEY } from "../src/features/roots/paneSplitStorage";
 import { installDerivationIpcDefaults } from "./derivationIpcMocks";
 
 async function installJaLocale(page: import("@playwright/test").Page) {
@@ -120,6 +121,41 @@ test.describe("Workspace layout (synthetic IPC)", () => {
     await expect(listHeading).toBeVisible();
     await expect(inspector).toBeVisible();
     await expectNoDocumentHorizontalOverflow(page);
+  });
+
+  test("resize then reload restores the same sources split percentage", async ({ page }) => {
+    await installJaLocale(page);
+    await installWorkspaceFixture(page);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await chooseRoot(page);
+    await expect(page.locator(".mo-app-shell--workspace")).toBeVisible({ timeout: 30000 });
+
+    const sources = page.getByTestId("app-shell-sources");
+    await expect(sources).toBeVisible();
+    const before = await sources.evaluate((el) => (el as HTMLElement).style.width);
+
+    const divider = page.getByTestId("app-shell-divider");
+    const dividerBox = await divider.boundingBox();
+    expect(dividerBox).not.toBeNull();
+    const startX = dividerBox!.x + dividerBox!.width / 2;
+    const y = dividerBox!.y + dividerBox!.height / 2;
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(startX + 120, y, { steps: 10 });
+    await page.mouse.up();
+
+    await expect.poll(async () => sources.evaluate((el) => (el as HTMLElement).style.width)).not.toBe(before);
+    const resized = await sources.evaluate((el) => (el as HTMLElement).style.width);
+    expect(await page.evaluate((key) => localStorage.getItem(key), PANE_SPLIT_STORAGE_KEY)).toBeTruthy();
+
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await chooseRoot(page);
+    await expect(page.locator(".mo-app-shell--workspace")).toBeVisible({ timeout: 30000 });
+    await expect.poll(async () =>
+      page.getByTestId("app-shell-sources").evaluate((el) => (el as HTMLElement).style.width),
+    ).toBe(resized);
   });
 });
 

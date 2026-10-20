@@ -1166,4 +1166,175 @@ describe("WaveformPreview", () => {
     await Promise.resolve();
     expect(screen.queryByRole("img", { name: tJa("waveform.plotAria") })).not.toBeInTheDocument();
   });
+
+  it("loads and plays head preview when Space is pressed", async () => {
+    const client = api();
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play");
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.keyDown(window, { key: " " });
+    await waitFor(() => expect(client.createPreviewToken).toHaveBeenCalledWith(
+      "root-opaque",
+      "asset:v1:opaque",
+    ));
+    await waitFor(() => expect(playSpy).toHaveBeenCalled());
+  });
+
+  it("stops head preview on a second Space", async () => {
+    const client = api();
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.click(screen.getByRole("button", { name: tJa("waveform.loadPreview") }));
+    const head = await screen.findByLabelText(
+      tJa("waveform.previewAria", { displayName: "kick.wav" }),
+    ) as HTMLAudioElement;
+    const pauseSpy = vi.spyOn(head, "pause");
+    fireEvent.play(head);
+    fireEvent.keyDown(window, { key: " " });
+    expect(pauseSpy).toHaveBeenCalled();
+  });
+
+  it("surfaces a rejected cached head preview through previewError", async () => {
+    const client = api();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("decode failed"));
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.click(screen.getByRole("button", { name: tJa("waveform.loadPreview") }));
+    await screen.findByLabelText(tJa("waveform.previewAria", { displayName: "kick.wav" }));
+    fireEvent.keyDown(window, { key: " " });
+    expect(await screen.findByRole("alert")).toHaveTextContent("decode failed");
+  });
+
+  it("surfaces a rejected first-load head preview through previewError", async () => {
+    const client = api();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("playback refused"));
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.keyDown(window, { key: " " });
+    expect(await screen.findByRole("alert")).toHaveTextContent("playback refused");
+  });
+
+  it("does not autoplay a head preview that finishes after stopPlaybackToken", async () => {
+    const client = api();
+    let resolveRead: ((value: ArrayBuffer) => void) | undefined;
+    vi.mocked(client.readPreview).mockImplementation(
+      () => new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play");
+    const view = render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+        stopPlaybackToken={0}
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.keyDown(window, { key: " " });
+    await waitFor(() => expect(client.readPreview).toHaveBeenCalled());
+
+    view.rerender(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+        stopPlaybackToken={1}
+      />,
+    );
+    playSpy.mockClear();
+    resolveRead?.(new Uint8Array([82, 73, 70, 70]).buffer);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(playSpy).not.toHaveBeenCalled();
+  });
+
+  it("ignores repeated Space keydown events", async () => {
+    const client = api();
+    render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+    fireEvent.keyDown(window, { key: " ", repeat: true });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: " " });
+    fireEvent.keyDown(window, { key: " ", repeat: true });
+    await waitFor(() => expect(client.createPreviewToken).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not play from Space while typing, while a dialog is open, or when the Preview tab is hidden", async () => {
+    const client = api();
+    const view = render(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+      />,
+    );
+    await screen.findByRole("img", { name: tJa("waveform.plotAria") });
+
+    const start = screen.getByLabelText(tJa("waveform.startFrame"));
+    start.focus();
+    fireEvent.keyDown(start, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    fireEvent.keyDown(window, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+    dialog.remove();
+
+    view.rerender(
+      <WaveformPreview queryDebounceMs={0}
+        api={client}
+        rootId="root-opaque"
+        assetId="asset:v1:opaque"
+        displayName="kick.wav"
+        layoutVisible={false}
+      />,
+    );
+    fireEvent.keyDown(window, { key: " " });
+    expect(client.createPreviewToken).not.toHaveBeenCalled();
+  });
 });

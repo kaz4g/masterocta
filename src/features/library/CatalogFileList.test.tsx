@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LibraryAudioFile } from "../../api";
 import { tJa } from "../../i18n/testStrings";
 import { CATALOG_PAGE_SIZE } from "./catalogFileQuery";
-import { CatalogFileList } from "./CatalogFileList";
+import { CatalogFileList, type CatalogFileListProps } from "./CatalogFileList";
 
 function makeFile(id: string, name: string, size: number): LibraryAudioFile {
   return {
@@ -169,6 +169,39 @@ describe("CatalogFileList", () => {
     expect(screen.getByText("A.wav")).toBeInTheDocument();
   });
 
+  function renderList(
+    files: LibraryAudioFile[],
+    overrides: Partial<CatalogFileListProps> = {},
+  ) {
+    const onSelectFile = vi.fn();
+    const view = render(
+      <CatalogFileList
+        fileQuery={{
+          visible: files,
+          page: 0,
+          lastPage: 0,
+          locationCount: files.length,
+          matchingCount: files.length,
+        }}
+        locationFiles={files}
+        search=""
+        sort="name"
+        selectedFileInstanceId={null}
+        onSelectFile={onSelectFile}
+        onSortChange={vi.fn()}
+        onPageChange={vi.fn()}
+        {...overrides}
+      />,
+    );
+    return { ...view, onSelectFile };
+  }
+
+  function dataRows() {
+    return screen.getAllByRole("row").filter((row) =>
+      row.classList.contains("catalog-file-table__row"),
+    );
+  }
+
   it("calls onSelectFile when a row is clicked", () => {
     const files = [makeFile("a", "A.wav", 100)];
     const onSelectFile = vi.fn();
@@ -192,5 +225,71 @@ describe("CatalogFileList", () => {
     );
     fireEvent.click(screen.getByText("A.wav"));
     expect(onSelectFile).toHaveBeenCalledWith("a");
+  });
+
+  it("moves selection with ArrowUp and ArrowDown on a focused row", () => {
+    const files = [makeFile("a", "A.wav", 100), makeFile("b", "B.wav", 200), makeFile("c", "C.wav", 300)];
+    const { onSelectFile, rerender } = renderList(files, { selectedFileInstanceId: "a" });
+    const rows = dataRows();
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(onSelectFile).toHaveBeenCalledWith("b");
+
+    rerender(
+      <CatalogFileList
+        fileQuery={{
+          visible: files,
+          page: 0,
+          lastPage: 0,
+          locationCount: 3,
+          matchingCount: 3,
+        }}
+        locationFiles={files}
+        search=""
+        sort="name"
+        selectedFileInstanceId="b"
+        onSelectFile={onSelectFile}
+        onSortChange={vi.fn()}
+        onPageChange={vi.fn()}
+      />,
+    );
+    onSelectFile.mockClear();
+    fireEvent.keyDown(dataRows()[1], { key: "ArrowUp" });
+    expect(onSelectFile).toHaveBeenCalledWith("a");
+  });
+
+  it("selects the first visible row when ArrowDown is pressed with no selection", () => {
+    const files = [makeFile("a", "A.wav", 100), makeFile("b", "B.wav", 200)];
+    const { onSelectFile } = renderList(files);
+    fireEvent.keyDown(dataRows()[0], { key: "ArrowDown" });
+    expect(onSelectFile).toHaveBeenCalledWith("a");
+  });
+
+  it("does not change selection with Space or while a dialog is open", () => {
+    const files = [makeFile("a", "A.wav", 100), makeFile("b", "B.wav", 200)];
+    const { onSelectFile } = renderList(files, { selectedFileInstanceId: "a" });
+    fireEvent.keyDown(dataRows()[0], { key: " " });
+    expect(onSelectFile).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    fireEvent.keyDown(dataRows()[0], { key: "ArrowDown" });
+    expect(onSelectFile).not.toHaveBeenCalled();
+    dialog.remove();
+  });
+
+  it("does not move selection while the list search field is focused", () => {
+    const files = [makeFile("a", "A.wav", 100), makeFile("b", "B.wav", 200)];
+    const onSearchChange = vi.fn();
+    const { onSelectFile } = renderList(files, {
+      selectedFileInstanceId: "a",
+      onSearchChange,
+    });
+    const search = screen.getByLabelText(tJa("library.searchAria"));
+    search.focus();
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(onSelectFile).not.toHaveBeenCalled();
   });
 });

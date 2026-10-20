@@ -238,6 +238,12 @@ export function metaTemplate(planned) {
     capture_transport: "",
     capture_required_mode_change: "",
     capture_may_flush_device_state: "",
+    capture_flush_exclusion: "",
+    capture_run_id: "",
+    continues_from_previous_stage: "",
+    source_ui_sentinel: "",
+    prior_destination_ui_sentinel: "",
+    destination_ui_sentinel: "",
     capture_date: "",
     operator_note:
       "TEMPLATE. Native Bank Copy A→D on disposable P_BANK_COPY_STATE. Keep device_generated false until operator confirms sequence, OS, S1 divergence, transport, and sentinels.",
@@ -337,6 +343,81 @@ function transportMayFlush(meta) {
   return parseCaptureMayFlushState(meta) === "yes";
 }
 
+function flushExclusionRecorded(meta) {
+  const value = meta?.capture_flush_exclusion;
+  if (typeof value !== "string") return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized !== "" && normalized !== "unknown" && normalized !== "no" && normalized !== "none";
+}
+
+function stageTransportConfidence(meta) {
+  if (!transportRecorded(meta)) return "UNKNOWN";
+  if (transportMayFlush(meta)) return "MAY_FLUSH";
+  if (!flushExclusionRecorded(meta)) return "UNKNOWN";
+  return "PROVEN_NON_MUTATING";
+}
+
+function sharedCaptureRunId(stages) {
+  const ids = stages.map((stage) => stage.meta?.capture_run_id);
+  if (ids.some((id) => typeof id !== "string" || id.trim() === "" || id.trim().toLowerCase() === "unknown")) {
+    return null;
+  }
+  const first = ids[0].trim();
+  if (ids.some((id) => id.trim() !== first)) return null;
+  return first;
+}
+
+function continuesFromPreviousStage(meta) {
+  return typeof meta?.continues_from_previous_stage === "string"
+    && meta.continues_from_previous_stage.trim().toLowerCase() === "yes";
+}
+
+function postCopySessionContinuity(stages) {
+  if (!sharedCaptureRunId(stages)) return "NOT_PROVEN";
+  const postCopy = stages.filter((stage) => stage.stage_id === "S3" || stage.stage_id === "S4" || stage.stage_id === "S5");
+  if (postCopy.length !== 3 || postCopy.some((stage) => !continuesFromPreviousStage(stage.meta))) {
+    return "NOT_PROVEN";
+  }
+  return "PROVEN";
+}
+
+function sentinelValue(meta, key) {
+  const value = meta?.[key];
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  const placeholder = normalized.toLowerCase();
+  if (normalized === "" || placeholder === "unknown" || placeholder === "not_recorded") return null;
+  return normalized;
+}
+
+function sameSentinel(left, right) {
+  return left != null && left === right;
+}
+
+function agreedSentinel(stages, stageIds, key) {
+  const values = stageIds.map((stageId) => {
+    const stage = stages.find((entry) => entry.stage_id === stageId);
+    return sentinelValue(stage?.meta, key);
+  });
+  if (values.some((value) => value == null)) return null;
+  const [first] = values;
+  if (values.some((value) => !sameSentinel(value, first))) return null;
+  return first;
+}
+
+function destinationSentinelStatus(stages) {
+  const source = agreedSentinel(stages, ["S0", "S1"], "source_ui_sentinel");
+  const priorDestination = agreedSentinel(stages, ["S0", "S1"], "prior_destination_ui_sentinel");
+  if (!source || !priorDestination || sameSentinel(source, priorDestination)) return "NOT_RECORDED";
+  const observed = ["S2", "S5"].map((stageId) => {
+    const stage = stages.find((entry) => entry.stage_id === stageId);
+    return sentinelValue(stage?.meta, "destination_ui_sentinel");
+  });
+  if (observed.some((value) => value == null)) return "NOT_RECORDED";
+  if (observed.every((value) => sameSentinel(value, source))) return "RECORDED";
+  return "MISMATCH";
+}
+
 export function assertPinnedFirmware(meta) {
   if (meta.os_revision?.trim() !== PINNED_OS_REVISION || meta.os_release?.trim() !== PINNED_OS_RELEASE) {
     throw new Error(`capture OS must be ${PINNED_OS_REVISION} / ${PINNED_OS_RELEASE} for this experiment`);
@@ -353,12 +434,16 @@ export function parseBankUiToIndex(label) {
   return UI_BANK_INDEX[key];
 }
 
-export function parsePatternUiToIndex(label) {
-  const match = String(label).trim().match(/^A(\d{2})$/i);
+export function parsePatternUiToIndex(label, bankUi) {
+  const match = String(label).trim().match(/^([A-P])(\d{2})$/i);
   if (!match) {
     throw new Error(`unrecognized current_pattern_ui: ${label}`);
   }
-  const index = Number(match[1]) - 1;
+  const letter = match[1].toUpperCase();
+  if (bankUi != null && String(bankUi).trim() !== "" && letter !== String(bankUi).trim().toUpperCase()) {
+    throw new Error(`current_pattern_ui ${label} is not bank-qualified for ${String(bankUi).trim().toUpperCase()}`);
+  }
+  const index = Number(match[2]) - 1;
   if (index < 0 || index > 15) {
     throw new Error(`current_pattern_ui out of range: ${label}`);
   }
@@ -368,7 +453,7 @@ export function parsePatternUiToIndex(label) {
 export function assertUiMatchesProjectStates(meta, states) {
   if (!states.ok) throw new Error("project.work [STATES] must contain one BANK and one PATTERN in 0..15");
   const bank = parseBankUiToIndex(meta.current_bank_ui);
-  const pattern = parsePatternUiToIndex(meta.current_pattern_ui);
+  const pattern = parsePatternUiToIndex(meta.current_pattern_ui, meta.current_bank_ui);
   if (bank !== states.bank || pattern !== states.pattern) {
     throw new Error("current_bank_ui/current_pattern_ui do not match project.work [STATES]");
   }
@@ -767,6 +852,28 @@ function changedOnTransition(matrix, transitionLabel, fileName) {
   return cell.changed ? "YES" : "NO";
 }
 
+function sourceOnlyPrecondition(matrix) {
+  const transition = matrix.transitions.find((entry) => entry.transition === "SOURCE_WORKING_ONLY_EDIT");
+  if (!transition) return "NOT_RUN";
+  const unexpected = transition.cells.filter((cell) => cell.changed && cell.file !== `${SOURCE_BANK}.work`);
+  if (unexpected.length > 0) return "CONTAMINATED";
+  const sourceWork = transition.cells.find((cell) => cell.file === `${SOURCE_BANK}.work`);
+  if (!sourceWork?.changed) return "NOT_PROVEN";
+  return "PASS";
+}
+
+function patternUiQualification(stages) {
+  for (const stage of stages) {
+    const states = parseProjectStatesSection(stage.files["project.work"].toString("latin1"));
+    try {
+      assertUiMatchesProjectStates(stage.meta, states);
+    } catch {
+      return "FAIL";
+    }
+  }
+  return "PASS";
+}
+
 function projectStateEffect(beforeStage, afterStage) {
   const before = parseProjectStatesSection(beforeStage.files["project.work"].toString("latin1"));
   const after = parseProjectStatesSection(afterStage.files["project.work"].toString("latin1"));
@@ -798,6 +905,14 @@ export function classifyBankCopyEvidence(dataset) {
     dest_strd_first_changed_at: "NOT_RUN",
     copy_project_bank_effect: "INCONCLUSIVE",
     copy_project_pattern_effect: "INCONCLUSIVE",
+    source_only_precondition: "NOT_RUN",
+    post_copy_session_continuity: "NOT_PROVEN",
+    control_switch_attribution: "INCONCLUSIVE",
+    project_save_attribution: "INCONCLUSIVE",
+    project_reload_attribution: "INCONCLUSIVE",
+    destination_ui_sentinel: "NOT_RECORDED",
+    pattern_ui_qualification: "NOT_RUN",
+    copy_effect_attribution: "INCONCLUSIVE",
     copy_working_role: "DEVICE_EVIDENCE_REQUIRED",
     copy_saved_checkpoint_role: "DEVICE_EVIDENCE_REQUIRED",
     result: "STOP_WITH_FINDINGS",
@@ -827,8 +942,11 @@ export function classifyBankCopyEvidence(dataset) {
   }
   shell.dest_work_first_changed_at = matrix.dest_work_first_changed_at;
   shell.dest_strd_first_changed_at = matrix.dest_strd_first_changed_at;
-  const transportFlush = stages.some((stage) => transportMayFlush(stage.meta));
-  const transportUnknown = stages.some((stage) => !transportRecorded(stage.meta));
+  shell.source_only_precondition = sourceOnlyPrecondition(matrix);
+  shell.post_copy_session_continuity = postCopySessionContinuity(stages);
+  shell.destination_ui_sentinel = destinationSentinelStatus(stages);
+  shell.pattern_ui_qualification = patternUiQualification(stages);
+  const transportConfidences = stages.map((stage) => stageTransportConfidence(stage.meta));
   const osMismatch = stages.some((stage) => {
     try {
       assertPinnedFirmware(stage.meta);
@@ -837,12 +955,24 @@ export function classifyBankCopyEvidence(dataset) {
       return true;
     }
   });
-  shell.capture_transport_confidence = transportUnknown || osMismatch
+  shell.capture_transport_confidence = osMismatch || transportConfidences.includes("UNKNOWN")
     ? "UNKNOWN"
-    : transportFlush
+    : transportConfidences.includes("MAY_FLUSH")
       ? "MAY_FLUSH"
       : "PROVEN_NON_MUTATING";
-  shell.immediate_copy_timing_attribution = transportUnknown || transportFlush ? "INCONCLUSIVE" : "PASS";
+  shell.immediate_copy_timing_attribution = shell.capture_transport_confidence === "PROVEN_NON_MUTATING"
+    ? "PASS"
+    : "INCONCLUSIVE";
+  if (
+    shell.post_copy_session_continuity === "PROVEN"
+    && shell.source_only_precondition === "PASS"
+    && shell.immediate_copy_timing_attribution === "PASS"
+    && shell.pattern_ui_qualification === "PASS"
+  ) {
+    shell.control_switch_attribution = "ATTRIBUTED";
+    shell.project_save_attribution = "ATTRIBUTED";
+    shell.project_reload_attribution = "ATTRIBUTED";
+  }
   shell.dest_work_immediate_change = changedOnTransition(matrix, "NATIVE_BANK_COPY", `${DEST_BANK}.work`);
   shell.dest_strd_immediate_change = changedOnTransition(matrix, "NATIVE_BANK_COPY", `${DEST_BANK}.strd`);
   shell.source_work_immediate_change = changedOnTransition(matrix, "NATIVE_BANK_COPY", `${SOURCE_BANK}.work`);
@@ -858,7 +988,11 @@ export function classifyBankCopyEvidence(dataset) {
       ? "YES"
       : "NO";
   const s2 = byId.S2;
-  if (s2 && shell.immediate_copy_timing_attribution === "PASS") {
+  const copyAttributable = shell.immediate_copy_timing_attribution === "PASS"
+    && shell.source_only_precondition === "PASS"
+    && shell.pattern_ui_qualification === "PASS";
+  if (s2 && copyAttributable) {
+    shell.copy_effect_attribution = "ATTRIBUTED";
     shell.dest_work_provenance = classifyByteProvenance(s2.files[`${DEST_BANK}.work`], {
       SOURCE_WORKING: s1Work,
       SOURCE_SAVEDCHECKPOINT: s1Strd,
@@ -883,8 +1017,12 @@ export function classifyBankCopyEvidence(dataset) {
   }
   const copyOp = s2?.meta?.copy_operation;
   shell.copy_operation_proven = nonEmptyString(copyOp) ? "YES" : "NO";
-  if (shell.immediate_copy_timing_attribution !== "PASS") {
-    return { ...shell, result: "STOP_WITH_FINDINGS" };
+  const promotable = copyAttributable
+    && shell.post_copy_session_continuity === "PROVEN"
+    && shell.destination_ui_sentinel === "RECORDED"
+    && shell.capture_transport_confidence === "PROVEN_NON_MUTATING";
+  if (!promotable) {
+    return { ...shell, device_capture: "INCONCLUSIVE", result: "STOP_WITH_FINDINGS" };
   }
   // Promotion to domain rules requires conclusive Copy role + SavedCheckpoint semantics (Phase B only).
   return { ...shell, device_capture: "PASS", result: "READY_FOR_REVIEW" };
@@ -941,6 +1079,12 @@ export function evidenceStatus(root = FIXTURE_ROOT) {
   };
 }
 
+export function resolveCommandRoot(explicit) {
+  const candidate = (typeof explicit === "string" ? explicit.trim() : "") || process.env.CAPTURE_ROOT?.trim() || "";
+  if (!candidate) return FIXTURE_ROOT;
+  return path.resolve(candidate);
+}
+
 export function analyzeBankCopyEvidence(root = FIXTURE_ROOT) {
   const status = evidenceStatus(root);
   return { ...status, fixture_no_write: "PASS" };
@@ -954,29 +1098,31 @@ export function buildBankCopyDatasetCommand(root = FIXTURE_ROOT) {
 }
 
 function main() {
-  const [, , command, captureName] = process.argv;
+  const [, , command, arg1, arg2] = process.argv;
+  const stageCommand = command === "write-manifest" || command === "verify-manifest";
+  const root = resolveCommandRoot(stageCommand ? arg2 : arg1);
   try {
     if (command === "status") {
-      console.log(JSON.stringify(evidenceStatus(), null, 2));
+      console.log(JSON.stringify(evidenceStatus(root), null, 2));
       return;
     }
     if (command === "analyze") {
-      console.log(JSON.stringify(analyzeBankCopyEvidence(), null, 2));
+      console.log(JSON.stringify(analyzeBankCopyEvidence(root), null, 2));
       return;
     }
     if (command === "dataset") {
-      console.log(JSON.stringify(buildBankCopyDatasetCommand(), null, 2));
+      console.log(JSON.stringify(buildBankCopyDatasetCommand(root), null, 2));
       return;
     }
     if (command === "write-manifest") {
-      if (!captureName) throw new Error("write-manifest requires a capture name");
-      const manifest = writeManifest(captureName);
+      if (!arg1) throw new Error("write-manifest requires a capture name");
+      const manifest = writeManifest(arg1, root);
       console.log(`Wrote SHA256SUMS.json (${manifest.files.length} files)`);
       return;
     }
     if (command === "verify-manifest") {
-      if (!captureName) throw new Error("verify-manifest requires a capture name");
-      const result = verifyManifest(captureName);
+      if (!arg1) throw new Error("verify-manifest requires a capture name");
+      const result = verifyManifest(arg1, root);
       if (!result.ok) {
         console.error("manifest mismatch");
         process.exitCode = 1;

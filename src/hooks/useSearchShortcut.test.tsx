@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { useRef } from 'react'
-import { useSearchShortcut } from './useSearchShortcut'
+import { WORKSPACE_SEARCH_SHORTCUT_PRIORITY, useSearchShortcut } from './useSearchShortcut'
 
 function Harness({ onClear }: { onClear: () => void }) {
   const ref = useRef<HTMLInputElement>(null)
@@ -87,6 +87,92 @@ describe('useSearchShortcut', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
 
     expect(onClear).not.toHaveBeenCalled()
+  })
+
+  it('does not focus when isBlocked returns true', () => {
+    function BlockedHarness() {
+      const ref = useRef<HTMLInputElement>(null)
+      useSearchShortcut(ref, onClear, { isBlocked: () => true })
+      return <input ref={ref} aria-label="Search" />
+    }
+    render(<BlockedHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(false)
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Search'))
+  })
+
+  it('does not focus a disabled search input', () => {
+    function DisabledHarness() {
+      const ref = useRef<HTMLInputElement>(null)
+      useSearchShortcut(ref, onClear)
+      return <input ref={ref} aria-label="Search" disabled />
+    }
+    render(<DisabledHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(false)
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Search'))
+  })
+
+  it('keeps focus on the higher-priority search when a page search is also mounted', () => {
+    function CollidingHarness() {
+      const pageRef = useRef<HTMLInputElement>(null)
+      const workspaceRef = useRef<HTMLInputElement>(null)
+      useSearchShortcut(pageRef, onClear)
+      useSearchShortcut(workspaceRef, onClear, { priority: WORKSPACE_SEARCH_SHORTCUT_PRIORITY })
+      return (
+        <div>
+          <input ref={pageRef} aria-label="Project search" />
+          <input ref={workspaceRef} aria-label="Library search" />
+        </div>
+      )
+    }
+    render(<CollidingHarness />)
+    const library = screen.getByLabelText('Library search')
+    fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(document.activeElement).toBe(library)
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Project search'))
+  })
+
+  it('yields Ctrl+F to the page search when the higher-priority input is disabled', () => {
+    function DisabledWorkspaceHarness() {
+      const pageRef = useRef<HTMLInputElement>(null)
+      const workspaceRef = useRef<HTMLInputElement>(null)
+      useSearchShortcut(pageRef, onClear)
+      useSearchShortcut(workspaceRef, onClear, { priority: WORKSPACE_SEARCH_SHORTCUT_PRIORITY })
+      return (
+        <div>
+          <input ref={pageRef} aria-label="Project search" />
+          <input ref={workspaceRef} aria-label="Library search" disabled />
+        </div>
+      )
+    }
+    render(<DisabledWorkspaceHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(false)
+    expect(document.activeElement).toBe(screen.getByLabelText('Project search'))
+  })
+
+  it('does not let the page search take Ctrl+F while the workspace shortcut is blocked', () => {
+    function BlockedWorkspaceHarness() {
+      const pageRef = useRef<HTMLInputElement>(null)
+      const workspaceRef = useRef<HTMLInputElement>(null)
+      useSearchShortcut(pageRef, onClear)
+      useSearchShortcut(workspaceRef, onClear, {
+        priority: WORKSPACE_SEARCH_SHORTCUT_PRIORITY,
+        isBlocked: () => true,
+      })
+      return (
+        <div>
+          <input ref={pageRef} aria-label="Project search" />
+          <input ref={workspaceRef} aria-label="Library search" />
+        </div>
+      )
+    }
+    render(<BlockedWorkspaceHarness />)
+    const notPrevented = fireEvent.keyDown(document, { key: 'f', ctrlKey: true })
+    expect(notPrevented).toBe(false)
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Library search'))
+    expect(document.activeElement).not.toBe(screen.getByLabelText('Project search'))
   })
 
   it('removes its listener on unmount', () => {

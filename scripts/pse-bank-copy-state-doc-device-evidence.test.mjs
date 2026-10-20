@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   lstatSync,
@@ -36,7 +37,9 @@ import {
   evidenceStatus,
   metaTemplate,
   parseCaptureMayFlushState,
+  parsePatternUiToIndex,
   parseProjectStatesSection,
+  resolveCommandRoot,
   setBankDecodeValidator,
   verifyManifest,
   writeManifest,
@@ -127,6 +130,16 @@ test("may-flush transport blocks immediate copy attribution", () => {
   assert.equal(judged.capture_transport_confidence, "MAY_FLUSH");
 });
 
+test("recorded transport without a flush exclusion stays unknown", () => {
+  const judged = classifyBankCopyEvidence({
+    stages: syntheticStages({ destWorkAt: "S2", transport: "recorded", flushExclusion: "" }),
+  });
+  assert.equal(judged.capture_transport_confidence, "UNKNOWN");
+  assert.equal(judged.immediate_copy_timing_attribution, "INCONCLUSIVE");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(judged.device_capture, "PASS");
+});
+
 test("ambiguous may-flush values stay unknown", () => {
   assert.equal(parseCaptureMayFlushState({ capture_may_flush_device_state: "maybe" }), "unknown");
   const judged = classifyBankCopyEvidence({
@@ -160,6 +173,79 @@ test("immediate bank copy transition is detected on destination work", () => {
   assert.equal(judged.dest_work_provenance, "SOURCE_WORKING");
 });
 
+test("pattern labels must be qualified by the current bank", () => {
+  assert.equal(parsePatternUiToIndex("D01", "D"), 0);
+  assert.equal(parsePatternUiToIndex("B01", "B"), 0);
+  assert.throws(() => parsePatternUiToIndex("A01", "D"), /not bank-qualified for D/);
+  assert.throws(() => parsePatternUiToIndex("A01", "B"), /not bank-qualified for B/);
+  const stages = syntheticStages({ transport: "recorded", projectBankByStage: { S2: 3 } });
+  const judged = classifyBankCopyEvidence({ stages });
+  assert.equal(judged.pattern_ui_qualification, "FAIL");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(judged.device_capture, "PASS");
+});
+
+test("destination mutation on the source-only step blocks promotion", () => {
+  const stages = syntheticStages({ transport: "recorded" });
+  const s1 = stages.find((stage) => stage.stage_id === "S1");
+  const contaminated = Buffer.from(s1.files[`${DEST_BANK}.work`]);
+  contaminated[0] ^= 0xff;
+  s1.files[`${DEST_BANK}.work`] = contaminated;
+  const judged = classifyBankCopyEvidence({ stages });
+  assert.equal(judged.source_only_precondition, "CONTAMINATED");
+  assert.equal(judged.dest_work_provenance, "INCONCLUSIVE");
+  assert.equal(judged.copy_effect_attribution, "INCONCLUSIVE");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(judged.device_capture, "PASS");
+});
+
+test("post-copy recapture without run continuity is inconclusive", () => {
+  const judged = classifyBankCopyEvidence({
+    stages: syntheticStages({ transport: "recorded", captureRunId: "" }),
+  });
+  assert.equal(judged.post_copy_session_continuity, "NOT_PROVEN");
+  assert.equal(judged.control_switch_attribution, "INCONCLUSIVE");
+  assert.equal(judged.project_save_attribution, "INCONCLUSIVE");
+  assert.equal(judged.project_reload_attribution, "INCONCLUSIVE");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+});
+
+test("missing destination sentinel blocks promotion", () => {
+  const judged = classifyBankCopyEvidence({
+    stages: syntheticStages({ transport: "recorded", destinationSentinel: "" }),
+  });
+  assert.equal(judged.destination_ui_sentinel, "NOT_RECORDED");
+  assert.equal(judged.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(judged.device_capture, "PASS");
+});
+
+test("destination sentinel must be the copied source identity", () => {
+  const matched = classifyBankCopyEvidence({
+    stages: syntheticStages({ transport: "recorded" }),
+  });
+  assert.equal(matched.destination_ui_sentinel, "RECORDED");
+
+  const unrelated = classifyBankCopyEvidence({
+    stages: syntheticStages({
+      transport: "recorded",
+      destinationSentinelByStage: { S2: "DEST-PRIOR", S5: "UNRELATED" },
+    }),
+  });
+  assert.equal(unrelated.destination_ui_sentinel, "MISMATCH");
+  assert.equal(unrelated.result, "STOP_WITH_FINDINGS");
+  assert.notEqual(unrelated.device_capture, "PASS");
+
+  const indistinct = classifyBankCopyEvidence({
+    stages: syntheticStages({
+      transport: "recorded",
+      sourceSentinel: "SAME",
+      priorDestinationSentinel: "SAME",
+    }),
+  });
+  assert.equal(indistinct.destination_ui_sentinel, "NOT_RECORDED");
+  assert.notEqual(indistinct.device_capture, "PASS");
+});
+
 test("missing S2 copy_operation keeps copy_operation_proven NO", () => {
   const stages = syntheticStages({ destWorkAt: "S2", transport: "recorded" });
   stages[2].meta.copy_operation = "";
@@ -175,6 +261,7 @@ test("complete synthetic capture promotes analysis when transport is recorded", 
     const status = evidenceStatus(root);
     assert.equal(status.device_evidence_promotion, "ALLOWED");
     assert.equal(status.device_capture, "PASS");
+    assert.equal(status.destination_ui_sentinel, "RECORDED");
     assert.equal(status.copy_state_doc_rule, "BLOCKED");
     assert.equal(status.copy_saved_checkpoint_semantics, "UNKNOWN");
     assert.equal(analyzeBankCopyEvidence(root).fixture_no_write, "PASS");
@@ -199,6 +286,26 @@ test("wrong firmware metadata blocks promotion", () => {
     assert.match(s0.error, /R0173/);
     assert.equal(status.device_capture, "REJECTED");
     assert.equal(status.device_evidence_promotion, "BLOCKED");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("bank D rejects an A-prefixed pattern label", () => {
+  const root = materializeSyntheticCapture({});
+  try {
+    const dir = path.join(root, "s2_immediately_after_bank_copy");
+    writeFileSync(path.join(dir, "project.work"), Buffer.from(projectText(3, 0), "latin1"));
+    const metaPath = path.join(dir, "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.current_bank_ui = "D";
+    meta.current_pattern_ui = "A01";
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const row = evidenceStatus(root).captures.find((entry) => entry.stage_id === "S2");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.match(row.error, /not bank-qualified for D/);
+    assert.equal(evidenceStatus(root).device_evidence_promotion, "BLOCKED");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -308,6 +415,7 @@ function transportMeta(options) {
       capture_transport: "unknown",
       capture_required_mode_change: "unknown",
       capture_may_flush_device_state: "unknown",
+      capture_flush_exclusion: "",
     };
   }
   const mayFlush = options.mayFlush ?? "no";
@@ -315,6 +423,28 @@ function transportMeta(options) {
     capture_transport: "Operator copied CF files via documented USB path",
     capture_required_mode_change: "no",
     capture_may_flush_device_state: mayFlush,
+    capture_flush_exclusion: options.flushExclusion === undefined
+      ? "Card image was read after the device powered off, so this acquisition cannot flush the captured project state."
+      : options.flushExclusion,
+  };
+}
+
+function sessionMeta(planned, options) {
+  const sourceSentinel = options.sourceSentinel === undefined ? "SRC-SENTINEL" : options.sourceSentinel;
+  const priorDestination = options.priorDestinationSentinel === undefined ? "DEST-PRIOR" : options.priorDestinationSentinel;
+  const stageOverride = options.destinationSentinelByStage?.[planned.stage_id];
+  const copied = stageOverride !== undefined
+    ? stageOverride
+    : (options.destinationSentinel === undefined ? sourceSentinel : options.destinationSentinel);
+  const preCopy = planned.stage_id === "S0" || planned.stage_id === "S1";
+  return {
+    capture_run_id: options.captureRunId === undefined ? "synthetic-run-1" : options.captureRunId,
+    continues_from_previous_stage: planned.stage_id === "S3" || planned.stage_id === "S4" || planned.stage_id === "S5"
+      ? (options.continuesFromPrevious ?? "yes")
+      : "",
+    source_ui_sentinel: sourceSentinel,
+    prior_destination_ui_sentinel: priorDestination,
+    destination_ui_sentinel: preCopy ? priorDestination : copied,
   };
 }
 
@@ -379,11 +509,11 @@ function syntheticStages(options = {}) {
       const role = name.endsWith(".work") ? "w" : "s";
       files[name] = baseBuf(slot, role === "w" ? 0x20 : 0x30);
     }
+    const savedSourceByte = s1SourceDiverged ? 0xbb : 0xaa;
+    files[`${SOURCE_BANK}.strd`] = baseBuf(1, savedSourceByte);
     if (stageRank(planned.stage_id) >= stageRank("S1")) {
-      const workByte = 0xaa;
-      const strdByte = s1SourceDiverged ? 0xbb : workByte;
-      files[`${SOURCE_BANK}.work`] = baseBuf(1, workByte);
-      files[`${SOURCE_BANK}.strd`] = baseBuf(1, strdByte);
+      files[`${SOURCE_BANK}.work`] = baseBuf(1, 0xaa);
+      if (!s1SourceDiverged) files[`${SOURCE_BANK}.strd`] = baseBuf(1, 0xaa);
     }
     if (stageRank(planned.stage_id) >= stageRank(destWorkAt)) {
       files[`${DEST_BANK}.work`] = Buffer.from(files[`${SOURCE_BANK}.work`]);
@@ -401,7 +531,8 @@ function syntheticStages(options = {}) {
     mutateDest("strd", destStrdAt);
     const meta = {
       ...metaTemplate(planned),
-      ...transportMeta({ transport, mayFlush: options.mayFlush }),
+      ...transportMeta({ transport, mayFlush: options.mayFlush, flushExclusion: options.flushExclusion }),
+      ...sessionMeta(planned, options),
       device_generated: true,
       capture_sequence_proven: true,
       os_revision: "R0173",
@@ -433,6 +564,7 @@ function materializeSyntheticCapture(options = {}) {
     const meta = {
       ...metaTemplate(planned),
       ...transportMeta(options),
+      ...sessionMeta(planned, options),
       device_generated: true,
       capture_sequence_proven: true,
       os_revision: PINNED_OS_REVISION,
@@ -489,6 +621,33 @@ function snapshotTree(root) {
   walk(root);
   return digest.digest("hex");
 }
+
+test("analyze CLI uses CAPTURE_ROOT instead of the repository fixture", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "pse-bank-copy-cli-"));
+  try {
+    mkdirSync(path.join(root, "outside"));
+    symlinkSync(path.join(root, "outside"), path.join(root, "s0_baseline_saved"));
+    const script = path.join(SCRIPT_DIR, "pse-bank-copy-state-doc-device-evidence.mjs");
+    const viaEnv = spawnSync(process.execPath, [script, "analyze"], {
+      env: { ...process.env, CAPTURE_ROOT: root },
+      encoding: "utf8",
+    });
+    assert.equal(viaEnv.status, 0, viaEnv.stderr);
+    const envStatus = JSON.parse(viaEnv.stdout);
+    assert.equal(envStatus.device_capture, "REJECTED");
+    const viaArg = spawnSync(process.execPath, [script, "analyze", root], { encoding: "utf8" });
+    assert.equal(viaArg.status, 0, viaArg.stderr);
+    assert.equal(JSON.parse(viaArg.stdout).device_capture, "REJECTED");
+    const fixture = spawnSync(process.execPath, [script, "analyze"], {
+      env: { ...process.env, CAPTURE_ROOT: "" },
+      encoding: "utf8",
+    });
+    assert.equal(JSON.parse(fixture.stdout).device_capture, "WAITING_FOR_REAL_DEVICE");
+    assert.equal(resolveCommandRoot(root), path.resolve(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("meta template uses bank copy work id and operation kind", () => {
   const meta = metaTemplate(PLANNED_CAPTURES[0]);
