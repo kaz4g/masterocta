@@ -2,8 +2,9 @@
 
 - Work ID: `MO-DEVELOPMENT-PLAN-CANONICALIZATION-1`
 - Status: Active canonical index
-- Updated: 2026-09-30 (proposed Project Structure track link only; M5–M11 numbers unchanged)
+- Updated: 2026-10-19 (M6 final exit audit link; M5–M11 numbers unchanged)
 - Implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M6 completion map: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (IN_PROGRESS; #178)
 - M7 completion map: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 
 ## Role of this document
@@ -66,18 +67,21 @@ Human Gate C; rename Plan/Apply boundary; safety ledger / handoff.
 | M6-03 | Navigation Pane |
 | M6-04 | Sample Browser v2 |
 | M6-05 | Sample Inspector v2 |
-| M6-06 | Operation Modal |
+| M6-06 | Operation Modal（歴史名。**DECIDED (C):** 受入面は Operations Drawer。中央 Modal は作らない） |
 | M6-07 | AudioAsset domain baseline |
-| M6-08 | keyboard / resize / persisted UI state |
+| M6-08 | keyboard / resize / persisted UI state（**含む:** Copy/Rename configurable。M6-06 から移管） |
 
 M6-06 **historical name** is Operation Modal. Adopted implementation (2026-10-19, option C) is the **Operations Drawer** (`OperationsDrawerHost`, `role=dialog`). Configurable Copy/Rename shortcuts belong to **M6-08**. Acceptance: [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
 
 **Exit gate (v0.1):** Source management in top context / dialog; browser dominates layout; waveform usable size in Inspector; prepared-operation always-visible panel removed; write safety preserved; AudioAsset represents existing Octatrack samples.
 
+**M6-06 overlay (DECIDED (C), 2026-10-19, user):** Operations Drawer is the single overlay; operator panels stay inside it; no central Modal. Configurable shortcuts belong to M6-08. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.3.
+
 **Current status:** [DEVELOPMENT_STATUS § M6](./DEVELOPMENT_STATUS.md#m6--library-workspace--audioasset-foundation).
 
 **Canonical supporting docs:**
 
+- [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19; `main` `6f68ff1`; M6-06 **DECIDED (C)**; M6 remains IN_PROGRESS)
 - [`POST_M5_FEATURE_RESTART_AUDIT.md`](./POST_M5_FEATURE_RESTART_AUDIT.md) (historical investigation; #103–#105 reopen ban)
 - [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) (M6-06 option C; Native smoke still **NOT_RUN**)
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) (M7 WF2; depends on M6 layout)
@@ -215,6 +219,7 @@ Sample/Slice worktree. Scene has no current read model.
 ## Related indexes
 
 - Current implementation status: [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)
+- M6 exit audit: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - M6-06 Drawer acceptance: [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - M7 exit audit: [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)
 - Project structure proposal: [`PROJECT_STRUCTURE_CONTROL_PLANE.md`](./PROJECT_STRUCTURE_CONTROL_PLANE.md)

@@ -1,13 +1,15 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1`; prior: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`
-- Updated: 2026-10-19 (M6-06 option **C** Drawer acceptance; M7 **COMPLETE** unchanged @ `8bedd19c`)
-- Product baseline: GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
+- Updated: 2026-10-21 (M6 exit-audit snapshot kept; later `main` includes Drawer acceptance, pane persistence, and Library keyboard; M7 **COMPLETE** unchanged @ `8bedd19c`)
+- Product baseline (M7 completion): GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
+- M6 exit-audit snapshot: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - M6-06 acceptance (option C): [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - Integrated Native session 5 @ **`40ba99c4`**: [`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md) **PASS**. Session 4 @ **`a84433c0`** and session 3 @ **`04725cb3`** stay historical **STOP** records.
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
+**M6 completion map:** [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (snapshot @ `6f68ff1`; M6 stays **IN_PROGRESS**).
 **M7 completion map:** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 ## Status vocabulary
@@ -26,7 +28,7 @@ Do **not** conflate: code exists · merged to `main` · CI/automated tests · na
 
 ## Current reconciliation snapshot (2026-10-06)
 
-Final audit baseline **`8bedd19c`**. Integrated Native session 5 at execution SHA **`40ba99c4`** is **PASS** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)). **M7 Exit Gate = 5/5 PASS**. **M7 = COMPLETE**. M7-07 and M7-08 remain **DEFERRED** to M11. Issue #177 closed after INT5 canonical merge (#215). **M6** stays **IN_PROGRESS** independently.
+Final audit baseline **`8bedd19c`**. Integrated Native session 5 at execution SHA **`40ba99c4`** is **PASS** ([`M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md`](../testing/M7_INTEGRATED_NATIVE_ACCEPTANCE_5.md)). **M7 Exit Gate = 5/5 PASS**. **M7 = COMPLETE**. M7-07 and M7-08 remain **DEFERRED** to M11. Issue #177 closed after INT5 canonical merge (#215). **M6** stays **IN_PROGRESS** independently. M6 docs-only re-audit (2026-10-19, #178) at **`6f68ff1`**: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md).
 
 ## Historical reconciliation snapshot (session 4, 2026-10-06)
 
@@ -61,7 +63,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | Milestone | Status | Summary |
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
-| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06/M6-08 vs v0.1 exit gaps |
+| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06 overlay **DECIDED (C)** (Drawer; Native/close tests remain); M6-08 persistence/keyboard/configurable shortcuts |
 | **M7** | **COMPLETE** | Exit Gate **5/5 PASS**; Integrated Native session 5 **PASS** @ `40ba99c4`. M7-01–M7-06 **COMPLETE**; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
@@ -94,11 +96,11 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-03 Navigation Pane | **COMPLETE** | #132 | CI | Native doc | Location nav |
 | M6-04 Sample Browser v2 | **COMPLETE** | #122, #132 | CI + frontend tests | Native doc | Search/sort/pagination |
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
-| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel | Native Drawer write **NOT_RUN** | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) |
+| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel | Native Drawer write **NOT_RUN** | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
-| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search) | CI | Narrow layout verified #140 | Pane split % persists across restart. Library keyboard minimum set is included. M6-08 stays **IN_PROGRESS** |
+| M6-08 keyboard / resize / persisted UI | **IN_PROGRESS** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search) | CI | Narrow layout verified #140 | Pane split % persists across restart. Library keyboard minimum set is included. Configurable Copy/Rename shortcuts remain. M6-08 stays **IN_PROGRESS** |
 
-**M6 exit gate (v0.1):** Partially met; **M6-06** and **M6-08** prevent calling M6 **COMPLETE**. M6-06 overlay is the Operations Drawer (option C); Native write smoke is still **NOT_RUN**.
+**M6 exit gate (v0.1):** Partially met; **M6-06** Native write smoke and **M6-08** configurable shortcuts prevent calling M6 **COMPLETE**. Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
 
 ---
 
@@ -257,8 +259,8 @@ at **`04725cb3`**. Do not rewrite it.
 
 ## Unresolved ambiguities
 
-1. **M6-06:** Option **(C)** adopted 2026-10-19: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. Native write smoke remains **NOT_RUN**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Independent of draft audit PR #238 merging.
-2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable shortcuts remain, so M6-08 stays **IN_PROGRESS**.
+1. **M6-06:** Option **(C)** adopted 2026-10-19: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. `MO-M6-06-OPERATION-MODAL-1` is not adopted. Close-without-cancel is covered by tests. Native write smoke remains **NOT_RUN**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.
+2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable Copy/Rename shortcuts remain, so M6-08 stays **IN_PROGRESS**.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.
@@ -271,6 +273,7 @@ at **`04725cb3`**. Do not rewrite it.
 | --- | --- |
 | Milestone numbers | [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md) |
 | This status | [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) |
+| M6 exit audit | [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) |
 | M6-06 Drawer acceptance | [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) |
 | M7 exit audit | [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | ADR list | [`ADR_INDEX.md`](./ADR_INDEX.md) |
