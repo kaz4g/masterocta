@@ -24,6 +24,7 @@ PATTERN_UI_QUALIFICATION = FAIL
 PRE_SOURCE_WORK_STRD_DIVERGENCE = PASS
 SOURCE_ONLY_PRECONDITION = CONTAMINATED
 CAPTURE_TRANSPORT_CONFIDENCE = UNKNOWN
+POWER_CYCLE_CONTROL = MISSING
 IMMEDIATE_COPY_TIMING_ATTRIBUTION = INCONCLUSIVE
 POST_COPY_SESSION_CONTINUITY = NOT_PROVEN
 CONTROL_SWITCH_ATTRIBUTION = INCONCLUSIVE
@@ -101,9 +102,20 @@ After working-only edit on Bank A (no Project Save), **`bank01.work` MUST NOT eq
 
 ### Transport
 
-Every stage records `capture_transport`, `capture_required_mode_change`, `capture_may_flush_device_state` (non-empty, not `unknown`), and, when `capture_may_flush_device_state` is `no`, a non-empty `capture_flush_exclusion` that says why this acquisition cannot flush device state. `no` alone is `CAPTURE_TRANSPORT_CONFIDENCE = UNKNOWN`. If acquisition may flush device state, retain bytes but classify `IMMEDIATE_COPY_TIMING_ATTRIBUTION = INCONCLUSIVE` and do not promote Copy timing rules.
+Every stage records `capture_transport`, `capture_required_mode_change`, and `capture_may_flush_device_state` (non-empty, not `unknown`). If acquisition may flush device state, retain bytes but classify `IMMEDIATE_COPY_TIMING_ATTRIBUTION = INCONCLUSIVE` and do not promote Copy timing rules.
 
-Do **not** assume USB disk mode, CF removal, power-off, or Mac mount is non-mutating.
+`capture_may_flush_device_state = no` is accepted only with a **power-cycle control**:
+
+1. `capture_flush_exclusion` starts with the kind `power_cycle_control` (for example `power_cycle_control: S0 recapture after power cycle matched`).
+2. `<root>/control_s0_power_cycle/` exists and contains `project.work`, `project.strd`, and `bank01..04.work/strd` (10 files).
+3. Its `SHA256SUMS.json` verifies (`verify-manifest control_s0_power_cycle`).
+4. All 10 file hashes are byte-identical to `s0_baseline_saved`.
+
+Otherwise `no` is incomplete metadata: `CAPTURE_TRANSPORT_CONFIDENCE = UNKNOWN`. A free-text exclusion without the `power_cycle_control` kind does not pass. The harness reports `POWER_CYCLE_CONTROL` as `VERIFIED`, `MISSING`, `MANIFEST_INVALID`, `MISMATCH`, or `REJECTED`.
+
+The control capture is taken **right after S0** (runbook step E2). The operator powers off the Octatrack, removes the CF card, copies the files into `control_s0_power_cycle/`, reinserts the card, and powers on. No other actions happen in between. The control proves that this acquisition path leaves S0 unchanged. It does not prove that later stages are free of flushes caused by other actions.
+
+Do **not** assume USB disk mode, CF removal, power-off, or Mac mount is non-mutating without this control.
 
 ## Harness
 
@@ -112,6 +124,8 @@ node scripts/pse-bank-copy-state-doc-device-evidence.mjs status
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs analyze
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs write-manifest <stage>
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs verify-manifest <stage>
+node scripts/pse-bank-copy-state-doc-device-evidence.mjs write-manifest control_s0_power_cycle
+node scripts/pse-bank-copy-state-doc-device-evidence.mjs verify-manifest control_s0_power_cycle
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs dataset
 ```
 
@@ -132,6 +146,7 @@ B. Establish distinguishable sentinels on Bank **A** (source) and Bank **D** (de
 C. Select source Bank **A** and a **non-zero** Pattern (preferred UI **A04**, raw `PATTERN=3` — record actual UI + raw). Pattern UI is bank-qualified (`A04`, `B01`, `D01`). An `A` prefix on Bank B or D is rejected.
 D. Explicit **Project Save** (baseline).  
 E. Capture **S0** (+ `save_operation` text).  
+E2. **Power-cycle control, immediately after S0.** Power off the Octatrack, remove the CF card, copy the 10 project/bank files into `control_s0_power_cycle/`, reinsert the card, and power on. Do nothing else. Run `write-manifest control_s0_power_cycle`. If any hash differs from S0, **STOP**: the transport is not proven non-mutating.  
 F. Working-only edit on Bank **A** — **no Project Save** (+ `working_edit_operation`).  
 G. Capture **S1**.  
 H. Verify on acquisition path: **`bank01.work` ≠ `bank01.strd`**.  
