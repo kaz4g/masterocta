@@ -24,6 +24,9 @@ import {
   PINNED_OS_RELEASE,
   PINNED_OS_REVISION,
   PLANNED_CAPTURES,
+  POWER_CYCLE_CONTROL_CAPTURE,
+  POWER_CYCLE_CONTROL_FILES,
+  POWER_CYCLE_CONTROL_KIND,
   REQUIRED_FILES,
   SOURCE_BANK,
   WORK_ID,
@@ -105,7 +108,7 @@ test("S1 work==strd blocks promotion", () => {
     const row = evidenceStatus(root).captures.find((entry) => entry.stage_id === "S1");
     assert.equal(row.capture_status, "REJECTED");
     assert.match(row.error, /bank01\.work != bank01\.strd/);
-    const judged = classifyBankCopyEvidence({ stages: syntheticStages({ s1SourceDiverged: false }) });
+    const judged = classifyBankCopyEvidence(withControl(syntheticStages({ s1SourceDiverged: false })));
     assert.equal(judged.pre_source_work_strd_divergence, "FAIL");
     assert.equal(judged.result, "STOP_WITH_FINDINGS");
   } finally {
@@ -114,26 +117,20 @@ test("S1 work==strd blocks promotion", () => {
 });
 
 test("missing transport metadata blocks semantic attribution", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ destWorkAt: "S2", transport: "unknown" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", transport: "unknown" })));
   assert.equal(judged.immediate_copy_timing_attribution, "INCONCLUSIVE");
   assert.equal(judged.capture_transport_confidence, "UNKNOWN");
   assert.equal(judged.copy_state_doc_rule, "BLOCKED");
 });
 
 test("may-flush transport blocks immediate copy attribution", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ destWorkAt: "S2", mayFlush: "yes" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", mayFlush: "yes" })));
   assert.equal(judged.immediate_copy_timing_attribution, "INCONCLUSIVE");
   assert.equal(judged.capture_transport_confidence, "MAY_FLUSH");
 });
 
 test("recorded transport without a flush exclusion stays unknown", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ destWorkAt: "S2", transport: "recorded", flushExclusion: "" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", transport: "recorded", flushExclusion: "" })));
   assert.equal(judged.capture_transport_confidence, "UNKNOWN");
   assert.equal(judged.immediate_copy_timing_attribution, "INCONCLUSIVE");
   assert.equal(judged.result, "STOP_WITH_FINDINGS");
@@ -142,9 +139,7 @@ test("recorded transport without a flush exclusion stays unknown", () => {
 
 test("ambiguous may-flush values stay unknown", () => {
   assert.equal(parseCaptureMayFlushState({ capture_may_flush_device_state: "maybe" }), "unknown");
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ destWorkAt: "S2", mayFlush: "maybe" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", mayFlush: "maybe" })));
   assert.equal(judged.capture_transport_confidence, "UNKNOWN");
   assert.notEqual(judged.capture_transport_confidence, "PROVEN_NON_MUTATING");
 });
@@ -162,9 +157,7 @@ test("provenance classifier distinguishes source roles", () => {
 });
 
 test("immediate bank copy transition is detected on destination work", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ destWorkAt: "S2", destStrdAt: "S4", transport: "recorded" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", destStrdAt: "S4", transport: "recorded" })));
   assert.equal(judged.pre_source_work_strd_divergence, "PASS");
   assert.equal(judged.dest_work_immediate_change, "YES");
   assert.equal(judged.dest_strd_immediate_change, "NO");
@@ -179,7 +172,7 @@ test("pattern labels must be qualified by the current bank", () => {
   assert.throws(() => parsePatternUiToIndex("A01", "D"), /not bank-qualified for D/);
   assert.throws(() => parsePatternUiToIndex("A01", "B"), /not bank-qualified for B/);
   const stages = syntheticStages({ transport: "recorded", projectBankByStage: { S2: 3 } });
-  const judged = classifyBankCopyEvidence({ stages });
+  const judged = classifyBankCopyEvidence(withControl(stages));
   assert.equal(judged.pattern_ui_qualification, "FAIL");
   assert.equal(judged.result, "STOP_WITH_FINDINGS");
   assert.notEqual(judged.device_capture, "PASS");
@@ -191,7 +184,7 @@ test("destination mutation on the source-only step blocks promotion", () => {
   const contaminated = Buffer.from(s1.files[`${DEST_BANK}.work`]);
   contaminated[0] ^= 0xff;
   s1.files[`${DEST_BANK}.work`] = contaminated;
-  const judged = classifyBankCopyEvidence({ stages });
+  const judged = classifyBankCopyEvidence(withControl(stages));
   assert.equal(judged.source_only_precondition, "CONTAMINATED");
   assert.equal(judged.dest_work_provenance, "INCONCLUSIVE");
   assert.equal(judged.copy_effect_attribution, "INCONCLUSIVE");
@@ -200,9 +193,7 @@ test("destination mutation on the source-only step blocks promotion", () => {
 });
 
 test("post-copy recapture without run continuity is inconclusive", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ transport: "recorded", captureRunId: "" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ transport: "recorded", captureRunId: "" })));
   assert.equal(judged.post_copy_session_continuity, "NOT_PROVEN");
   assert.equal(judged.control_switch_attribution, "INCONCLUSIVE");
   assert.equal(judged.project_save_attribution, "INCONCLUSIVE");
@@ -211,37 +202,29 @@ test("post-copy recapture without run continuity is inconclusive", () => {
 });
 
 test("missing destination sentinel blocks promotion", () => {
-  const judged = classifyBankCopyEvidence({
-    stages: syntheticStages({ transport: "recorded", destinationSentinel: "" }),
-  });
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages({ transport: "recorded", destinationSentinel: "" })));
   assert.equal(judged.destination_ui_sentinel, "NOT_RECORDED");
   assert.equal(judged.result, "STOP_WITH_FINDINGS");
   assert.notEqual(judged.device_capture, "PASS");
 });
 
 test("destination sentinel must be the copied source identity", () => {
-  const matched = classifyBankCopyEvidence({
-    stages: syntheticStages({ transport: "recorded" }),
-  });
+  const matched = classifyBankCopyEvidence(withControl(syntheticStages({ transport: "recorded" })));
   assert.equal(matched.destination_ui_sentinel, "RECORDED");
 
-  const unrelated = classifyBankCopyEvidence({
-    stages: syntheticStages({
+  const unrelated = classifyBankCopyEvidence(withControl(syntheticStages({
       transport: "recorded",
       destinationSentinelByStage: { S2: "DEST-PRIOR", S5: "UNRELATED" },
-    }),
-  });
+    })));
   assert.equal(unrelated.destination_ui_sentinel, "MISMATCH");
   assert.equal(unrelated.result, "STOP_WITH_FINDINGS");
   assert.notEqual(unrelated.device_capture, "PASS");
 
-  const indistinct = classifyBankCopyEvidence({
-    stages: syntheticStages({
+  const indistinct = classifyBankCopyEvidence(withControl(syntheticStages({
       transport: "recorded",
       sourceSentinel: "SAME",
       priorDestinationSentinel: "SAME",
-    }),
-  });
+    })));
   assert.equal(indistinct.destination_ui_sentinel, "NOT_RECORDED");
   assert.notEqual(indistinct.device_capture, "PASS");
 });
@@ -249,7 +232,7 @@ test("destination sentinel must be the copied source identity", () => {
 test("missing S2 copy_operation keeps copy_operation_proven NO", () => {
   const stages = syntheticStages({ destWorkAt: "S2", transport: "recorded" });
   stages[2].meta.copy_operation = "";
-  const judged = classifyBankCopyEvidence({ stages });
+  const judged = classifyBankCopyEvidence(withControl(stages));
   assert.equal(judged.copy_operation_proven, "NO");
 });
 
@@ -267,6 +250,104 @@ test("complete synthetic capture promotes analysis when transport is recorded", 
     assert.equal(analyzeBankCopyEvidence(root).fixture_no_write, "PASS");
     assert.equal(snapshotDeviceBinaryHashes(root), before);
     buildBankCopyDatasetFromFixture(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function statusWithControl(options, adjustControl) {
+  const root = materializeSyntheticCapture({ destWorkAt: "S2", destStrdAt: "S4", transport: "recorded", ...options });
+  try {
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    adjustControl?.(path.join(root, POWER_CYCLE_CONTROL_CAPTURE), root);
+    return evidenceStatus(root);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function assertTransportBlocked(status) {
+  assert.equal(status.capture_transport_confidence, "UNKNOWN");
+  assert.equal(status.immediate_copy_timing_attribution, "INCONCLUSIVE");
+  assert.equal(status.device_evidence_promotion, "BLOCKED");
+  assert.notEqual(status.device_capture, "PASS");
+  assert.equal(status.copy_state_doc_rule, "BLOCKED");
+}
+
+test("power-cycle control identical to S0 proves non-mutating transport", () => {
+  const status = statusWithControl({});
+  assert.equal(status.power_cycle_control, "VERIFIED");
+  assert.equal(status.capture_transport_confidence, "PROVEN_NON_MUTATING");
+  assert.equal(status.immediate_copy_timing_attribution, "PASS");
+  assert.equal(status.copy_state_doc_rule, "BLOCKED");
+});
+
+test("power-cycle control with one differing file keeps transport unknown", () => {
+  const status = statusWithControl({}, (control, root) => {
+    const changed = Buffer.from(readFileSync(path.join(control, "bank03.strd")));
+    changed[changed.length - 1] ^= 0xff;
+    writeFileSync(path.join(control, "bank03.strd"), changed);
+    writeManifest(POWER_CYCLE_CONTROL_CAPTURE, root);
+  });
+  assert.equal(status.power_cycle_control, "MISMATCH");
+  assertTransportBlocked(status);
+});
+
+test("missing power-cycle control directory keeps transport unknown", () => {
+  const status = statusWithControl({ powerCycleControl: false });
+  assert.equal(status.power_cycle_control, "MISSING");
+  assertTransportBlocked(status);
+});
+
+test("power-cycle control with a bad manifest keeps transport unknown", () => {
+  const stale = statusWithControl({}, (control) => {
+    const changed = Buffer.from(readFileSync(path.join(control, "project.strd")));
+    changed[0] ^= 0xff;
+    writeFileSync(path.join(control, "project.strd"), changed);
+  });
+  assert.equal(stale.power_cycle_control, "MANIFEST_INVALID");
+  assertTransportBlocked(stale);
+
+  const malformed = statusWithControl({}, (control) => {
+    writeFileSync(path.join(control, "SHA256SUMS.json"), "{not json");
+  });
+  assert.equal(malformed.power_cycle_control, "MANIFEST_INVALID");
+  assertTransportBlocked(malformed);
+
+  const absent = statusWithControl({}, (control) => {
+    rmSync(path.join(control, "SHA256SUMS.json"));
+  });
+  assert.equal(absent.power_cycle_control, "MANIFEST_INVALID");
+  assertTransportBlocked(absent);
+});
+
+test("free-text flush exclusion without power_cycle_control kind is rejected", () => {
+  const status = statusWithControl({
+    flushExclusion: "Card image was read after the device powered off, so this acquisition cannot flush state.",
+  });
+  assert.equal(status.power_cycle_control, "VERIFIED");
+  assertTransportBlocked(status);
+
+  const lookalike = classifyBankCopyEvidence(withControl(syntheticStages({
+    transport: "recorded",
+    flushExclusion: "power_cycle_controlled by operator",
+  })));
+  assert.equal(lookalike.capture_transport_confidence, "UNKNOWN");
+});
+
+test("control manifest covers exactly the ten project and bank documents", () => {
+  const root = materializeSyntheticCapture({});
+  try {
+    const manifest = verifyManifest(POWER_CYCLE_CONTROL_CAPTURE, root);
+    assert.equal(manifest.ok, true);
+    assert.deepEqual(manifest.recorded_files.map((entry) => entry.path), POWER_CYCLE_CONTROL_FILES);
+    assert.equal(POWER_CYCLE_CONTROL_FILES.length, 10);
+    const script = path.join(SCRIPT_DIR, "pse-bank-copy-state-doc-device-evidence.mjs");
+    const cli = spawnSync(process.execPath, [script, "verify-manifest", POWER_CYCLE_CONTROL_CAPTURE, root], {
+      encoding: "utf8",
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /manifest matches/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -424,9 +505,27 @@ function transportMeta(options) {
     capture_required_mode_change: "no",
     capture_may_flush_device_state: mayFlush,
     capture_flush_exclusion: options.flushExclusion === undefined
-      ? "Card image was read after the device powered off, so this acquisition cannot flush the captured project state."
+      ? `${POWER_CYCLE_CONTROL_KIND}: S0 recaptured after power-off, CF removal, copy, reinsertion, and power-on matched byte-for-byte.`
       : options.flushExclusion,
   };
+}
+
+function withControl(stages, mutate) {
+  const s0 = stages.find((stage) => stage.stage_id === "S0");
+  const files = Object.fromEntries(POWER_CYCLE_CONTROL_FILES.map((name) => [name, Buffer.from(s0.files[name])]));
+  mutate?.(files);
+  return { stages, power_cycle_control: { status: "MANIFEST_VERIFIED", files } };
+}
+
+function materializePowerCycleControl(root) {
+  const source = path.join(root, "s0_baseline_saved");
+  const control = path.join(root, POWER_CYCLE_CONTROL_CAPTURE);
+  mkdirSync(control, { recursive: true });
+  for (const name of POWER_CYCLE_CONTROL_FILES) {
+    writeFileSync(path.join(control, name), readFileSync(path.join(source, name)));
+  }
+  writeManifest(POWER_CYCLE_CONTROL_CAPTURE, root);
+  return control;
 }
 
 function sessionMeta(planned, options) {
@@ -586,6 +685,7 @@ function materializeSyntheticCapture(options = {}) {
       writeFileSync(path.join(dir, name), buf);
     }
   }
+  if (options.powerCycleControl !== false) materializePowerCycleControl(root);
   return root;
 }
 

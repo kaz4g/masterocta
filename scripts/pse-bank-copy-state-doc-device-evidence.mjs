@@ -78,6 +78,10 @@ export const REQUIRED_FILES = [
 
 export const MATRIX_FILES = REQUIRED_FILES.filter((name) => name !== "capture.meta.json");
 
+export const POWER_CYCLE_CONTROL_CAPTURE = "control_s0_power_cycle";
+export const POWER_CYCLE_CONTROL_KIND = "power_cycle_control";
+export const POWER_CYCLE_CONTROL_FILES = MATRIX_FILES;
+
 export const FIXTURE_ROOT = path.join(SCRIPT_DIR, "../src-tauri/tests/fixtures/pse_bank_copy_state_doc");
 
 export const PLANNED_CAPTURES = [
@@ -209,6 +213,14 @@ export function assertPlannedCaptureName(captureName) {
   }
 }
 
+function assertManifestCaptureName(captureName) {
+  if (captureName !== POWER_CYCLE_CONTROL_CAPTURE) assertPlannedCaptureName(captureName);
+}
+
+function manifestFileList(captureName) {
+  return captureName === POWER_CYCLE_CONTROL_CAPTURE ? POWER_CYCLE_CONTROL_FILES : REQUIRED_FILES;
+}
+
 export function metaTemplate(planned) {
   return {
     schema: META_SCHEMA,
@@ -268,7 +280,7 @@ export function assertCanonicalFixtureRoot(root = FIXTURE_ROOT) {
 }
 
 export function resolveCaptureDir(captureName, root = FIXTURE_ROOT) {
-  assertPlannedCaptureName(captureName);
+  assertManifestCaptureName(captureName);
   if (!CAPTURE_NAME.test(captureName)) {
     throw new Error(`Invalid capture name (use [a-z0-9_]+): ${captureName}`);
   }
@@ -343,17 +355,19 @@ function transportMayFlush(meta) {
   return parseCaptureMayFlushState(meta) === "yes";
 }
 
-function flushExclusionRecorded(meta) {
+const POWER_CYCLE_EXCLUSION = new RegExp(`^${POWER_CYCLE_CONTROL_KIND}(?:$|[\\s:;,(-])`);
+
+export function flushExclusionIsPowerCycleControl(meta) {
   const value = meta?.capture_flush_exclusion;
   if (typeof value !== "string") return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized !== "" && normalized !== "unknown" && normalized !== "no" && normalized !== "none";
+  return POWER_CYCLE_EXCLUSION.test(value.trim());
 }
 
-function stageTransportConfidence(meta) {
+function stageTransportConfidence(meta, powerCycleControl) {
   if (!transportRecorded(meta)) return "UNKNOWN";
   if (transportMayFlush(meta)) return "MAY_FLUSH";
-  if (!flushExclusionRecorded(meta)) return "UNKNOWN";
+  if (!flushExclusionIsPowerCycleControl(meta)) return "UNKNOWN";
+  if (powerCycleControl !== "VERIFIED") return "UNKNOWN";
   return "PROVEN_NON_MUTATING";
 }
 
@@ -572,9 +586,9 @@ function sizeCap(name) {
 }
 
 export function buildManifest(captureName, root = FIXTURE_ROOT) {
-  assertPlannedCaptureName(captureName);
+  assertManifestCaptureName(captureName);
   const captureDir = resolveCaptureDir(captureName, root);
-  const files = REQUIRED_FILES.flatMap((name) => {
+  const files = manifestFileList(captureName).flatMap((name) => {
     const full = path.join(captureDir, name);
     const st = assertRegularFile(full, name);
     if (!st) return [];
@@ -630,10 +644,10 @@ export function writeRegularFileAtomic(filePath, contents) {
 }
 
 export function writeManifest(captureName, root = FIXTURE_ROOT) {
-  assertPlannedCaptureName(captureName);
+  assertManifestCaptureName(captureName);
   assertCanonicalFixtureRoot(root);
   const captureDir = resolveCaptureDir(captureName, root);
-  for (const name of REQUIRED_FILES) {
+  for (const name of manifestFileList(captureName)) {
     const st = assertRegularFile(path.join(captureDir, name), name);
     if (!st) throw new Error(`write-manifest requires a regular ${name}`);
   }
@@ -646,7 +660,7 @@ export function writeManifest(captureName, root = FIXTURE_ROOT) {
 }
 
 export function verifyManifest(captureName, root = FIXTURE_ROOT) {
-  assertPlannedCaptureName(captureName);
+  assertManifestCaptureName(captureName);
   const captureDir = resolveCaptureDir(captureName, root);
   const sidecar = path.join(captureDir, "SHA256SUMS.json");
   const st = assertRegularFile(sidecar, "SHA256SUMS.json");
@@ -654,9 +668,10 @@ export function verifyManifest(captureName, root = FIXTURE_ROOT) {
   if (st.size > META_CAP_BYTES) throw new Error("SHA256SUMS.json exceeds its size cap");
   const recorded = JSON.parse(readFileSync(sidecar, "utf8"));
   const fresh = buildManifest(captureName, root);
+  const expectedFiles = manifestFileList(captureName);
   const fileSetOk = Array.isArray(recorded.files)
-    && recorded.files.length === REQUIRED_FILES.length
-    && REQUIRED_FILES.every((name) => recorded.files.some((entry) => entry.path === name));
+    && recorded.files.length === expectedFiles.length
+    && expectedFiles.every((name) => recorded.files.some((entry) => entry.path === name));
   return {
     ok: recorded.schema === MANIFEST_SCHEMA
       && recorded.capture === captureName
@@ -781,6 +796,40 @@ function readStageFilesFromDir(captureDir) {
   return files;
 }
 
+export function loadPowerCycleControl(root = FIXTURE_ROOT) {
+  let captureDir;
+  try {
+    captureDir = resolveCaptureDir(POWER_CYCLE_CONTROL_CAPTURE, root);
+    lstatSync(captureDir);
+  } catch (err) {
+    if (err && err.code === "ENOENT") return { status: "MISSING" };
+    return { status: "REJECTED", error: err.message };
+  }
+  try {
+    if (!verifyManifest(POWER_CYCLE_CONTROL_CAPTURE, root).ok) return { status: "MANIFEST_INVALID" };
+  } catch (err) {
+    return { status: "MANIFEST_INVALID", error: err.message };
+  }
+  const files = {};
+  for (const name of POWER_CYCLE_CONTROL_FILES) {
+    files[name] = readBoundedCaptureFile(captureDir, name);
+  }
+  return { status: "MANIFEST_VERIFIED", files };
+}
+
+export function judgePowerCycleControl(control, baselineStage) {
+  if (!control || typeof control !== "object") return "MISSING";
+  if (control.status !== "MANIFEST_VERIFIED") return control.status ?? "MISSING";
+  const baseline = baselineStage?.files;
+  if (!baseline || !control.files) return "MISMATCH";
+  const identical = POWER_CYCLE_CONTROL_FILES.every((name) => {
+    const before = baseline[name];
+    const after = control.files[name];
+    return Buffer.isBuffer(before) && Buffer.isBuffer(after) && sha256Buffer(before) === sha256Buffer(after);
+  });
+  return identical ? "VERIFIED" : "MISMATCH";
+}
+
 export function buildBankCopyDatasetFromFixture(root, options = {}) {
   if (!sequenceProvenFromMeta(root)) {
     throw new Error("capture sequence is not proven");
@@ -797,7 +846,7 @@ export function buildBankCopyDatasetFromFixture(root, options = {}) {
       files: readStageFilesFromDir(captureDir),
     };
   });
-  return { stages, ...options };
+  return { stages, ...options, power_cycle_control: loadPowerCycleControl(root) };
 }
 
 export function buildTransitionMatrix(stages) {
@@ -890,6 +939,7 @@ export function classifyBankCopyEvidence(dataset) {
     ...frozenPolicyFields(),
     device_capture: "NOT_RUN",
     capture_transport_confidence: "UNKNOWN",
+    power_cycle_control: "NOT_RUN",
     pre_source_work_strd_divergence: "NOT_RUN",
     immediate_copy_timing_attribution: "NOT_RUN",
     copy_operation_proven: "NO",
@@ -946,7 +996,8 @@ export function classifyBankCopyEvidence(dataset) {
   shell.post_copy_session_continuity = postCopySessionContinuity(stages);
   shell.destination_ui_sentinel = destinationSentinelStatus(stages);
   shell.pattern_ui_qualification = patternUiQualification(stages);
-  const transportConfidences = stages.map((stage) => stageTransportConfidence(stage.meta));
+  shell.power_cycle_control = judgePowerCycleControl(dataset.power_cycle_control, byId.S0);
+  const transportConfidences = stages.map((stage) => stageTransportConfidence(stage.meta, shell.power_cycle_control));
   const osMismatch = stages.some((stage) => {
     try {
       assertPinnedFirmware(stage.meta);
