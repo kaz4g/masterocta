@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Read-only receptacle for native Octatrack Bank Copy on P_BANK_COPY_STATE.
+ * Read-only receptacle for native Octatrack pattern copy/paste (source bank A to
+ * destination bank D) on P_BANK_COPY_STATE. The device cannot copy whole banks;
+ * stage names keep their historical "bank_copy" spelling for compatibility.
  *
  * status / analyze / verify-manifest do not write bank bytes.
  * write-manifest writes SHA256SUMS.json only.
@@ -49,7 +51,9 @@ export function setBankDecodeValidator(fn) {
 export const META_SCHEMA = "masterocta.pse-bank-copy-state-doc-capture:v1";
 export const MANIFEST_SCHEMA = "masterocta-pse-bank-copy-state-doc-manifest:v1";
 export const WORK_ID = "MO-PSE-BANK-COPY-STATE-DOC-DEVICE-EVIDENCE-1";
-export const OPERATION_KIND = "NATIVE_BANK_COPY";
+export const OPERATION_KIND = "pattern_copy_paste";
+export const LEGACY_OPERATION_KIND = "NATIVE_BANK_COPY";
+const ACCEPTED_OPERATION_KINDS = new Set([OPERATION_KIND, LEGACY_OPERATION_KIND]);
 export const PROJECT_NAME = "P_BANK_COPY_STATE";
 
 const PROJECT_WORK_CAP_BYTES = 1024 * 1024;
@@ -207,6 +211,39 @@ export function parseProjectStatesSection(text) {
   return { ok: true, bank, pattern };
 }
 
+const PROJECT_POSITION_KEYS = new Set(["BANK", "PATTERN"]);
+
+/**
+ * Compare two project.work documents line by line.
+ * POSITION_ONLY: the only differing lines are the current-position keys
+ * (BANK / PATTERN) inside a single well-formed [STATES] section.
+ */
+export function classifyProjectWorkChange(before, after) {
+  if (!Buffer.isBuffer(before) || !Buffer.isBuffer(after)) return "OTHER";
+  if (buffersEqual(before, after)) return "UNCHANGED";
+  const beforeText = before.toString("latin1");
+  const afterText = after.toString("latin1");
+  if (!parseProjectStatesSection(beforeText).ok || !parseProjectStatesSection(afterText).ok) return "OTHER";
+  const left = beforeText.split("\n");
+  const right = afterText.split("\n");
+  if (left.length !== right.length) return "OTHER";
+  let inStates = false;
+  for (let index = 0; index < left.length; index += 1) {
+    const marker = left[index].replace(/\r$/, "").trim();
+    if (marker === "[STATES]") inStates = true;
+    else if (marker === "[/STATES]") inStates = false;
+    if (left[index] === right[index]) continue;
+    if (!inStates) return "OTHER";
+    const leftMatch = left[index].match(/^([A-Z_]+)=[0-9]+\r?$/);
+    const rightMatch = right[index].match(/^([A-Z_]+)=[0-9]+\r?$/);
+    if (!leftMatch || !rightMatch || leftMatch[1] !== rightMatch[1] || !PROJECT_POSITION_KEYS.has(leftMatch[1])) {
+      return "OTHER";
+    }
+    if (left[index].endsWith("\r") !== right[index].endsWith("\r")) return "OTHER";
+  }
+  return "POSITION_ONLY";
+}
+
 export function assertPlannedCaptureName(captureName) {
   if (!plannedCapture(captureName)) {
     throw new Error(`Not a planned capture: ${captureName}`);
@@ -242,6 +279,8 @@ export function metaTemplate(planned) {
     untouched_bank_ui: "C",
     current_bank_ui: "",
     current_pattern_ui: "",
+    source_pattern: "",
+    destination_pattern: "",
     save_operation: "",
     working_edit_operation: "",
     copy_operation: "",
@@ -258,7 +297,7 @@ export function metaTemplate(planned) {
     destination_ui_sentinel: "",
     capture_date: "",
     operator_note:
-      "TEMPLATE. Native Bank Copy A→D on disposable P_BANK_COPY_STATE. Keep device_generated false until operator confirms sequence, OS, S1 divergence, transport, and sentinels.",
+      "TEMPLATE. Native pattern copy/paste from Bank A to Bank D on disposable P_BANK_COPY_STATE. Keep device_generated false until operator confirms sequence, OS, S1 divergence, transport, and sentinels.",
   };
 }
 
@@ -464,6 +503,31 @@ export function parsePatternUiToIndex(label, bankUi) {
   return index;
 }
 
+export function assertOperationKind(meta) {
+  const value = meta?.operation_kind;
+  if (value === undefined || value === null || value === "") return;
+  if (!ACCEPTED_OPERATION_KINDS.has(value)) {
+    throw new Error(`operation_kind must be ${OPERATION_KIND} when recorded`);
+  }
+}
+
+/** source_pattern / destination_pattern are optional; when recorded they must be bank-qualified. */
+export function assertCopyPatternRoles(meta) {
+  for (const [key, bankKey] of [["source_pattern", "source_bank_ui"], ["destination_pattern", "destination_bank_ui"]]) {
+    if (!nonEmptyString(meta?.[key])) continue;
+    try {
+      parsePatternUiToIndex(meta[key], meta[bankKey]);
+    } catch (err) {
+      throw new Error(`${key} is invalid (${err.message})`);
+    }
+  }
+}
+
+function recordedCopyPattern(stage, key) {
+  const value = stage?.meta?.[key];
+  return nonEmptyString(value) ? value.trim().toUpperCase() : "NOT_RECORDED";
+}
+
 export function assertUiMatchesProjectStates(meta, states) {
   if (!states.ok) throw new Error("project.work [STATES] must contain one BANK and one PATTERN in 0..15");
   const bank = parseBankUiToIndex(meta.current_bank_ui);
@@ -529,7 +593,7 @@ function nonEmptyString(value) {
 function provenanceReady(meta, planned, captureDir) {
   if (meta.device_generated !== true) return false;
   if (meta.schema !== META_SCHEMA) throw new Error("capture schema mismatch");
-  if (meta.operation_kind !== OPERATION_KIND) throw new Error("operation_kind is not native bank copy");
+  assertOperationKind(meta);
   if (meta.capture_sequence_proven !== true) throw new Error("capture sequence is not proven");
   if (meta.work_id !== WORK_ID) throw new Error("capture provenance is incomplete");
   if (meta.stage_id !== planned.stage_id || meta.stage_semantics !== planned.stage_semantics) {
@@ -547,6 +611,7 @@ function provenanceReady(meta, planned, captureDir) {
   ) {
     throw new Error("bank roles do not match the receptacle");
   }
+  assertCopyPatternRoles(meta);
   for (const key of ["os_revision", "os_release", "capture_date", "operator_note", "current_bank_ui", "current_pattern_ui"]) {
     if (!nonEmptyString(meta[key])) throw new Error("capture provenance is incomplete");
   }
@@ -901,14 +966,37 @@ function changedOnTransition(matrix, transitionLabel, fileName) {
   return cell.changed ? "YES" : "NO";
 }
 
-function sourceOnlyPrecondition(matrix) {
+function sourceOnlyProjectWorkChange(stages) {
+  const s0 = stages.find((stage) => stage.stage_id === "S0");
+  const s1 = stages.find((stage) => stage.stage_id === "S1");
+  return classifyProjectWorkChange(s0?.files?.["project.work"], s1?.files?.["project.work"]);
+}
+
+function sourceOnlyPrecondition(matrix, projectWorkChange) {
   const transition = matrix.transitions.find((entry) => entry.transition === "SOURCE_WORKING_ONLY_EDIT");
   if (!transition) return "NOT_RUN";
-  const unexpected = transition.cells.filter((cell) => cell.changed && cell.file !== `${SOURCE_BANK}.work`);
+  const unexpected = transition.cells.filter((cell) => {
+    if (!cell.changed || cell.file === `${SOURCE_BANK}.work`) return false;
+    return !(cell.file === "project.work" && projectWorkChange === "POSITION_ONLY");
+  });
   if (unexpected.length > 0) return "CONTAMINATED";
   const sourceWork = transition.cells.find((cell) => cell.file === `${SOURCE_BANK}.work`);
   if (!sourceWork?.changed) return "NOT_PROVEN";
   return "PASS";
+}
+
+/**
+ * Pattern copy/paste may leave the destination bank .work untouched until the
+ * device switches away from the pasted bank; that deferred write is expected.
+ */
+function destWorkWriteTiming(matrix) {
+  const atPaste = changedOnTransition(matrix, "NATIVE_BANK_COPY", `${DEST_BANK}.work`);
+  if (atPaste === "YES") return { timing: "ON_PASTE", written_stage: "S2" };
+  if (atPaste === "NO" && changedOnTransition(matrix, "CONTROL_SWITCH", `${DEST_BANK}.work`) === "YES") {
+    return { timing: "DEFERRED_TO_BANK_SWITCH", written_stage: "S3" };
+  }
+  if (atPaste === "NO") return { timing: "NOT_WRITTEN_BY_BANK_SWITCH", written_stage: null };
+  return { timing: "INCONCLUSIVE", written_stage: null };
 }
 
 function patternUiQualification(stages) {
@@ -956,6 +1044,10 @@ export function classifyBankCopyEvidence(dataset) {
     copy_project_bank_effect: "INCONCLUSIVE",
     copy_project_pattern_effect: "INCONCLUSIVE",
     source_only_precondition: "NOT_RUN",
+    source_only_project_work_change: "NOT_RUN",
+    dest_work_write_timing: "NOT_RUN",
+    copy_source_pattern: "NOT_RECORDED",
+    copy_destination_pattern: "NOT_RECORDED",
     post_copy_session_continuity: "NOT_PROVEN",
     control_switch_attribution: "INCONCLUSIVE",
     project_save_attribution: "INCONCLUSIVE",
@@ -992,7 +1084,12 @@ export function classifyBankCopyEvidence(dataset) {
   }
   shell.dest_work_first_changed_at = matrix.dest_work_first_changed_at;
   shell.dest_strd_first_changed_at = matrix.dest_strd_first_changed_at;
-  shell.source_only_precondition = sourceOnlyPrecondition(matrix);
+  shell.source_only_project_work_change = sourceOnlyProjectWorkChange(stages);
+  shell.source_only_precondition = sourceOnlyPrecondition(matrix, shell.source_only_project_work_change);
+  const destWrite = destWorkWriteTiming(matrix);
+  shell.dest_work_write_timing = destWrite.timing;
+  shell.copy_source_pattern = recordedCopyPattern(byId.S2, "source_pattern");
+  shell.copy_destination_pattern = recordedCopyPattern(byId.S2, "destination_pattern");
   shell.post_copy_session_continuity = postCopySessionContinuity(stages);
   shell.destination_ui_sentinel = destinationSentinelStatus(stages);
   shell.pattern_ui_qualification = patternUiQualification(stages);
@@ -1044,7 +1141,8 @@ export function classifyBankCopyEvidence(dataset) {
     && shell.pattern_ui_qualification === "PASS";
   if (s2 && copyAttributable) {
     shell.copy_effect_attribution = "ATTRIBUTED";
-    shell.dest_work_provenance = classifyByteProvenance(s2.files[`${DEST_BANK}.work`], {
+    const destWorkStage = byId[destWrite.written_stage] ?? s2;
+    shell.dest_work_provenance = classifyByteProvenance(destWorkStage.files[`${DEST_BANK}.work`], {
       SOURCE_WORKING: s1Work,
       SOURCE_SAVEDCHECKPOINT: s1Strd,
       PRIOR_DESTINATION_WORKING: s1.files[`${DEST_BANK}.work`],

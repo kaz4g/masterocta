@@ -19,6 +19,7 @@ import {
   ADJACENT_TRANSITIONS,
   DEST_BANK,
   FIXTURE_ROOT,
+  LEGACY_OPERATION_KIND,
   META_SCHEMA,
   OPERATION_KIND,
   PINNED_OS_RELEASE,
@@ -31,12 +32,15 @@ import {
   SOURCE_BANK,
   WORK_ID,
   analyzeBankCopyEvidence,
+  assertCopyPatternRoles,
+  assertOperationKind,
   assertPlannedCaptureName,
   buildBankCopyDatasetFromFixture,
   buildManifest,
   buildTransitionMatrix,
   classifyBankCopyEvidence,
   classifyByteProvenance,
+  classifyProjectWorkChange,
   evidenceStatus,
   metaTemplate,
   parseCaptureMayFlushState,
@@ -481,6 +485,181 @@ test("buildTransitionMatrix reports hash-only changes", () => {
   assert.equal(control.cells.find((cell) => cell.file === `${DEST_BANK}.work`).changed, true);
 });
 
+function fullProjectText({ bank = 0, pattern = 3, part = 0, tempo = "120", eol = "\n", indentBank = "" } = {}) {
+  return [
+    "[META]",
+    "TYPE=OCTATRACK DPS-1 PROJECT",
+    "[/META]",
+    "[SETTINGS]",
+    `TEMPO=${tempo}`,
+    "[/SETTINGS]",
+    "[STATES]",
+    `${indentBank}BANK=${bank}`,
+    `PATTERN=${pattern}`,
+    "ARRANGEMENT=0",
+    `PART=${part}`,
+    "TRACK=0",
+    "[/STATES]",
+    "",
+  ].join(eol);
+}
+
+const latin1 = (text) => Buffer.from(text, "latin1");
+
+test("project.work change classifier isolates current-position lines", () => {
+  const base = latin1(fullProjectText());
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText())), "UNCHANGED");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ pattern: 4 }))), "POSITION_ONLY");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ bank: 3, pattern: 0 }))), "POSITION_ONLY");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ part: 1 }))), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ pattern: 4, tempo: "121" }))), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ eol: "\r\n" }))), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ indentBank: " " }))), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, latin1(`${fullProjectText()}EXTRA=1\n`)), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, latin1(fullProjectText({ pattern: 16 }))), "OTHER");
+  assert.equal(classifyProjectWorkChange(base, undefined), "OTHER");
+  const crlf = latin1(fullProjectText({ eol: "\r\n" }));
+  assert.equal(classifyProjectWorkChange(crlf, latin1(fullProjectText({ eol: "\r\n", pattern: 5 }))), "POSITION_ONLY");
+});
+
+test("S1 gate allows a position-only project.work change", () => {
+  const options = {
+    transport: "recorded",
+    projectWorkByStage: Object.fromEntries(PLANNED_CAPTURES.map((planned) => [
+      planned.stage_id,
+      fullProjectText({ pattern: planned.stage_id === "S0" ? 3 : 4 }),
+    ])),
+    metaByStage: Object.fromEntries(PLANNED_CAPTURES.filter((planned) => planned.stage_id !== "S0")
+      .map((planned) => [planned.stage_id, { current_pattern_ui: "A05" }])),
+  };
+  const judged = classifyBankCopyEvidence(withControl(syntheticStages(options)));
+  assert.equal(judged.source_only_project_work_change, "POSITION_ONLY");
+  assert.equal(judged.source_only_precondition, "PASS");
+  assert.equal(judged.pattern_ui_qualification, "PASS");
+  assert.equal(judged.copy_effect_attribution, "ATTRIBUTED");
+
+  const root = materializeSyntheticCapture({ ...options, destWorkAt: "S2", destStrdAt: "S4" });
+  try {
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const status = evidenceStatus(root);
+    assert.equal(status.source_only_precondition, "PASS");
+    assert.equal(status.device_capture, "PASS");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("S1 gate rejects any other project.work change", () => {
+  for (const s1Text of [
+    fullProjectText({ part: 1 }),
+    fullProjectText({ pattern: 3, tempo: "121" }),
+    fullProjectText({ eol: "\r\n" }),
+  ]) {
+    const projectWorkByStage = Object.fromEntries(PLANNED_CAPTURES.map((planned) => [
+      planned.stage_id,
+      planned.stage_id === "S0" ? fullProjectText() : s1Text,
+    ]));
+    const judged = classifyBankCopyEvidence(withControl(syntheticStages({ transport: "recorded", projectWorkByStage })));
+    assert.equal(judged.source_only_project_work_change, "OTHER");
+    assert.equal(judged.source_only_precondition, "CONTAMINATED");
+    assert.equal(judged.copy_effect_attribution, "INCONCLUSIVE");
+    assert.notEqual(judged.device_capture, "PASS");
+  }
+});
+
+test("S1 gate still rejects a project.strd change", () => {
+  const stages = syntheticStages({ transport: "recorded" });
+  const s1 = stages.find((stage) => stage.stage_id === "S1");
+  s1.files["project.strd"] = latin1(projectText(0, 4));
+  const judged = classifyBankCopyEvidence(withControl(stages));
+  assert.equal(judged.source_only_project_work_change, "UNCHANGED");
+  assert.equal(judged.source_only_precondition, "CONTAMINATED");
+});
+
+test("operation_kind is optional and accepts pattern_copy_paste or the legacy value", () => {
+  assert.equal(OPERATION_KIND, "pattern_copy_paste");
+  for (const value of [undefined, "", OPERATION_KIND, LEGACY_OPERATION_KIND]) {
+    assert.doesNotThrow(() => assertOperationKind({ operation_kind: value }));
+  }
+  assert.throws(() => assertOperationKind({ operation_kind: "bank_copy" }), /pattern_copy_paste/);
+
+  for (const meta of [{ operation_kind: LEGACY_OPERATION_KIND }, { operation_kind: undefined }]) {
+    const root = materializeSyntheticCapture({ meta });
+    try {
+      for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+      assert.equal(evidenceStatus(root).device_capture, "PASS");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  const root = materializeSyntheticCapture({ meta: { operation_kind: "bank_copy" } });
+  try {
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const status = evidenceStatus(root);
+    assert.equal(status.device_capture, "REJECTED");
+    assert.match(status.captures[0].error, /operation_kind/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("source and destination pattern fields are optional and bank-qualified", () => {
+  assert.doesNotThrow(() => assertCopyPatternRoles(metaTemplate(PLANNED_CAPTURES[0])));
+  const roles = { source_bank_ui: "A", destination_bank_ui: "D" };
+  assert.doesNotThrow(() => assertCopyPatternRoles({ ...roles, source_pattern: "A04", destination_pattern: "D01" }));
+  assert.throws(() => assertCopyPatternRoles({ ...roles, source_pattern: "D04" }), /source_pattern is invalid/);
+  assert.throws(() => assertCopyPatternRoles({ ...roles, destination_pattern: "A01" }), /destination_pattern is invalid/);
+  assert.throws(() => assertCopyPatternRoles({ ...roles, destination_pattern: "D17" }), /destination_pattern is invalid/);
+
+  const unrecorded = classifyBankCopyEvidence(withControl(syntheticStages({ transport: "recorded" })));
+  assert.equal(unrecorded.copy_source_pattern, "NOT_RECORDED");
+  assert.equal(unrecorded.copy_destination_pattern, "NOT_RECORDED");
+  const recorded = classifyBankCopyEvidence(withControl(syntheticStages({
+    transport: "recorded",
+    meta: { source_pattern: "A04", destination_pattern: "d01" },
+  })));
+  assert.equal(recorded.copy_source_pattern, "A04");
+  assert.equal(recorded.copy_destination_pattern, "D01");
+
+  const root = materializeSyntheticCapture({ metaByStage: { S2: { destination_pattern: "A01" } } });
+  try {
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const row = evidenceStatus(root).captures.find((entry) => entry.stage_id === "S2");
+    assert.equal(row.capture_status, "REJECTED");
+    assert.match(row.error, /destination_pattern is invalid/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("destination .work written on bank switch is expected, not an error", () => {
+  const immediate = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S2", destStrdAt: "S4" })));
+  const deferred = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S3", destStrdAt: "S4" })));
+  assert.equal(immediate.dest_work_write_timing, "ON_PASTE");
+  assert.equal(deferred.dest_work_write_timing, "DEFERRED_TO_BANK_SWITCH");
+  assert.equal(deferred.dest_work_immediate_change, "NO");
+  assert.equal(deferred.dest_work_first_changed_at, "CONTROL_SWITCH");
+  assert.equal(deferred.dest_work_provenance, "SOURCE_WORKING");
+  assert.equal(deferred.dest_strd_immediate_change, "NO");
+  assert.equal(deferred.result, immediate.result);
+  assert.equal(deferred.device_capture, immediate.device_capture);
+  assert.equal(deferred.device_capture, "PASS");
+
+  const root = materializeSyntheticCapture({ destWorkAt: "S3", destStrdAt: "S4" });
+  try {
+    for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+    const status = evidenceStatus(root);
+    assert.equal(status.dest_work_write_timing, "DEFERRED_TO_BANK_SWITCH");
+    assert.equal(status.device_capture, "PASS");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  const never = classifyBankCopyEvidence(withControl(syntheticStages({ destWorkAt: "S4", destStrdAt: "S4" })));
+  assert.equal(never.dest_work_write_timing, "NOT_WRITTEN_BY_BANK_SWITCH");
+});
+
 function projectText(bankRaw, patternRaw = 3) {
   return `[STATES]\nBANK=${bankRaw}\nPATTERN=${patternRaw}\n[/STATES]\n`;
 }
@@ -564,7 +743,8 @@ function diskStageFiles(planned, options = {}) {
   for (const name of REQUIRED_FILES) {
     if (name === "capture.meta.json") continue;
     if (name === "project.work") {
-      files[name] = Buffer.from(projectText(projectBank, projectPattern), "latin1");
+      const override = options.projectWorkByStage?.[planned.stage_id];
+      files[name] = Buffer.from(override ?? projectText(projectBank, projectPattern), "latin1");
       continue;
     }
     files[name] = readFixture(FIXTURE_S0, name);
@@ -637,15 +817,19 @@ function syntheticStages(options = {}) {
       os_revision: "R0173",
       os_release: "1.40",
       capture_date: "2026-10-17",
-      operator_note: "synthetic bank copy capture",
+      operator_note: "synthetic pattern copy/paste capture",
       current_bank_ui: "A",
       current_pattern_ui: "A04",
       save_operation: planned.stage_id === "S0" || planned.stage_id === "S4" ? "Explicit project save" : "",
       working_edit_operation: planned.stage_id === "S1" ? "Small working-only edit on Bank A" : "",
-      copy_operation: planned.stage_id === "S2" ? "Native Bank Copy A to D" : "",
+      copy_operation: planned.stage_id === "S2" ? "Pattern copy/paste A04 to D01" : "",
       control_switch_operation: planned.stage_id === "S3" ? "Switch to control Bank B" : "",
       reload_operation: planned.stage_id === "S5" ? "Project reload" : "",
+      ...(options.meta ?? {}),
+      ...(options.metaByStage?.[planned.stage_id] ?? {}),
     };
+    const projectOverride = options.projectWorkByStage?.[planned.stage_id];
+    if (projectOverride !== undefined) files["project.work"] = Buffer.from(projectOverride, "latin1");
     return {
       capture_name: planned.name,
       stage_id: planned.stage_id,
@@ -669,14 +853,16 @@ function materializeSyntheticCapture(options = {}) {
       os_revision: PINNED_OS_REVISION,
       os_release: PINNED_OS_RELEASE,
       capture_date: "2026-10-17",
-      operator_note: "synthetic bank copy capture",
+      operator_note: "synthetic pattern copy/paste capture",
       current_bank_ui: "A",
       current_pattern_ui: "A04",
       save_operation: planned.stage_id === "S0" || planned.stage_id === "S4" ? "Explicit project save" : "",
       working_edit_operation: planned.stage_id === "S1" ? "Small working-only edit on Bank A" : "",
-      copy_operation: planned.stage_id === "S2" ? "Native Bank Copy A to D" : "",
+      copy_operation: planned.stage_id === "S2" ? "Pattern copy/paste A04 to D01" : "",
       control_switch_operation: planned.stage_id === "S3" ? "Switch to control Bank B" : "",
       reload_operation: planned.stage_id === "S5" ? "Project reload" : "",
+      ...(options.meta ?? {}),
+      ...(options.metaByStage?.[planned.stage_id] ?? {}),
     };
     const dir = path.join(root, planned.name);
     mkdirSync(dir, { recursive: true });
