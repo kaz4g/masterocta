@@ -1,4 +1,9 @@
-# Native Bank Copy state-document device evidence
+# Native pattern copy/paste state-document device evidence
+
+The Octatrack cannot copy a whole bank. The device operation under test is a
+native **pattern copy/paste** from a pattern in Bank A to a pattern in Bank D.
+Stage names and identifiers that still say `bank_copy` / `NATIVE_BANK_COPY` are
+kept for compatibility with existing captures.
 
 Work ID: `MO-PSE-BANK-COPY-STATE-DOC-DEVICE-EVIDENCE-1`  
 GitHub: [#217](https://github.com/kaz4g/masterocta/issues/217) (child of [#181](https://github.com/kaz4g/masterocta/issues/181))  
@@ -59,7 +64,7 @@ without device bytes.
 
 Answer on disposable Octatrack MkII (`R0173` / `1.40`) only:
 
-1. Native **Bank Copy A → D** — which destination roles change (`bank04.work`, `bank04.strd`)?
+1. Native **pattern copy/paste A → D** — which destination roles change (`bank04.work`, `bank04.strd`)?
 2. If `bank04.strd` changes — provenance vs source `.work`, source `.strd`, prior destination, or other?
 3. Effect on `project.work` `[STATES] BANK` / `PATTERN`?
 4. First attributable persistence transition: `NATIVE_BANK_COPY`, `CONTROL_SWITCH`, `PROJECT_SAVE`, `PROJECT_RELOAD`?
@@ -83,7 +88,7 @@ Do not reuse [`pse_bank_copy_persistence/`](../../src-tauri/tests/fixtures/pse_b
 | --- | --- |
 | `META_SCHEMA` | `masterocta.pse-bank-copy-state-doc-capture:v1` |
 | `MANIFEST_SCHEMA` | `masterocta-pse-bank-copy-state-doc-manifest:v1` |
-| `OPERATION_KIND` | `NATIVE_BANK_COPY` |
+| `OPERATION_KIND` | `pattern_copy_paste` (legacy `NATIVE_BANK_COPY` still accepted) |
 
 ## Stages
 
@@ -98,7 +103,48 @@ Do not reuse [`pse_bank_copy_persistence/`](../../src-tauri/tests/fixtures/pse_b
 
 ### S1 hard gate
 
-After working-only edit on Bank A (no Project Save), **`bank01.work` MUST NOT equal `bank01.strd`** on the acquisition path. If equal: **STOP** — do not perform Bank Copy; record `PRE_SOURCE_ROLE_DIVERGENCE = NOT_PROVEN`.
+After working-only edit on Bank A (no Project Save), **`bank01.work` MUST NOT equal `bank01.strd`** on the acquisition path. If equal: **STOP** — do not perform the pattern copy/paste; record `PRE_SOURCE_ROLE_DIVERGENCE = NOT_PROVEN`.
+
+`project.work` may also differ between S0 and S1, but **only** in the
+current-position lines inside `[STATES]` (`BANK=<n>` and `PATTERN=<n>`). Every
+other line must be byte-identical, including line endings. Any other
+`project.work` change, and any change to `project.strd` or to a bank file other
+than `bank01.work`, keeps `SOURCE_ONLY_PRECONDITION = CONTAMINATED`. The harness
+reports the comparison as `SOURCE_ONLY_PROJECT_WORK_CHANGE`
+(`UNCHANGED`, `POSITION_ONLY`, or `OTHER`).
+
+### Optional copy/paste metadata
+
+| Field | Values |
+| --- | --- |
+| `operation_kind` | Optional. `pattern_copy_paste`; legacy `NATIVE_BANK_COPY` is still accepted. Any other value is rejected. |
+| `source_pattern` | Optional. Bank-qualified pattern label on the source bank (for example `A04`). |
+| `destination_pattern` | Optional. Bank-qualified pattern label on the destination bank (for example `D01`). |
+
+Empty pattern fields mean "not recorded". The S2 values are reported as
+`COPY_SOURCE_PATTERN` / `COPY_DESTINATION_PATTERN`.
+
+### Destination write timing
+
+On-device observation: pattern copy/paste transfers the source pattern's unsaved
+working content. The pasted destination pattern in the destination `.work`
+matches the source pattern from the source `.work` (including an unsaved edit)
+and differs from the source `.strd`. Only the pasted pattern changes in the
+destination `.work`; `.strd` files stay unchanged until project save.
+
+The destination `.work` may be written either immediately (S2) or only when the
+device switches away from the pasted bank (S3). Both are expected. The harness
+reports `DEST_WORK_WRITE_TIMING`:
+
+| Value | Meaning |
+| --- | --- |
+| `ON_PASTE` | Destination `.work` changed between S1 and S2. |
+| `DEFERRED_TO_BANK_SWITCH` | Unchanged at S2, changed at S3 (written on bank switch). Expected; not an error. |
+| `NOT_WRITTEN_BY_BANK_SWITCH` | Unchanged at both S2 and S3. |
+
+Destination `.work` provenance is classified from the stage where it was written
+(S2 or S3). The comparison is whole-file, so a single-pattern paste usually
+reports `DERIVED_OTHER`; pattern-level comparison is not part of this harness.
 
 ### Transport
 
@@ -151,7 +197,7 @@ F. Working-only edit on Bank **A** — **no Project Save** (+ `working_edit_oper
 G. Capture **S1**.  
 H. Verify on acquisition path: **`bank01.work` ≠ `bank01.strd`**.  
 I. If equality persists: **STOP** (do not copy).  
-J. Native **Bank Copy A → D** (+ exact `copy_operation` free text).  
+J. Native **pattern copy/paste** from a Bank **A** pattern to a Bank **D** pattern (+ exact `copy_operation` free text; optionally `source_pattern` / `destination_pattern`).  
 K. Capture **S2** before control switch / Save / Reload.  
 L. Switch to control Bank **B** (+ `control_switch_operation`).  
 M. Capture **S3**.  
@@ -166,7 +212,7 @@ S. Rebuild and verify all manifests; set `device_generated` / `capture_sequence_
 
 | Question | Observation (this run) |
 | --- | --- |
-| Destination roles on Copy | Stored S1→S2 diffs show `bank04.work` and `bank04.strd` both differ. **COPY_EFFECT_ATTRIBUTION = INCONCLUSIVE** (contaminated S0→S1, unknown transport, sentinel not recorded). |
+| Destination roles on copy/paste | Stored S1→S2 diffs show `bank04.work` and `bank04.strd` both differ. **COPY_EFFECT_ATTRIBUTION = INCONCLUSIVE** (contaminated S0→S1, unknown transport, sentinel not recorded). |
 | Destination UI sentinel | **NOT_RECORDED** at S2 and S5. Hash changes alone do not show that the source sentinel was visible on Bank D or survived reload. |
 | First persistence transition | Not attributed. The first stored hash difference vs S1 is the S2 directory; that is not a proven `NATIVE_BANK_COPY` persistence time. |
 | Byte provenance vs source | **INCONCLUSIVE**. |
