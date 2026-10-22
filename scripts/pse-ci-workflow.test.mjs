@@ -59,6 +59,12 @@ describe("pse-ci workflow contract", () => {
     assert.match(workflow, /scripts\/pse-bank-mutation-guard\.test\.mjs/);
   });
 
+  it("runs the bank-copy state-document evidence contract in script-contracts", () => {
+    const job = /\n  script-contracts:\n([\s\S]*?)(?=\n  [a-z-]+:\n)/.exec(workflow);
+    assert.ok(job, "script-contracts job is missing");
+    assert.match(job[1], /node --test [^\n]*scripts\/pse-bank-copy-state-doc-device-evidence\.test\.mjs/);
+  });
+
   it("does not launch a signed release or Gate C candidate build", () => {
     assert.doesNotMatch(workflow, /gate-c-candidate/);
     assert.doesNotMatch(workflow, /tauri build/);
