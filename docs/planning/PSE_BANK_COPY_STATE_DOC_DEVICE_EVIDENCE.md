@@ -11,6 +11,49 @@ Classification parent: [`PSE_BANK_STATE_DOC_SEMANTICS_2.md`](./PSE_BANK_STATE_DO
 
 Base SHA: [`4eaf4ce9d3421786cd2c058bcb0333398522498a`](https://github.com/kaz4g/masterocta/commit/4eaf4ce9d3421786cd2c058bcb0333398522498a) (`main` after PR #235)
 
+
+## Mixed-session recovery (read-only raw audit)
+
+The 2026-10-19 operator root contains S0–S2 from an earlier recording and
+recaptured S3–S5 without a proven continuation from S2. It must not be
+represented as one continuous six-stage device session.
+
+The harness now offers an **independent raw-snapshot audit** for these existing
+bytes. For the operator's known boundary before S3:
+
+```bash
+CAPTURE_ROOT="$HOME/octa-captures/P_BANK_COPY_STATE"
+node scripts/pse-bank-copy-state-doc-device-evidence.mjs audit-mixed "$CAPTURE_ROOT" S3
+```
+
+The final `S3` is a read-only operator declaration that S3 starts another
+recording. If stages have different non-empty `capture_run_id` values, the
+audit also detects the boundary automatically. Blank run IDs **do not**
+establish continuity. No `capture.meta.json`, device binary or
+`SHA256SUMS.json` is changed.
+
+- `raw_snapshot_integrity = PASS` means all six **individual** snapshots
+  match their manifests, provenance envelope, pinned OS and bank decode.
+  It does **not** mean that the sequence or paste provenance is proven.
+- Each stage reports `ui_consistency` separately; legacy S2–S5 labels like
+  `A01` on Banks D and B are reported `MISMATCH`, never silently corrected.
+- `session_partitions` split the recorded stages. The S2→S3 transition is
+  `CROSS_SESSION_NOT_COMPARABLE`; its `changed_files` is null, not an
+  invented device-operation difference.
+- The audit reports S1 `.work` versus `.strd` divergence and raw S1→S2
+  destination file changes. Whole-Bank hashes **cannot** establish which
+  source Pattern content was pasted.
+- `working_content_transfer = NOT_PROVEN_BY_THIS_AUDIT`,
+  `device_evidence_promotion = BLOCKED` and Bank Apply stays forbidden.
+  The operator's observation that a Pattern Paste transfers unsaved working
+  content is not contradicted, but cannot become a formal state-document
+  rule from this mixed recording.
+
+Run the strict `analyze` command separately for canonical gating. The
+existing S2–S5 metadata, unexplained S0→S1 destination change, missing
+non-mutating transport control and missing UI sentinels still prevent
+formal promotion. A valid future complete capture must satisfy those gates.
+
 ## Judgment (Phase B — operator capture revalidated)
 
 Operator-local bytes: `~/octa-captures/P_BANK_COPY_STATE/` (not committed). S3/S4/S5
