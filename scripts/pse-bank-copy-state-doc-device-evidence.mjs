@@ -856,7 +856,7 @@ function readStageFilesFromDir(captureDir) {
   for (const name of MATRIX_FILES) {
     const st = assertRegularFile(path.join(captureDir, name), name);
     if (!st) throw new Error(`missing ${name}`);
-    files[name] = readFileSync(path.join(captureDir, name));
+    files[name] = readBoundedCaptureFile(captureDir, name);
   }
   return files;
 }
@@ -1239,6 +1239,161 @@ export function analyzeBankCopyEvidence(root = FIXTURE_ROOT) {
   return { ...status, fixture_no_write: "PASS" };
 }
 
+/**
+ * Audit the *stored bytes*, not the device operation, when stage directories
+ * contain captures from more than one native session.
+ *
+ * A verified snapshot proves only schema / device / manifest / decodability.
+ * It intentionally does not waive operator UI, transport, sentinel, source-only,
+ * or session-continuity requirements used by evidenceStatus().
+ *
+ * split_before_stage is a non-persistent operator declaration: it never edits
+ * capture.meta.json, manifest files, device bytes, or domain readiness.
+ */
+export function auditMixedCapture(root = FIXTURE_ROOT, { split_before_stage = null } = {}) {
+  if (split_before_stage !== null && !PLANNED_CAPTURES.slice(1).some((entry) => entry.stage_id === split_before_stage)) {
+    throw new Error("split_before_stage must be S1, S2, S3, S4, or S5");
+  }
+  const captured = PLANNED_CAPTURES.map((planned) => {
+    const entry = {
+      capture_name: planned.name,
+      stage_id: planned.stage_id,
+      raw_snapshot: "REJECTED",
+      manifest_verified: false,
+      capture_run_id: null,
+      ui_consistency: "NOT_EVALUATED",
+    };
+    try {
+      const dir = resolveCaptureDir(planned.name, root);
+      const meta = readMeta(dir);
+      if (
+        meta.schema !== META_SCHEMA || meta.work_id !== WORK_ID
+        || meta.stage_id !== planned.stage_id || meta.stage_semantics !== planned.stage_semantics
+        || meta.project_name !== PROJECT_NAME || meta.device !== "Octatrack MkII"
+        || meta.device_generated !== true
+      ) {
+        throw new Error("snapshot provenance metadata is incomplete");
+      }
+      assertPinnedFirmware(meta);
+      assertOperationKind(meta);
+      assertCopyPatternRoles(meta);
+      if (!verifyManifest(planned.name, root).ok) throw new Error("SHA256SUMS.json is stale");
+      assertAllBankDocumentsDecodable(dir);
+      const files = readStageFilesFromDir(dir);
+      const states = parseProjectStatesSection(files["project.work"].toString("latin1"));
+      if (!states.ok) throw new Error("project.work [STATES] is invalid");
+      let uiConsistency = "MATCH";
+      try {
+        assertUiMatchesProjectStates(meta, states);
+      } catch {
+        uiConsistency = "MISMATCH";
+      }
+      return {
+        ...entry,
+        raw_snapshot: "VERIFIED",
+        manifest_verified: true,
+        capture_run_id: sentinelValue(meta, "capture_run_id"),
+        ui_consistency: uiConsistency,
+        project_state: { bank: states.bank, pattern: states.pattern },
+        recorded_ui: {
+          bank: meta.current_bank_ui ?? null,
+          pattern: meta.current_pattern_ui ?? null,
+        },
+        meta,
+        files,
+      };
+    } catch (err) {
+      return { ...entry, error: err.message };
+    }
+  });
+  const partitions = [];
+  const transitions = [];
+  let segment = null;
+  for (let index = 0; index < captured.length; index += 1) {
+    const current = captured[index];
+    const previous = captured[index - 1] ?? null;
+    const isDeclaredBoundary = current.stage_id === split_before_stage;
+    const isRunIdBoundary = !!(
+      previous?.capture_run_id && current.capture_run_id
+      && previous.capture_run_id !== current.capture_run_id
+    );
+    if (!segment || isDeclaredBoundary || isRunIdBoundary) {
+      segment = { segment_id: `segment_${partitions.length + 1}`, stage_ids: [] };
+      partitions.push(segment);
+    }
+    segment.stage_ids.push(current.stage_id);
+    if (!previous) continue;
+    const edge = ADJACENT_TRANSITIONS[index - 1];
+    if (isDeclaredBoundary || isRunIdBoundary) {
+      transitions.push({
+        transition: edge.label,
+        from: previous.stage_id,
+        to: current.stage_id,
+        attribution: "CROSS_SESSION_NOT_COMPARABLE",
+        changed_files: null,
+      });
+      continue;
+    }
+    if (previous.raw_snapshot !== "VERIFIED" || current.raw_snapshot !== "VERIFIED") {
+      transitions.push({
+        transition: edge.label,
+        from: previous.stage_id,
+        to: current.stage_id,
+        attribution: "UNAVAILABLE",
+        changed_files: null,
+      });
+      continue;
+    }
+    const sameRecordedRun = previous.capture_run_id && current.capture_run_id
+      && previous.capture_run_id === current.capture_run_id
+      && continuesFromPreviousStage(current.meta);
+    transitions.push({
+      transition: edge.label,
+      from: previous.stage_id,
+      to: current.stage_id,
+      attribution: sameRecordedRun ? "SAME_RUN_METADATA_RECORDED" : "RAW_DIFF_ONLY",
+      changed_files: MATRIX_FILES.filter((name) => !buffersEqual(previous.files[name], current.files[name])),
+    });
+  }
+  const s0 = captured[0];
+  const s1 = captured[1];
+  const sourceEdit = transitions[0];
+  const paste = transitions[1];
+  const sourceWorkChanged = s1.raw_snapshot === "VERIFIED" && !buffersEqual(
+    s1.files[`${SOURCE_BANK}.work`], s1.files[`${SOURCE_BANK}.strd`],
+  );
+  const projectWorkChange = s0.raw_snapshot === "VERIFIED" && s1.raw_snapshot === "VERIFIED"
+    ? classifyProjectWorkChange(s0.files["project.work"], s1.files["project.work"])
+    : "NOT_EVALUATED";
+  const unexpectedSourceFiles = sourceEdit?.changed_files?.filter((name) =>
+    name !== `${SOURCE_BANK}.work` && !(name === "project.work" && projectWorkChange === "POSITION_ONLY")
+  ) ?? null;
+  const snapshots = captured.map(({ meta: _meta, files: _files, ...entry }) => entry);
+  const allVerified = snapshots.every((entry) => entry.raw_snapshot === "VERIFIED");
+  return {
+    ...frozenPolicyFields(),
+    audit_mode: "MIXED_SESSION_RAW_SNAPSHOT",
+    operator_declared_split_before: split_before_stage,
+    raw_snapshot_integrity: allVerified ? "PASS" : "FAIL",
+    device_evidence_promotion: "BLOCKED",
+    copy_effect_attribution: "INCONCLUSIVE",
+    working_content_transfer: "NOT_PROVEN_BY_THIS_AUDIT",
+    result: allVerified ? "RAW_AUDIT_COMPLETE" : "RAW_AUDIT_INCOMPLETE",
+    snapshots,
+    session_partitions: partitions,
+    transitions,
+    raw_observations: {
+      s1_source_work_differs_from_saved: s1.raw_snapshot === "VERIFIED"
+        ? (sourceWorkChanged ? "YES" : "NO") : "NOT_EVALUATED",
+      source_edit_unexpected_changed_files: unexpectedSourceFiles,
+      s1_to_s2_destination_work_changed: paste?.changed_files
+        ? (paste.changed_files.includes(`${DEST_BANK}.work`) ? "YES" : "NO") : "NOT_EVALUATED",
+      s1_to_s2_destination_saved_changed: paste?.changed_files
+        ? (paste.changed_files.includes(`${DEST_BANK}.strd`) ? "YES" : "NO") : "NOT_EVALUATED",
+    },
+  };
+}
+
 export function buildBankCopyDatasetCommand(root = FIXTURE_ROOT) {
   if (!sequenceProvenFromMeta(root)) {
     throw new Error("capture sequence is not proven");
@@ -1257,6 +1412,12 @@ function main() {
     }
     if (command === "analyze") {
       console.log(JSON.stringify(analyzeBankCopyEvidence(root), null, 2));
+      return;
+    }
+    if (command === "audit-mixed") {
+      const audit = auditMixedCapture(root, { split_before_stage: arg2 || null });
+      console.log(JSON.stringify(audit, null, 2));
+      if (audit.raw_snapshot_integrity !== "PASS") process.exitCode = 1;
       return;
     }
     if (command === "dataset") {
