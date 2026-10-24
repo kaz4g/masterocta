@@ -32,6 +32,7 @@ import {
   SOURCE_BANK,
   WORK_ID,
   analyzeBankCopyEvidence,
+  auditMixedCapture,
   assertCopyPatternRoles,
   assertOperationKind,
   assertPlannedCaptureName,
@@ -139,6 +140,124 @@ test("recorded transport without a flush exclusion stays unknown", () => {
   assert.equal(judged.immediate_copy_timing_attribution, "INCONCLUSIVE");
   assert.equal(judged.result, "STOP_WITH_FINDINGS");
   assert.notEqual(judged.device_capture, "PASS");
+});
+
+
+/**
+ * Regression for operator captures accidentally assembled from two device
+ * sessions. A read-only hash audit may complete even when the canonical
+ * evidence/attribution gates intentionally refuse promotion.
+ */
+function materializeMixedSessionFixture() {
+  const root = materializeSyntheticCapture({
+    destWorkAt: "S2",
+    destStrdAt: "S2",
+    powerCycleControl: false,
+    projectWorkByStage: {
+      S2: projectText(3, 0),
+      S3: projectText(1, 0),
+      S4: projectText(1, 0),
+      S5: projectText(1, 0),
+    },
+    metaByStage: {
+      S2: { current_bank_ui: "D", current_pattern_ui: "A01" },
+      S3: { capture_run_id: "second-session", current_bank_ui: "B", current_pattern_ui: "A01" },
+      S4: { capture_run_id: "second-session", current_bank_ui: "B", current_pattern_ui: "A01" },
+      S5: { capture_run_id: "second-session", current_bank_ui: "B", current_pattern_ui: "A01" },
+    },
+  });
+  // Replicate the unexplained destination .work mutation during source edit.
+  const name = path.join(root, "s1_source_working_diverged_pre_copy", "bank04.work");
+  const data = Buffer.from(readFileSync(name));
+  data[100] ^= 0x25;
+  writeFileSync(name, data);
+  for (const planned of PLANNED_CAPTURES) writeManifest(planned.name, root);
+  return root;
+}
+
+test("mixed-session audit passes raw integrity but never promotes invalid device evidence", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    const before = snapshotTree(root);
+    const audit = auditMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(audit.raw_snapshot_integrity, "PASS");
+    assert.equal(audit.result, "RAW_AUDIT_COMPLETE");
+    assert.equal(audit.device_evidence_promotion, "BLOCKED");
+    assert.equal(audit.working_content_transfer, "NOT_PROVEN_BY_THIS_AUDIT");
+    assert.equal(audit.snapshots.length, 6);
+    assert.ok(audit.snapshots.every((entry) => entry.raw_snapshot === "VERIFIED"));
+    assert.equal(audit.snapshots[2].ui_consistency, "MISMATCH");
+    assert.deepEqual(audit.session_partitions.map((entry) => entry.stage_ids), [
+      ["S0", "S1", "S2"], ["S3", "S4", "S5"],
+    ]);
+    assert.equal(audit.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(audit.transitions[2].changed_files, null);
+    assert.equal(audit.raw_observations.s1_source_work_differs_from_saved, "YES");
+    assert.ok(audit.raw_observations.source_edit_unexpected_changed_files.includes("bank04.work"));
+    assert.equal(audit.raw_observations.s1_to_s2_destination_work_changed, "YES");
+    const canonical = evidenceStatus(root);
+    assert.equal(canonical.device_capture, "REJECTED");
+    assert.equal(canonical.device_evidence_promotion, "BLOCKED");
+    assert.equal(snapshotTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("mixed-session audit finds boundary from conflicting run ids without operator override", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    const audit = auditMixedCapture(root);
+    assert.equal(audit.raw_snapshot_integrity, "PASS");
+    assert.equal(audit.operator_declared_split_before, null);
+    assert.equal(audit.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(audit.device_evidence_promotion, "BLOCKED");
+    assert.throws(() => auditMixedCapture(root, { split_before_stage: "S0" }), /split_before_stage/);
+    assert.throws(() => auditMixedCapture(root, { split_before_stage: "S6" }), /split_before_stage/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("legacy blank run ids remain unproven even with a declared session boundary", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    for (const planned of PLANNED_CAPTURES) {
+      const file = path.join(root, planned.name, "capture.meta.json");
+      const meta = JSON.parse(readFileSync(file, "utf8"));
+      meta.capture_run_id = "";
+      writeFileSync(file, `${JSON.stringify(meta, null, 2)}\n`);
+      writeManifest(planned.name, root);
+    }
+    const audit = auditMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(audit.raw_snapshot_integrity, "PASS");
+    assert.equal(audit.transitions[0].attribution, "RAW_DIFF_ONLY");
+    assert.equal(audit.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(audit.device_evidence_promotion, "BLOCKED");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("mixed-session audit rejects a stale manifest without rewriting captures", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    const file = path.join(root, "s2_immediately_after_bank_copy", "bank04.work");
+    const data = Buffer.from(readFileSync(file));
+    data[100] ^= 0x33;
+    writeFileSync(file, data);
+    const before = snapshotTree(root);
+    const audit = auditMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(audit.raw_snapshot_integrity, "FAIL");
+    assert.equal(audit.snapshots[2].raw_snapshot, "REJECTED");
+    assert.match(audit.snapshots[2].error, /stale/);
+    assert.equal(audit.transitions[1].attribution, "UNAVAILABLE");
+    assert.equal(audit.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(audit.device_evidence_promotion, "BLOCKED");
+    assert.equal(snapshotTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("ambiguous may-flush values stay unknown", () => {
