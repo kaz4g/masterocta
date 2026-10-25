@@ -246,3 +246,13 @@ LEGACY_BANK_WRITER = DISABLED
 
 - [`PSE_BANK_STATE_DOC_SEMANTICS.md`](./PSE_BANK_STATE_DOC_SEMANTICS.md) — semantics-1 audit (still valid as historical contract baseline)
 - [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md) — not edited
+
+## P_BANK_COPY_STATE salvage closure (2026-10-25)
+
+Addendum. The classification and the blocked rules in this file are unchanged.
+
+`MO-PSE-BANK-COPY-STATE-DOC-DEVICE-EVIDENCE-1` ended in **STOP_WITH_FINDINGS**. The 2026-10-25 read-only inspection closed salvage of operator capture `P_BANK_COPY_STATE`: stage-root bytes are absent, S0 has no manifest, S1–S5 recorded hashes do not match the nested device bytes for `project`, `bank01`, and `bank04`, and S0–S2 are not one session with S3–S5. Details: [`PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE.md`](./PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE.md) §Salvage closure.
+
+`COPY_STATE_DOC_RULE`, `MOVE_STATE_DOC_RULE`, and `SWAP_STATE_DOC_RULE` stay **BLOCKED**. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. The separate Pattern Paste observation stays recorded and is not promoted to a Bank operation rule. `ISSUE_217_CLOSE_READY = NO`. `BANK_CHANGEPLAN_READINESS = NOT_READY`. `APPLY_AUTHORIZED = NO`.
+
+No further repair of that capture is in scope. A new disposable device capture, if authorized later, is a separate task before any Bank write implementation.

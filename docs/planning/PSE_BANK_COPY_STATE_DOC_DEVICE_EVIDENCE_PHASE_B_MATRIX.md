@@ -188,3 +188,33 @@ Changed files: **0** / 10
 - bank04.strd first differs from stored S1 at the stored S2 directory
 
 **COPY_EFFECT_ATTRIBUTION = INCONCLUSIVE.** The source-only step already changed `bank04.work`, transport flush exclusion is absent, and no destination UI sentinel is recorded.
+
+## Salvage closure (2026-10-25)
+
+Addendum only. The hash tables above stay the 2026-10-19 stored-directory record. They are not replaced, recomputed, or treated as a manifest for the bytes now on disk.
+
+Read-only `inspect-mixed` on `~/octa-captures/P_BANK_COPY_STATE` (PR #245, merge `ba8156ec`) found no project or bank document at the stage roots (`0/60` device files). S0 has no `SHA256SUMS.json`. S1–S5 manifests are stale against those missing stage-root paths. The capture tree's mode, size, and mtime set was unchanged by the inspection.
+
+Current device bytes sit under each stage at `P_BANK_COPY_STATE3/` and were not moved. Compared read-only with the S1–S5 manifests, `bank02` and `bank03` (`.work` and `.strd`) match the recorded digests, including historical `bank02.work` `5e073a5435039df19d77249b42f80de6704b532febec008c34f96c05ce9e6312`. `project`, `bank01`, and `bank04` do not match. Nested `project.work` is 3054 bytes; the tables above record 3327 bytes. The repository fixture receptacle was not used to fill the gap.
+
+S0–S2 and S3–S5 remain separate sessions (`POST_COPY_SESSION_CONTINUITY = NOT_PROVEN`). Pattern Paste working-content transfer stays a separate recorded observation. It does not settle Bank Copy, Move, or Swap.
+
+```text
+DEVICE_CAPTURE = REJECTED
+DEVICE_EVIDENCE_PROMOTION = BLOCKED
+RAW_SNAPSHOT_INTEGRITY = UNVERIFIED
+RESULT = STOP_WITH_FINDINGS
+
+WORKING_CONTENT_TRANSFER_OBSERVATION = RECORDED
+COPY_SAVED_CHECKPOINT_SEMANTICS = UNKNOWN
+
+COPY_STATE_DOC_RULE = BLOCKED
+MOVE_STATE_DOC_RULE = BLOCKED
+SWAP_STATE_DOC_RULE = BLOCKED
+
+ISSUE_217_CLOSE_READY = NO
+BANK_CHANGEPLAN_READINESS = NOT_READY
+APPLY_AUTHORIZED = NO
+```
+
+These keys are document audit items. No runtime schema change. Salvage of this capture is closed.

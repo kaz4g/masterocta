@@ -339,3 +339,55 @@ DEVICE_EVIDENCE_PROMOTION = BLOCKED
 BANK_MUTATION_ENVELOPE = NO
 APPLY = NO
 ```
+
+## Salvage closure (2026-10-25)
+
+This section is an addendum. The Phase B judgment above, the 2026-10-19 hash rows in [`PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE_PHASE_B_MATRIX.md`](./PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE_PHASE_B_MATRIX.md), and the Pattern Paste observation in [`PSE_PATTERN_PASTE_PERSISTENCE.md`](./PSE_PATTERN_PASTE_PERSISTENCE.md) are not rewritten.
+
+Work ID: `MO-PSE-BANK-COPY-STATE-DOC-SALVAGE-STOP-1`.
+Parent: [#217](https://github.com/kaz4g/masterocta/issues/217).
+Diagnostic command: PR [#245](https://github.com/kaz4g/masterocta/pull/245), merge `ba8156eca748ef385db1cebcdc7e9ee7fd4d3dee`.
+
+`inspect-mixed` was run read-only against the operator root `~/octa-captures/P_BANK_COPY_STATE` with the declared split `S3`. The capture tree was not modified: 442 non-`.DS_Store` entries kept the same mode, size, and mtime before and after the command.
+
+The command is a report, not acceptance. It reported `inspection_report_generated=YES`, `stage_bytes_readable=0/6`, `device_files_readable=0/60`, `manifests_verified=0/6`, `raw_snapshot_integrity=UNVERIFIED`, `device_evidence_promotion=BLOCKED`, and `result=INSPECTION_REPORT_ONLY_NOT_EVIDENCE`.
+
+- S0 `SHA256SUMS.json` is missing (`manifest_status=MISSING`).
+- S1–S5 are `STALE_OTHER_OR_FILESET` and `METADATA_ONLY`. Each of the ten project/bank documents is `MISSING_CURRENT_FILE` at the stage root. The harness does not search child directories.
+- The operator declaration splits S0–S2 from S3–S5 (`CROSS_SESSION_NOT_COMPARABLE` on S2→S3). `capture_run_id` is absent on all six `capture.meta.json` files, so the bytes do not prove one session. Phase B already records `POST_COPY_SESSION_CONTINUITY = NOT_PROVEN`. This closure treats the two groups as separate sessions. They are not one continuous experiment.
+- The device bytes are nested at `<stage>/P_BANK_COPY_STATE3/`. They were not moved up to the stage root.
+
+A separate read-only compare of those nested ten documents with the S1–S5 manifests did not rewrite any file:
+
+- `bank02.work`, `bank02.strd`, `bank03.work`, and `bank03.strd` match the recorded digests. Nested `bank02.work` also equals the historical matrix digest `5e073a5435039df19d77249b42f80de6704b532febec008c34f96c05ce9e6312`.
+- `project.work`, `project.strd`, `bank01.work`, `bank01.strd`, `bank04.work`, and `bank04.strd` do not match. Nested `project.work` is 3054 bytes. The 2026-10-19 matrix records `project.work` at 3327 bytes. Those matrix rows stay as the historical directory diff.
+- S0 has no manifest, so its nested bytes are unauthenticated.
+- `bank02` and `bank03` are byte-identical to each other in the nested tree. That stored equality is not a Copy, Move, or Swap rule.
+
+`src-tauri/tests/fixtures/pse_bank_copy_state_doc/` remains the empty receptacle (README only). No fixture was copied in to fill a missing stage file, and no mismatched hash was regenerated.
+
+The Pattern Paste sequence on disposable `P_BANK_PERSIST` stays a recorded observation that unsaved working content can be transferred by Pattern Paste. That observation is not evidence for Bank Copy, Move, or Swap. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**.
+
+The diagnostic note above, which mentions a separate working copy only when a candidate SHA-256 matches a recorded manifest, does not authorize repair of this capture. Salvage of `P_BANK_COPY_STATE` is closed. A new disposable capture, if any, is a separate task before any Bank write implementation.
+
+The keys below are document audit items. They are not added to a runtime schema.
+
+```text
+DEVICE_CAPTURE = REJECTED
+DEVICE_EVIDENCE_PROMOTION = BLOCKED
+RAW_SNAPSHOT_INTEGRITY = UNVERIFIED
+RESULT = STOP_WITH_FINDINGS
+
+WORKING_CONTENT_TRANSFER_OBSERVATION = RECORDED
+COPY_SAVED_CHECKPOINT_SEMANTICS = UNKNOWN
+
+COPY_STATE_DOC_RULE = BLOCKED
+MOVE_STATE_DOC_RULE = BLOCKED
+SWAP_STATE_DOC_RULE = BLOCKED
+
+ISSUE_217_CLOSE_READY = NO
+BANK_CHANGEPLAN_READINESS = NOT_READY
+APPLY_AUTHORIZED = NO
+```
+
+`#217` and `#181` stay **OPEN**. No Bank Apply path is authorized.
