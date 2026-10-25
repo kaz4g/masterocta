@@ -38,7 +38,10 @@ node scripts/pse-bank-copy-state-doc-device-evidence.mjs \
   `manifest_discrepancies` and `missing_files` stage by stage.
 - `inspection_status=BYTES_READABLE` means all required stage files are
   regular and fit size caps; `PARTIAL_BYTES` means some are absent.
-  Neither claims semantic decodability (separately `bank_semantic_decode=NOT_RUN`).
+  `METADATA_ONLY` means none of the ten device documents are present, even
+  though the metadata file exists. `device_files_readable` counts actual
+  stage files (e.g. `0/60` across six stages).
+  None of these labels claims semantic decodability (`bank_semantic_decode=NOT_RUN`).
 - Byte comparisons within stored stage directories are
   `UNVERIFIED_STORED_BYTE_DIFF_ONLY`. They must not be presented as
   attributable device events. Cross-session S2→S3 remains
@@ -46,6 +49,20 @@ node scripts/pse-bank-copy-state-doc-device-evidence.mjs \
 - `raw_snapshot_integrity=UNVERIFIED`, `device_evidence_promotion=BLOCKED`,
   `copy_effect_attribution=INCONCLUSIVE` and
   `working_content_transfer=NOT_PROVEN_BY_THIS_INSPECTION` remain explicit.
+
+If all stages are `METADATA_ONLY`, check whether the original binary documents
+are located elsewhere, without modifying the capture tree:
+
+```bash
+find "$HOME/octa-captures" -maxdepth 10 -type f \
+  \( -name 'project.work' -o -name 'bank01.work' -o -name 'bank04.work' \) -print
+```
+
+A missing file is not a hash mismatch; there are no current bytes to compare.
+Do not copy an arbitrary candidate into the capture directory: first confirm
+its SHA-256 matches the recorded manifest and stage provenance. Preserve the
+original and reconstruct, if possible, in a separate versioned working copy.
+
 
 If the report says `project.work` is missing, find the actual original
 stage path before building any **separate** versioned working copy. Do not
