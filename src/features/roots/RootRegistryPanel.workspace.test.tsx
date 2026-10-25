@@ -10,7 +10,7 @@ import {
   DEFAULT_SOURCES_SPLIT_PERCENT,
   PANE_SPLIT_STORAGE_KEY,
 } from "./paneSplitStorage";
-import { OPERATION_SHORTCUT_STORAGE_KEY } from "../workspace/operationShortcutStorage";
+import { OPERATION_SHORTCUT_STORAGE_KEY, resetOperationShortcutSession } from "../workspace/operationShortcutStorage";
 import { RootRegistryPanel } from "./RootRegistryPanel";
 
 function fakeChangeApi(): ChangeApi {
@@ -161,11 +161,13 @@ function mockSplitRect(element: HTMLElement, width = 200) {
 
 describe("RootRegistryPanel workspace layout", () => {
   beforeEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
     window.localStorage.removeItem(OPERATION_SHORTCUT_STORAGE_KEY);
   });
 
   afterEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
     window.localStorage.removeItem(OPERATION_SHORTCUT_STORAGE_KEY);
   });

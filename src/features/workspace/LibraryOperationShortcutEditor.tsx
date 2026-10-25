@@ -26,14 +26,19 @@ function errorKey(error: ShortcutAssignError): "operations.shortcutInvalid"
   }
 }
 
-export function LibraryOperationShortcutEditor() {
+export function LibraryOperationShortcutEditor({ open }: { open: boolean }) {
   const t = useTranslate();
   const [settings, setSettings] = useState<OperationShortcutSettings>(() => readOperationShortcuts());
   const [recording, setRecording] = useState<OperationShortcutAction | null>(null);
   const [error, setError] = useState<ShortcutAssignError | null>(null);
 
   useEffect(() => {
-    if (recording === null) return undefined;
+    if (open) return;
+    setRecording(null);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || recording === null) return undefined;
     const action = recording;
     function onKeyDown(event: KeyboardEvent) {
       event.preventDefault();
@@ -56,7 +61,7 @@ export function LibraryOperationShortcutEditor() {
     }
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [recording, settings]);
+  }, [open, recording, settings]);
 
   function chordLabel(action: OperationShortcutAction): string {
     const chord = settings[action];

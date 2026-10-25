@@ -113,7 +113,7 @@ export function OperationsDrawerHost({
 
   const body: ReactNode = (
     <>
-      <LibraryOperationShortcutEditor />
+      <LibraryOperationShortcutEditor open={open} />
       <div {...sectionProps(open && kind === "clone")}>
         <CloneOperatorPanel
           session={session}

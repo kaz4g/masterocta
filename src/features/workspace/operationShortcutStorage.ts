@@ -164,7 +164,17 @@ export function parseOperationShortcuts(raw: string | null | undefined): Operati
   }
 }
 
-export function readOperationShortcuts(): OperationShortcutSettings {
+function cloneSettings(value: OperationShortcutSettings): OperationShortcutSettings {
+  return {
+    copy: value.copy === null ? null : { ...value.copy },
+    rename: value.rename === null ? null : { ...value.rename },
+  };
+}
+
+/** Session bindings. Null until the first read loads localStorage. */
+let activeSettings: OperationShortcutSettings | null = null;
+
+function loadStoredOperationShortcuts(): OperationShortcutSettings {
   try {
     return parseOperationShortcuts(window.localStorage.getItem(OPERATION_SHORTCUT_STORAGE_KEY));
   } catch {
@@ -172,12 +182,30 @@ export function readOperationShortcuts(): OperationShortcutSettings {
   }
 }
 
+/**
+ * Bindings used by the editor and the library key listener.
+ * The first call loads localStorage. Later calls return the session value,
+ * including a change whose localStorage write failed.
+ */
+export function readOperationShortcuts(): OperationShortcutSettings {
+  if (activeSettings === null) {
+    activeSettings = cloneSettings(loadStoredOperationShortcuts());
+  }
+  return cloneSettings(activeSettings);
+}
+
+/** Drop the session cache so the next read loads localStorage again. */
+export function resetOperationShortcutSession(): void {
+  activeSettings = null;
+}
+
 export function writeOperationShortcuts(value: OperationShortcutSettings): OperationShortcutSettings {
-  const next = parseOperationShortcuts(JSON.stringify({
+  const next = cloneSettings(parseOperationShortcuts(JSON.stringify({
     schema: OPERATION_SHORTCUT_SCHEMA,
     copy: value.copy,
     rename: value.rename,
-  }));
+  })));
+  activeSettings = cloneSettings(next);
   try {
     window.localStorage.setItem(
       OPERATION_SHORTCUT_STORAGE_KEY,
@@ -188,9 +216,9 @@ export function writeOperationShortcuts(value: OperationShortcutSettings): Opera
       }),
     );
   } catch {
-    // Persistence is best-effort; the in-session chord still applies.
+    // The session binding stays in activeSettings. A restart loads the last stored value.
   }
-  return next;
+  return cloneSettings(activeSettings);
 }
 
 export function tryAssignOperationShortcut(

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LocaleProvider } from "../../i18n/LocaleProvider";
 import { tJa } from "../../i18n/testStrings";
 import { LibraryOperationShortcutEditor } from "./LibraryOperationShortcutEditor";
@@ -7,10 +7,13 @@ import {
   DEFAULT_OPERATION_SHORTCUTS,
   OPERATION_SHORTCUT_SCHEMA,
   OPERATION_SHORTCUT_STORAGE_KEY,
+  clearOperationShortcut,
   formatOperationChord,
   parseOperationShortcuts,
   readOperationShortcuts,
+  resetOperationShortcutSession,
   resolveLibraryOperationShortcut,
+  tryAssignOperationShortcut,
   type OperationChord,
 } from "./operationShortcutStorage";
 
@@ -41,6 +44,7 @@ function keyEvent(
 
 describe("operation shortcut storage", () => {
   beforeEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.clear();
   });
 
@@ -137,19 +141,79 @@ describe("operation shortcut storage", () => {
       repeat: true,
     }, settings, { blocked: false, drawerOpen: false })).toBeNull();
   });
+
+  it("keeps the session chord when localStorage.setItem throws", () => {
+    const stored = JSON.stringify({
+      schema: OPERATION_SHORTCUT_SCHEMA,
+      copy: DEFAULT_OPERATION_SHORTCUTS.copy,
+      rename: DEFAULT_OPERATION_SHORTCUTS.rename,
+    });
+    window.localStorage.setItem(OPERATION_SHORTCUT_STORAGE_KEY, stored);
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("quota");
+    });
+    try {
+      const assigned = tryAssignOperationShortcut(readOperationShortcuts(), "copy", {
+        code: "Digit1",
+        key: "1",
+        altKey: true,
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+      });
+      expect(assigned.ok).toBe(true);
+      const active = readOperationShortcuts();
+      expect(active.copy).toEqual({
+        code: "Digit1",
+        alt: true,
+        shift: false,
+        ctrl: false,
+        meta: false,
+      });
+      const button = document.createElement("button");
+      expect(resolveLibraryOperationShortcut(
+        keyEvent(button, active.copy!),
+        active,
+        { blocked: false, drawerOpen: false },
+      )).toBe("copy");
+      expect(resolveLibraryOperationShortcut(
+        keyEvent(button, DEFAULT_OPERATION_SHORTCUTS.copy!),
+        active,
+        { blocked: false, drawerOpen: false },
+      )).toBeNull();
+      expect(window.localStorage.getItem(OPERATION_SHORTCUT_STORAGE_KEY)).toBe(stored);
+
+      const cleared = clearOperationShortcut(active, "copy");
+      expect(cleared.copy).toBeNull();
+      expect(readOperationShortcuts().copy).toBeNull();
+      expect(resolveLibraryOperationShortcut(
+        keyEvent(button, DEFAULT_OPERATION_SHORTCUTS.copy!),
+        readOperationShortcuts(),
+        { blocked: false, drawerOpen: false },
+      )).toBeNull();
+      expect(window.localStorage.getItem(OPERATION_SHORTCUT_STORAGE_KEY)).toBe(stored);
+    } finally {
+      setItem.mockRestore();
+    }
+  });
 });
 
 describe("LibraryOperationShortcutEditor", () => {
   beforeEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.clear();
   });
 
-  function renderEditor() {
-    return render(
+  function editor(open: boolean) {
+    return (
       <LocaleProvider initialLocaleId="ja">
-        <LibraryOperationShortcutEditor />
-      </LocaleProvider>,
+        <LibraryOperationShortcutEditor open={open} />
+      </LocaleProvider>
     );
+  }
+
+  function renderEditor(open = true) {
+    return render(editor(open));
   }
 
   it("changes a shortcut and keeps it after remount", () => {
@@ -185,5 +249,25 @@ describe("LibraryOperationShortcutEditor", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(tJa("operations.shortcutConflict"));
     expect(readOperationShortcuts().copy?.code).toBe("KeyC");
     expect(readOperationShortcuts().rename?.code).toBe("KeyR");
+  });
+
+  it("stops recording when the drawer closes", () => {
+    const view = renderEditor(true);
+    fireEvent.click(screen.getByRole("button", { name: tJa("operations.shortcutRecordCopy") }));
+    expect(screen.getByRole("button", { name: tJa("operations.shortcutRecording"), pressed: true })).toBeTruthy();
+    view.rerender(editor(false));
+    const event = new KeyboardEvent("keydown", {
+      code: "Digit1",
+      key: "1",
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.getByTestId("operation-shortcut-copy")).toHaveTextContent("Alt+Shift+C");
+    expect(readOperationShortcuts().copy?.code).toBe("KeyC");
+    view.rerender(editor(true));
+    expect(screen.getByRole("button", { name: tJa("operations.shortcutRecordCopy"), pressed: false })).toBeTruthy();
   });
 });

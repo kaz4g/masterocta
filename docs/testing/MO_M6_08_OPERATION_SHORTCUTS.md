@@ -13,6 +13,11 @@ prepare or another operation is in progress. ArrowUp, ArrowDown, Space,
 Escape, Enter, and Ctrl/Cmd+F cannot be assigned. Copy and Rename cannot
 share one chord. Invalid stored JSON falls back to the defaults.
 
+Closing the drawer cancels chord recording and removes the capture listener.
+The editor and the library listener share one in-memory session. If
+`localStorage.setItem` throws, that session still uses the new chord; a
+restart loads the last value that was actually stored.
+
 Tests:
 
 - `src/features/workspace/operationShortcutStorage.test.tsx`
