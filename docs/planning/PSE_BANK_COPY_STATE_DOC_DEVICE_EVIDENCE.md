@@ -16,38 +16,38 @@ Base SHA: [`4eaf4ce9d3421786cd2c058bcb0333398522498a`](https://github.com/kaz4g/
 
 The operator's current root has **S0: manifest missing**, **S1–S5:
 manifest stale**. This is *independent* from the previously identified
-S2→S3 mixed-session boundary. Do not issue \`write-manifest\` on that tree,
-overwrite the original \`capture.meta.json\`, or silently reconstruct
-missing \`project.work\` files.
+S2→S3 mixed-session boundary. Do not issue `write-manifest` on that tree,
+overwrite the original `capture.meta.json`, or silently reconstruct
+missing `project.work` files.
 
 Use the non-promoting **forensic inspection** mode on the original local
 root (read-only, no manifest writes):
 
-\`\`\`bash
+```bash
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs \
   inspect-mixed "$HOME/octa-captures/P_BANK_COPY_STATE" S3
-\`\`\`
+```
 
-- \`inspection_report_generated=YES\` means the command produced a report,
+- `inspection_report_generated=YES` means the command produced a report,
   **not** that device evidence passed. CLI exit 0 means only diagnostic success.
-- \`manifest_status=MISSING\`: no manifest was present to authenticate bytes.
-  \`STALE_METADATA_ONLY\`: recorded and current bytes differ only for
-  \`capture.meta.json\`; this alone does not validate the operator account.
-  \`STALE_OTHER_OR_FILESET\`: binary differences, missing files, a differing
+- `manifest_status=MISSING`: no manifest was present to authenticate bytes.
+  `STALE_METADATA_ONLY`: recorded and current bytes differ only for
+  `capture.meta.json`; this alone does not validate the operator account.
+  `STALE_OTHER_OR_FILESET`: binary differences, missing files, a differing
   manifest header, or changes beyond metadata. Inspect
-  \`manifest_discrepancies\` and \`missing_files\` stage by stage.
-- \`inspection_status=BYTES_READABLE\` means all required stage files are
-  regular and fit size caps; \`PARTIAL_BYTES\` means some are absent.
-  Neither claims semantic decodability (separately \`bank_semantic_decode=NOT_RUN\`).
+  `manifest_discrepancies` and `missing_files` stage by stage.
+- `inspection_status=BYTES_READABLE` means all required stage files are
+  regular and fit size caps; `PARTIAL_BYTES` means some are absent.
+  Neither claims semantic decodability (separately `bank_semantic_decode=NOT_RUN`).
 - Byte comparisons within stored stage directories are
-  \`UNVERIFIED_STORED_BYTE_DIFF_ONLY\`. They must not be presented as
+  `UNVERIFIED_STORED_BYTE_DIFF_ONLY`. They must not be presented as
   attributable device events. Cross-session S2→S3 remains
-  \`CROSS_SESSION_NOT_COMPARABLE\`, with no claimed diff.
-- \`raw_snapshot_integrity=UNVERIFIED\`, \`device_evidence_promotion=BLOCKED\`,
-  \`copy_effect_attribution=INCONCLUSIVE\` and
-  \`working_content_transfer=NOT_PROVEN_BY_THIS_INSPECTION\` remain explicit.
+  `CROSS_SESSION_NOT_COMPARABLE`, with no claimed diff.
+- `raw_snapshot_integrity=UNVERIFIED`, `device_evidence_promotion=BLOCKED`,
+  `copy_effect_attribution=INCONCLUSIVE` and
+  `working_content_transfer=NOT_PROVEN_BY_THIS_INSPECTION` remain explicit.
 
-If the report says \`project.work\` is missing, find the actual original
+If the report says `project.work` is missing, find the actual original
 stage path before building any **separate** versioned working copy. Do not
 synthesize a project file or rewrite the only surviving hashes to make
 a verdict green. Pattern Paste working-content behavior established in
