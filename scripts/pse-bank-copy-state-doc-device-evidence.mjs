@@ -1417,6 +1417,7 @@ export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = 
       ui_consistency: "NOT_EVALUATED",
       project_state: null,
       bank_semantic_decode: "NOT_RUN",
+      device_files_readable: 0,
     };
     let captureDir;
     try {
@@ -1481,7 +1482,9 @@ export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = 
       for (const name of MATRIX_FILES) {
         if (actualFiles.has(name)) files[name] = readBoundedCaptureFile(captureDir, name);
       }
-      row.inspection_status = row.missing_files.length ? "PARTIAL_BYTES" : "BYTES_READABLE";
+      row.device_files_readable = Object.keys(files).length;
+      row.inspection_status = row.device_files_readable === 0
+        ? "METADATA_ONLY" : row.missing_files.length ? "PARTIAL_BYTES" : "BYTES_READABLE";
       if (files["project.work"]) {
         const state = parseProjectStatesSection(files["project.work"].toString("latin1"));
         row.project_state = state.ok ? { bank: state.bank, pattern: state.pattern } : null;
@@ -1557,6 +1560,7 @@ export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = 
   const bytesReadable = publicSnapshots.filter((row) => row.inspection_status === "BYTES_READABLE").length;
   const comparableStages = publicSnapshots.filter((row) =>
     row.inspection_status === "BYTES_READABLE" || row.inspection_status === "PARTIAL_BYTES").length;
+  const readableDeviceFiles = publicSnapshots.reduce((sum, row) => sum + row.device_files_readable, 0);
   const observedYesNo = (transition, name) => !transition?.changed_files
     ? "NOT_EVALUATED" : transition.uncompared_files.includes(name)
       ? "NOT_EVALUATED" : transition.changed_files.includes(name) ? "YES_UNVERIFIED" : "NO_UNVERIFIED";
@@ -1567,6 +1571,7 @@ export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = 
     operator_declared_split_before: split_before_stage,
     inspection_report_generated: "YES",
     stage_bytes_readable: bytesReadable + "/" + PLANNED_CAPTURES.length,
+    device_files_readable: readableDeviceFiles + "/" + (PLANNED_CAPTURES.length * MATRIX_FILES.length),
     stages_partially_or_fully_readable: comparableStages + "/" + PLANNED_CAPTURES.length,
     manifests_verified: manifestVerified + "/" + PLANNED_CAPTURES.length,
     raw_snapshot_integrity: manifestVerified === PLANNED_CAPTURES.length ? "PASS" : "UNVERIFIED",
