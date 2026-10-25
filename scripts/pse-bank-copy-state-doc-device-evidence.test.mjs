@@ -327,6 +327,37 @@ test("forensic inspection does not silently accept symlinks or invent a valid ba
   }
 });
 
+
+test("forensic inspection does not count metadata-only stages as device bytes", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    rmSync(path.join(root, "s0_baseline_saved", "SHA256SUMS.json"));
+    for (const planned of PLANNED_CAPTURES) {
+      const dir = path.join(root, planned.name);
+      for (const name of REQUIRED_FILES) {
+        if (name !== "capture.meta.json") rmSync(path.join(dir, name), { force: true });
+      }
+    }
+    const before = snapshotTree(root);
+    const report = inspectMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(report.stage_bytes_readable, "0/6");
+    assert.equal(report.stages_partially_or_fully_readable, "0/6");
+    assert.equal(report.device_files_readable, "0/60");
+    assert.equal(report.manifests_verified, "0/6");
+    assert.equal(report.raw_snapshot_integrity, "UNVERIFIED");
+    assert.equal(report.snapshots[0].manifest_status, "MISSING");
+    assert.ok(report.snapshots.slice(1).every((row) => row.manifest_status === "STALE_OTHER_OR_FILESET"));
+    assert.ok(report.snapshots.every((row) => row.inspection_status === "METADATA_ONLY"
+      && row.device_files_readable === 0 && row.missing_files.length === 10));
+    assert.equal(report.transitions[1].attribution, "UNAVAILABLE");
+    assert.equal(report.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(report.device_evidence_promotion, "BLOCKED");
+    assert.equal(snapshotTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("forensic inspection CLI is read-only and succeeds as a report, not an acceptance gate", () => {
   const root = materializeMixedSessionFixture();
   try {
