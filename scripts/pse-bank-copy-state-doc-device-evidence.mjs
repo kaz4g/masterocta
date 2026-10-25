@@ -1467,7 +1467,12 @@ export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = 
               });
             }
           }
-          const onlyMeta = row.manifest_discrepancies.length === 1
+          const recordedDocument = JSON.parse(readFileSync(path.join(captureDir, "SHA256SUMS.json"), "utf8"));
+          const structurallyValid = recordedDocument.schema === MANIFEST_SCHEMA
+            && recordedDocument.capture === planned.name
+            && previous.length === REQUIRED_FILES.length
+            && REQUIRED_FILES.every((name) => previous.filter((item) => item?.path === name).length === 1);
+          const onlyMeta = structurallyValid && row.manifest_discrepancies.length === 1
             && row.manifest_discrepancies[0].file === "capture.meta.json";
           row.manifest_status = onlyMeta ? "STALE_METADATA_ONLY" : "STALE_OTHER_OR_FILESET";
         }
