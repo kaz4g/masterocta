@@ -1394,6 +1394,206 @@ export function auditMixedCapture(root = FIXTURE_ROOT, { split_before_stage = nu
   };
 }
 
+/**
+ * Forensic inspection of historic operator captures whose manifests are
+ * missing/stale. This is deliberately NOT an evidence-promotion path.
+ * Observations are labelled UNVERIFIED even when individual byte comparisons
+ * are possible. The strict audit-mixed/analyze gates remain unchanged.
+ */
+export function inspectMixedCapture(root = FIXTURE_ROOT, { split_before_stage = null } = {}) {
+  if (split_before_stage !== null && !PLANNED_CAPTURES.slice(1).some((entry) => entry.stage_id === split_before_stage)) {
+    throw new Error("split_before_stage must be S1, S2, S3, S4, or S5");
+  }
+
+  const captured = PLANNED_CAPTURES.map((planned) => {
+    const row = {
+      capture_name: planned.name,
+      stage_id: planned.stage_id,
+      inspection_status: "UNAVAILABLE",
+      manifest_status: "NOT_EVALUATED",
+      manifest_discrepancies: [],
+      missing_files: [],
+      capture_run_id: null,
+      ui_consistency: "NOT_EVALUATED",
+      project_state: null,
+      bank_semantic_decode: "NOT_RUN",
+      device_files_readable: 0,
+    };
+    let captureDir;
+    try {
+      captureDir = resolveCaptureDir(planned.name, root);
+      const meta = readMeta(captureDir);
+      if (
+        meta.schema !== META_SCHEMA || meta.work_id !== WORK_ID
+        || meta.stage_id !== planned.stage_id || meta.stage_semantics !== planned.stage_semantics
+        || meta.project_name !== PROJECT_NAME || meta.device !== "Octatrack MkII"
+        || meta.device_generated !== true
+      ) {
+        throw new Error("snapshot provenance metadata is incomplete");
+      }
+      assertPinnedFirmware(meta);
+      assertOperationKind(meta);
+      assertCopyPatternRoles(meta);
+      row.capture_run_id = sentinelValue(meta, "capture_run_id");
+
+      // buildManifest validates regular-file, no-symlink and size-cap rules
+      // without modifying either the source tree or the existing manifest.
+      const fresh = buildManifest(planned.name, root);
+      const actualFiles = new Map(fresh.files.map((item) => [item.path, item]));
+      row.missing_files = REQUIRED_FILES.filter((name) => !actualFiles.has(name));
+      let checked;
+      try {
+        checked = verifyManifest(planned.name, root);
+      } catch (err) {
+        row.manifest_status = String(err.message).includes("SHA256SUMS.json is missing")
+          ? "MISSING" : "INVALID";
+        row.manifest_error = err.message;
+      }
+      if (checked) {
+        if (checked.ok) {
+          row.manifest_status = "VERIFIED";
+        } else {
+          const previous = Array.isArray(checked.recorded_files) ? checked.recorded_files : [];
+          const previousByPath = new Map(previous.filter((item) => item && typeof item.path === "string")
+            .map((item) => [item.path, item]));
+          for (const name of REQUIRED_FILES) {
+            const old = previousByPath.get(name);
+            const now = actualFiles.get(name);
+            if (!old || !now || old.sha256 !== now.sha256 || old.size !== now.size) {
+              row.manifest_discrepancies.push({
+                file: name,
+                finding: !now ? "MISSING_CURRENT_FILE" : !old ? "NOT_IN_RECORDED_MANIFEST" : "HASH_OR_SIZE_MISMATCH",
+                recorded_sha256: typeof old?.sha256 === "string" ? old.sha256 : null,
+                current_sha256: typeof now?.sha256 === "string" ? now.sha256 : null,
+              });
+            }
+          }
+          const recordedDocument = JSON.parse(readFileSync(path.join(captureDir, "SHA256SUMS.json"), "utf8"));
+          const structurallyValid = recordedDocument.schema === MANIFEST_SCHEMA
+            && recordedDocument.capture === planned.name
+            && previous.length === REQUIRED_FILES.length
+            && REQUIRED_FILES.every((name) => previous.filter((item) => item?.path === name).length === 1);
+          const onlyMeta = structurallyValid && row.manifest_discrepancies.length === 1
+            && row.manifest_discrepancies[0].file === "capture.meta.json";
+          row.manifest_status = onlyMeta ? "STALE_METADATA_ONLY" : "STALE_OTHER_OR_FILESET";
+        }
+      }
+      const files = {};
+      for (const name of MATRIX_FILES) {
+        if (actualFiles.has(name)) files[name] = readBoundedCaptureFile(captureDir, name);
+      }
+      row.device_files_readable = Object.keys(files).length;
+      row.inspection_status = row.device_files_readable === 0
+        ? "METADATA_ONLY" : row.missing_files.length ? "PARTIAL_BYTES" : "BYTES_READABLE";
+      if (files["project.work"]) {
+        const state = parseProjectStatesSection(files["project.work"].toString("latin1"));
+        row.project_state = state.ok ? { bank: state.bank, pattern: state.pattern } : null;
+        if (state.ok) {
+          try {
+            assertUiMatchesProjectStates(meta, state);
+            row.ui_consistency = "MATCH";
+          } catch {
+            row.ui_consistency = "MISMATCH";
+          }
+        } else {
+          row.ui_consistency = "INVALID_PROJECT_STATE";
+        }
+      } else {
+        row.ui_consistency = "PROJECT_WORK_MISSING";
+      }
+      return { ...row, meta, files };
+    } catch (err) {
+      return { ...row, error: err.message, files: {} };
+    }
+  });
+
+  const partitions = [];
+  const transitions = [];
+  let segment = null;
+  for (let index = 0; index < captured.length; index += 1) {
+    const current = captured[index];
+    const previous = captured[index - 1] ?? null;
+    const boundary = current.stage_id === split_before_stage || !!(
+      previous?.capture_run_id && current.capture_run_id && previous.capture_run_id !== current.capture_run_id
+    );
+    if (!segment || boundary) {
+      segment = { segment_id: "segment_" + (partitions.length + 1), stage_ids: [] };
+      partitions.push(segment);
+    }
+    segment.stage_ids.push(current.stage_id);
+    if (!previous) continue;
+    const edge = ADJACENT_TRANSITIONS[index - 1];
+    if (boundary) {
+      transitions.push({
+        transition: edge.label, from: previous.stage_id, to: current.stage_id,
+        attribution: "CROSS_SESSION_NOT_COMPARABLE", changed_files: null, uncompared_files: MATRIX_FILES,
+      });
+      continue;
+    }
+    const comparable = MATRIX_FILES.filter((name) =>
+      Buffer.isBuffer(previous.files[name]) && Buffer.isBuffer(current.files[name]));
+    transitions.push({
+      transition: edge.label, from: previous.stage_id, to: current.stage_id,
+      attribution: comparable.length ? "UNVERIFIED_STORED_BYTE_DIFF_ONLY" : "UNAVAILABLE",
+      changed_files: comparable.length
+        ? comparable.filter((name) => !buffersEqual(previous.files[name], current.files[name])) : null,
+      uncompared_files: MATRIX_FILES.filter((name) => !comparable.includes(name)),
+    });
+  }
+
+  const s1 = captured[1];
+  const sourceEdit = transitions[0];
+  const paste = transitions[1];
+  const sourceWork = s1?.files?.[SOURCE_BANK + ".work"];
+  const sourceSaved = s1?.files?.[SOURCE_BANK + ".strd"];
+  const hasSourcePair = Buffer.isBuffer(sourceWork) && Buffer.isBuffer(sourceSaved);
+  const sourceProjectPosition = Buffer.isBuffer(captured[0]?.files?.["project.work"])
+    && Buffer.isBuffer(s1?.files?.["project.work"])
+    ? classifyProjectWorkChange(captured[0].files["project.work"], s1.files["project.work"])
+    : "NOT_EVALUATED";
+  const unexpected = sourceEdit?.changed_files?.filter((name) =>
+    name !== SOURCE_BANK + ".work"
+    && !(name === "project.work" && sourceProjectPosition === "POSITION_ONLY")
+  ) ?? null;
+  const publicSnapshots = captured.map(({ meta: _meta, files: _files, ...row }) => row);
+  const manifestVerified = publicSnapshots.filter((row) => row.manifest_status === "VERIFIED").length;
+  const bytesReadable = publicSnapshots.filter((row) => row.inspection_status === "BYTES_READABLE").length;
+  const comparableStages = publicSnapshots.filter((row) =>
+    row.inspection_status === "BYTES_READABLE" || row.inspection_status === "PARTIAL_BYTES").length;
+  const readableDeviceFiles = publicSnapshots.reduce((sum, row) => sum + row.device_files_readable, 0);
+  const observedYesNo = (transition, name) => !transition?.changed_files
+    ? "NOT_EVALUATED" : transition.uncompared_files.includes(name)
+      ? "NOT_EVALUATED" : transition.changed_files.includes(name) ? "YES_UNVERIFIED" : "NO_UNVERIFIED";
+
+  return {
+    ...frozenPolicyFields(),
+    audit_mode: "MIXED_SESSION_FORENSIC_INSPECTION",
+    operator_declared_split_before: split_before_stage,
+    inspection_report_generated: "YES",
+    stage_bytes_readable: bytesReadable + "/" + PLANNED_CAPTURES.length,
+    device_files_readable: readableDeviceFiles + "/" + (PLANNED_CAPTURES.length * MATRIX_FILES.length),
+    stages_partially_or_fully_readable: comparableStages + "/" + PLANNED_CAPTURES.length,
+    manifests_verified: manifestVerified + "/" + PLANNED_CAPTURES.length,
+    raw_snapshot_integrity: manifestVerified === PLANNED_CAPTURES.length ? "PASS" : "UNVERIFIED",
+    device_evidence_promotion: "BLOCKED",
+    copy_effect_attribution: "INCONCLUSIVE",
+    working_content_transfer: "NOT_PROVEN_BY_THIS_INSPECTION",
+    result: "INSPECTION_REPORT_ONLY_NOT_EVIDENCE",
+    snapshots: publicSnapshots,
+    session_partitions: partitions,
+    transitions,
+    raw_observations: {
+      s1_source_work_differs_from_saved: hasSourcePair
+        ? (buffersEqual(sourceWork, sourceSaved) ? "NO_UNVERIFIED" : "YES_UNVERIFIED")
+        : "NOT_EVALUATED",
+      source_only_project_work_change: sourceProjectPosition,
+      source_edit_unexpected_changed_files: unexpected,
+      s1_to_s2_destination_work_changed: observedYesNo(paste, DEST_BANK + ".work"),
+      s1_to_s2_destination_saved_changed: observedYesNo(paste, DEST_BANK + ".strd"),
+    },
+  };
+}
+
 export function buildBankCopyDatasetCommand(root = FIXTURE_ROOT) {
   if (!sequenceProvenFromMeta(root)) {
     throw new Error("capture sequence is not proven");
@@ -1418,6 +1618,10 @@ function main() {
       const audit = auditMixedCapture(root, { split_before_stage: arg2 || null });
       console.log(JSON.stringify(audit, null, 2));
       if (audit.raw_snapshot_integrity !== "PASS") process.exitCode = 1;
+      return;
+    }
+    if (command === "inspect-mixed") {
+      console.log(JSON.stringify(inspectMixedCapture(root, { split_before_stage: arg2 || null }), null, 2));
       return;
     }
     if (command === "dataset") {

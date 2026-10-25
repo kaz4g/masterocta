@@ -12,6 +12,64 @@ Classification parent: [`PSE_BANK_STATE_DOC_SEMANTICS_2.md`](./PSE_BANK_STATE_DO
 Base SHA: [`4eaf4ce9d3421786cd2c058bcb0333398522498a`](https://github.com/kaz4g/masterocta/commit/4eaf4ce9d3421786cd2c058bcb0333398522498a) (`main` after PR #235)
 
 
+## Existing captures with missing or stale SHA256SUMS.json (diagnostic only)
+
+The operator's current root has **S0: manifest missing**, **S1–S5:
+manifest stale**. This is *independent* from the previously identified
+S2→S3 mixed-session boundary. Do not issue `write-manifest` on that tree,
+overwrite the original `capture.meta.json`, or silently reconstruct
+missing `project.work` files.
+
+Use the non-promoting **forensic inspection** mode on the original local
+root (read-only, no manifest writes):
+
+```bash
+node scripts/pse-bank-copy-state-doc-device-evidence.mjs \
+  inspect-mixed "$HOME/octa-captures/P_BANK_COPY_STATE" S3
+```
+
+- `inspection_report_generated=YES` means the command produced a report,
+  **not** that device evidence passed. CLI exit 0 means only diagnostic success.
+- `manifest_status=MISSING`: no manifest was present to authenticate bytes.
+  `STALE_METADATA_ONLY`: recorded and current bytes differ only for
+  `capture.meta.json`; this alone does not validate the operator account.
+  `STALE_OTHER_OR_FILESET`: binary differences, missing files, a differing
+  manifest header, or changes beyond metadata. Inspect
+  `manifest_discrepancies` and `missing_files` stage by stage.
+- `inspection_status=BYTES_READABLE` means all required stage files are
+  regular and fit size caps; `PARTIAL_BYTES` means some are absent.
+  `METADATA_ONLY` means none of the ten device documents are present, even
+  though the metadata file exists. `device_files_readable` counts actual
+  stage files (e.g. `0/60` across six stages).
+  None of these labels claims semantic decodability (`bank_semantic_decode=NOT_RUN`).
+- Byte comparisons within stored stage directories are
+  `UNVERIFIED_STORED_BYTE_DIFF_ONLY`. They must not be presented as
+  attributable device events. Cross-session S2→S3 remains
+  `CROSS_SESSION_NOT_COMPARABLE`, with no claimed diff.
+- `raw_snapshot_integrity=UNVERIFIED`, `device_evidence_promotion=BLOCKED`,
+  `copy_effect_attribution=INCONCLUSIVE` and
+  `working_content_transfer=NOT_PROVEN_BY_THIS_INSPECTION` remain explicit.
+
+If all stages are `METADATA_ONLY`, check whether the original binary documents
+are located elsewhere, without modifying the capture tree:
+
+```bash
+find "$HOME/octa-captures" -maxdepth 10 -type f \
+  \( -name 'project.work' -o -name 'bank01.work' -o -name 'bank04.work' \) -print
+```
+
+A missing file is not a hash mismatch; there are no current bytes to compare.
+Do not copy an arbitrary candidate into the capture directory: first confirm
+its SHA-256 matches the recorded manifest and stage provenance. Preserve the
+original and reconstruct, if possible, in a separate versioned working copy.
+
+
+If the report says `project.work` is missing, find the actual original
+stage path before building any **separate** versioned working copy. Do not
+synthesize a project file or rewrite the only surviving hashes to make
+a verdict green. Pattern Paste working-content behavior established in
+other captures must not be silently generalized to a full Bank Copy rule.
+
 ## Mixed-session recovery (read-only raw audit)
 
 The 2026-10-19 operator root contains S0–S2 from an earlier recording and
