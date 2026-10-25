@@ -118,4 +118,42 @@ test.describe("Library keyboard (synthetic IPC)", () => {
       return calls.some((entry: any) => entry.cmd === "v2_audio_preview_create");
     })).toBe(true);
   });
+
+  test("opens the copy drawer from the shortcut and does not plan or apply", async ({ page }) => {
+    await page.addInitScript(
+      ([storageKey, localeId]) => {
+        localStorage.setItem(storageKey, localeId);
+      },
+      [LOCALE_STORAGE_KEY, "ja"] as const,
+    );
+    await installLibraryKeyboardMocks(page);
+    await page.goto("/");
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: uiText("ja", "sources.chooseRoot") }).click();
+    await clickCatalogFileRow(page, "ja", "KICK.wav");
+    await expect(catalogFileRowLocator(page, "ja", "KICK.wav")).toHaveAttribute("aria-selected", "true");
+
+    const copyDialog = page.getByRole("dialog", { name: uiText("ja", "operations.drawerCopyTitle") });
+    await expect.poll(async () => {
+      await page.keyboard.press("Alt+Shift+C");
+      return copyDialog.isVisible();
+    }).toBe(true);
+    const forbidden = await page.evaluate(() => {
+      const calls = (window as any).__E2E_KEYBOARD_CALLS__ ?? [];
+      return calls.map((entry: { cmd: string }) => entry.cmd).filter((cmd: string) =>
+        cmd === "v2_change_plan"
+        || cmd === "v2_change_apply"
+        || cmd === "v2_rename_plan"
+        || cmd === "v2_rename_prepare"
+        || cmd === "v2_rename_apply"
+        || cmd === "v2_rename_authorize");
+    });
+    expect(forbidden).toEqual([]);
+
+    await page.keyboard.press("Escape");
+    await expect(copyDialog).toBeHidden();
+    await page.getByRole("searchbox", { name: uiText("ja", "library.searchAria") }).focus();
+    await page.keyboard.press("Alt+Shift+C");
+    await expect(copyDialog).toBeHidden();
+  });
 });

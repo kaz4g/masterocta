@@ -35,3 +35,32 @@
 .mo-operations-drawer__section--inactive {
   display: none;
 }
+
+.mo-operation-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--mo-border);
+}
+
+.mo-operation-shortcuts h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.mo-operation-shortcuts p {
+  margin: 0;
+}
+
+.mo-operation-shortcuts__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mo-operation-shortcuts__chord {
+  min-width: 6rem;
+}
