@@ -33,6 +33,7 @@ import {
   WORK_ID,
   analyzeBankCopyEvidence,
   auditMixedCapture,
+  inspectMixedCapture,
   assertCopyPatternRoles,
   assertOperationKind,
   assertPlannedCaptureName,
@@ -254,6 +255,91 @@ test("mixed-session audit rejects a stale manifest without rewriting captures", 
     assert.equal(audit.transitions[1].attribution, "UNAVAILABLE");
     assert.equal(audit.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
     assert.equal(audit.device_evidence_promotion, "BLOCKED");
+    assert.equal(snapshotTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("forensic inspection reports missing/stale manifests without changing original captures", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    rmSync(path.join(root, "s0_baseline_saved", "SHA256SUMS.json"));
+    const metaPath = path.join(root, "s1_source_working_diverged_pre_copy", "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.operator_note += " edit after manifest for diagnostic coverage";
+    writeFileSync(metaPath, JSON.stringify(meta));
+    const bankPath = path.join(root, "s2_immediately_after_bank_copy", "bank04.work");
+    const bankBytes = Buffer.from(readFileSync(bankPath));
+    bankBytes[100] ^= 0x22;
+    writeFileSync(bankPath, bankBytes);
+    rmSync(path.join(root, "s3_after_control_switch", "project.work"));
+    const before = snapshotTree(root);
+    const inspected = inspectMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(inspected.audit_mode, "MIXED_SESSION_FORENSIC_INSPECTION");
+    assert.equal(inspected.inspection_report_generated, "YES");
+    assert.equal(inspected.raw_snapshot_integrity, "UNVERIFIED");
+    assert.equal(inspected.result, "INSPECTION_REPORT_ONLY_NOT_EVIDENCE");
+    assert.equal(inspected.device_evidence_promotion, "BLOCKED");
+    assert.equal(inspected.working_content_transfer, "NOT_PROVEN_BY_THIS_INSPECTION");
+    assert.deepEqual(inspected.snapshots.map((item) => item.manifest_status), [
+      "MISSING", "STALE_METADATA_ONLY", "STALE_OTHER_OR_FILESET",
+      "STALE_OTHER_OR_FILESET", "VERIFIED", "VERIFIED",
+    ]);
+    assert.equal(inspected.snapshots[3].inspection_status, "PARTIAL_BYTES");
+    assert.ok(inspected.snapshots[3].missing_files.includes("project.work"));
+    assert.ok(inspected.snapshots[2].manifest_discrepancies.some((item) => item.file === "bank04.work"));
+    assert.deepEqual(inspected.session_partitions.map((s) => s.stage_ids), [
+      ["S0", "S1", "S2"], ["S3", "S4", "S5"],
+    ]);
+    assert.equal(inspected.transitions[0].attribution, "UNVERIFIED_STORED_BYTE_DIFF_ONLY");
+    assert.equal(inspected.transitions[0].uncompared_files.length, 0);
+    assert.equal(inspected.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
+    assert.equal(inspected.transitions[2].changed_files, null);
+    assert.equal(inspected.transitions[3].attribution, "UNVERIFIED_STORED_BYTE_DIFF_ONLY");
+    assert.ok(inspected.transitions[3].uncompared_files.includes("project.work"));
+    assert.equal(inspected.raw_observations.s1_source_work_differs_from_saved, "YES_UNVERIFIED");
+    assert.equal(inspected.raw_observations.s1_to_s2_destination_work_changed, "YES_UNVERIFIED");
+    assert.ok(inspected.raw_observations.source_edit_unexpected_changed_files.includes("bank04.work"));
+    assert.equal(snapshotTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("forensic inspection does not silently accept symlinks or invent a valid bank state", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    const target = path.join(root, "out-of-stage-bank");
+    writeFileSync(target, readFileSync(path.join(root, "s4_after_project_save", "bank04.work")));
+    const linkPath = path.join(root, "s4_after_project_save", "bank04.work");
+    rmSync(linkPath);
+    symlinkSync(target, linkPath);
+    const status = inspectMixedCapture(root, { split_before_stage: "S3" });
+    assert.equal(status.snapshots[4].inspection_status, "UNAVAILABLE");
+    assert.match(status.snapshots[4].error, /Symlink not allowed/);
+    assert.equal(status.transitions[3].attribution, "UNAVAILABLE");
+    assert.equal(status.device_evidence_promotion, "BLOCKED");
+    assert.equal(status.result, "INSPECTION_REPORT_ONLY_NOT_EVIDENCE");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("forensic inspection CLI is read-only and succeeds as a report, not an acceptance gate", () => {
+  const root = materializeMixedSessionFixture();
+  try {
+    rmSync(path.join(root, "s0_baseline_saved", "SHA256SUMS.json"));
+    const before = snapshotTree(root);
+    const script = path.join(SCRIPT_DIR, "pse-bank-copy-state-doc-device-evidence.mjs");
+    const cli = spawnSync(process.execPath, [script, "inspect-mixed", root, "S3"], { encoding: "utf8" });
+    assert.equal(cli.status, 0, cli.stderr);
+    const json = JSON.parse(cli.stdout);
+    assert.equal(json.inspection_report_generated, "YES");
+    assert.equal(json.raw_snapshot_integrity, "UNVERIFIED");
+    assert.equal(json.device_evidence_promotion, "BLOCKED");
+    assert.equal(json.transitions[2].attribution, "CROSS_SESSION_NOT_COMPARABLE");
     assert.equal(snapshotTree(root), before);
   } finally {
     rmSync(root, { recursive: true, force: true });
