@@ -1,7 +1,7 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1`; prior: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`
-- Updated: 2026-10-26 (clean `main` `d7754d30` M6-06 N7 in-flight diagnostic **PASS** under console-driven observation with zero prepared operations; production Native acceptance **not** granted. M6 stays **IN_PROGRESS**. Prior same-day note: clean `4fbae7bb` re-run **STOP**, N7 in-flight **NOT_OBSERVED**. 2026-10-25: #217 `P_BANK_COPY_STATE` salvage closed as **STOP_WITH_FINDINGS**; M5 **COMPLETE** and M7 **COMPLETE** unchanged)
+- Updated: 2026-10-27 (M6 **COMPLETE** under approved composite N7 `MO-M6-06-N7-ACCEPTANCE-POLICY-1`. Strict manual in-flight remains **NOT_OBSERVED**. Prior 2026-10-26 notes stay historical: clean `4fbae7bb` operator re-run **STOP**; `d7754d30` console diagnostic is not a manual Native pass. 2026-10-25: #217 `P_BANK_COPY_STATE` salvage closed as **STOP_WITH_FINDINGS**; M5 **COMPLETE** and M7 **COMPLETE** unchanged)
 - Product baseline (M7 completion): GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
 - M6 exit-audit snapshot: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - M6-06 acceptance (option C): [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
@@ -9,7 +9,7 @@
 
 Milestone **numbers and names:** [`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md).
 Architecture **principles:** [`../NEXT_GENERATION_ARCHITECTURE.md`](../NEXT_GENERATION_ARCHITECTURE.md).
-**M6 completion map:** [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (snapshot @ `6f68ff1`; M6 stays **IN_PROGRESS**).
+**M6 completion map:** [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19 snapshot @ `6f68ff1` stays in §9; current judgment is §12, **COMPLETE**).
 **M7 completion map:** [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md).
 
 ## Status vocabulary
@@ -63,7 +63,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | Milestone | Status | Summary |
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
-| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06 overlay **DECIDED (C)** (Drawer; 2026-10-26 Native write **STOP**, not PASS, including clean `4fbae7bb`); M6-08 persistence/keyboard/configurable shortcuts |
+| **M6** | **COMPLETE** | Library workspace merged. M6-06 overlay **DECIDED (C)**. N7 accepted by composite policy `MO-M6-06-N7-ACCEPTANCE-POLICY-1`; strict manual in-flight stays **NOT_OBSERVED**. M6-08 persistence, keyboard, and configurable shortcuts are in. Public distribution remains **NOT AUTHORIZED** |
 | **M7** | **COMPLETE** | Exit Gate **5/5 PASS**; Integrated Native session 5 **PASS** @ `40ba99c4`. M7-01–M7-06 **COMPLETE**; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
@@ -96,11 +96,11 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-03 Navigation Pane | **COMPLETE** | #132 | CI | Native doc | Location nav |
 | M6-04 Sample Browser v2 | **COMPLETE** | #122, #132 | CI + frontend tests | Native doc | Search/sort/pagination |
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
-| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel | Native Drawer write **STOP** (2026-10-26; not PASS) | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. First session was dirty against `ad13ba9b`. Clean `4fbae7bb` re-run: N0–N6 and N8 PASS, Apply not invoked, N7 in-flight **NOT_OBSERVED**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 and §10 |
+| M6-06 Operation Modal | **COMPLETE** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel + PR #249 E2E | Composite N7 **PASS** (`MO-M6-06-N7-ACCEPTANCE-POLICY-1`). Strict manual in-flight **NOT_OBSERVED** | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. §6 dirty-tree and §7 `4fbae7bb` operator sessions remain **STOP** on the old bar. §8 `d7754d30` is a console diagnostic, `isTrusted=false`. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) §5.1 |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
-| M6-08 keyboard / resize / persisted UI | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search); configurable Copy/Rename shortcuts (`MO-M6-08-OPERATION-SHORTCUTS-1`, versioned `masterocta.workspace.operation-shortcuts.v1`) | CI + frontend/e2e shortcut tests | Narrow layout verified #140. Native Drawer write remains M6-06 | Shortcuts only open the existing Drawer. They do not prepare or apply. Milestone stays open until M6-06 Native acceptance |
+| M6-08 keyboard / resize / persisted UI | **COMPLETE** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search); configurable Copy/Rename shortcuts (`MO-M6-08-OPERATION-SHORTCUTS-1`, versioned `masterocta.workspace.operation-shortcuts.v1`) | CI + frontend/e2e shortcut tests, included in PR #249 run `40302749379` | Narrow layout verified #140. Drawer write acceptance is M6-06 §5.1 | Shortcuts only open the existing Drawer. They do not prepare or apply. The row was waiting on M6-06 acceptance |
 
-**M6 exit gate (v0.1):** Partially met. **M6-06** Native write smoke (2026-10-26 **STOP**, not PASS; clean `4fbae7bb` re-run included) still prevents calling M6 **COMPLETE**. A later `d7754d30` console-driven diagnostic with zero prepared operations observed the in-flight status-bar block; that is not production Native acceptance. N7 production Native remains **NOT_YET_ACCEPTED**. Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
+**M6 exit gate (v0.1):** **Met** under the approved composite N7 bar (`MO-M6-06-N7-ACCEPTANCE-POLICY-1`, 2026-10-27). The 2026-10-26 operator sessions remain **STOP** on the former strict bar, and the manual in-flight window remains **NOT_OBSERVED**. The `d7754d30` console diagnostic is one composite leg, not a manual Native pass (`isTrusted=false`). Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §12 and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) §5.1.
 
 ---
 
@@ -177,7 +177,7 @@ Boundary on `main` per [`AUTO_SLICE_1_IMPLEMENTATION_STATUS.md`](./AUTO_SLICE_1_
 
 ```text
 M5 (COMPLETE)
-  → M6 Library shell (IN_PROGRESS)
+  → M6 Library shell (COMPLETE)
   → M7 WF2 + analysis (COMPLETE)
   → safe sample/slice `.ot` output (PLANNED / M11)
   → M7-07/08 stem (DEFERRED → M11)
@@ -260,8 +260,8 @@ at **`04725cb3`**. Do not rewrite it.
 
 ## Unresolved ambiguities
 
-1. **M6-06:** Option **(C)** adopted 2026-10-19: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. `MO-M6-06-OPERATION-MODAL-1` is not adopted. Close-without-cancel is covered by tests. Native write smoke was executed on macOS on 2026-10-26 and recorded **STOP**, not **PASS** ([`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6). [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.
-2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable Copy/Rename shortcuts are implemented (`MO-M6-08-OPERATION-SHORTCUTS-1`) and only open the Operations Drawer. M6-08 is not a milestone COMPLETE by itself; M6-06 Native write acceptance is still required.
+1. **M6-06:** **Resolved (2026-10-27).** Option **(C)** stays: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. `MO-M6-06-OPERATION-MODAL-1` is not adopted. Close-without-cancel is covered by tests. The 2026-10-26 operator sessions remain **STOP** on the former strict bar ([`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6 and §7), and the manual in-flight window remains **NOT_OBSERVED**. N7 is **COMPLETE** under composite policy `MO-M6-06-N7-ACCEPTANCE-POLICY-1` ([`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) §5.1). Prepare semantics, Apply control, and Gate C are unchanged.
+2. **M6-08:** **Resolved (2026-10-27).** Pane split persistence (`MO-M6-08-PANE-PERSISTENCE-1`), the Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F), and configurable Copy/Rename shortcuts (`MO-M6-08-OPERATION-SHORTCUTS-1`) are implemented. Shortcuts only open the Operations Drawer. The row’s remaining gate was M6-06 acceptance, which §5.1 now records as **COMPLETE**.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.
 5. **ADR-015 / Performance System:** Referenced in WAVEFORM_V2 as draft only; not accepted in ADR_INDEX.

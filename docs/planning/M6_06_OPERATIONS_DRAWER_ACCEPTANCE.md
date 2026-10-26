@@ -54,7 +54,7 @@ One shell. Operator Continue / Apply approval and plan review run in these panel
 
 ## 4. Acceptance (M6-06)
 
-A row may be **COMPLETE** only when all of the following hold. This PR locks the spec and automated close contract; Native write remains a remaining gate.
+A row may be **COMPLETE** only when all of the following hold. Rows A–D and F–H keep their original evidence. Row E’s Native cell, for a rename prepare that starts with zero prepared operations, is the composite in §5.1. The strict manual in-flight window remains **NOT_OBSERVED**. Prepare semantics, Apply control, and Gate C are unchanged.
 
 | # | Criterion | Automated | Native |
 | --- | --- | --- | --- |
@@ -62,7 +62,7 @@ A row may be **COMPLETE** only when all of the following hold. This PR locks the
 | B | Focus trap; Tab does not enter hidden kind sections | `Drawer.test.tsx` `focus trap ignores hidden inactive sections`; `focusable.test.ts` | — |
 | C | Esc (and ×) close the Drawer | `Drawer.test.tsx`; Library E2E | Operator Esc |
 | D | Copy / rename expose plan review and an explicit approval gate before prepare / apply | `RenameSampleModal.test.tsx`; `AdditiveCopyChangeDrawer.test.tsx`; `e2e/rename-prepare.spec.ts` | Native smoke §5 |
-| E | Close is display-only: no apply / cancel / recover IPC. In-flight **prepare is not cancelled**. After the result is PREPARED or recovery-required, reopen the same session or use status-bar Operations. Status bar does not reopen while the prepare request is still pending | `RenameSampleModal.test.tsx`; `RootRegistryPanel.test.tsx`; `e2e/operations-drawer-prepare-close.spec.ts` | Native N7 |
+| E | Close is display-only: no apply / cancel / recover IPC. In-flight **prepare is not cancelled**. After the result is PREPARED or recovery-required, reopen the same session or use status-bar Operations. Status bar does not reopen while the prepare request is still pending | `RenameSampleModal.test.tsx`; `RootRegistryPanel.test.tsx`; `e2e/operations-drawer-prepare-close.spec.ts` | Composite N7 (§5.1). Strict manual in-flight: **NOT_OBSERVED** |
 | F | Always-visible prepared-operation panel remains absent | Architecture of `RootRegistryPanel` (no `changeDrawer`) | Native layout |
 | G | No new Gate C IPC; no Bank Editor line | Diff review | — |
 | H | Synthetic-fixture Native **write** through the Drawer requires **both** managed clone create and rename prepare, never original media. Either stage alone is insufficient | Fixture generator + prepare script (CI) | [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) N3 and N6 |
@@ -83,7 +83,7 @@ If product code were found to cancel prepare on close, stop and report; do not �
 
 ---
 
-## 5. Native smoke (remaining for COMPLETE)
+## 5. Native smoke record
 
 Protocol: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md).
 
@@ -92,7 +92,33 @@ Protocol: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/M
 - Host: macOS Tauri (`scripts/launch-native-acceptance-tauri.sh`), isolated `HOME`.
 - 2026-10-26 macOS session: **STOP**, not **PASS**. N3 and N6 passed and Apply was not invoked. N7 in-flight non-reopen was not observed. The binary included an uncommitted macOS 26 volume-identity fix. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6.
 - 2026-10-26 clean `main` `4fbae7bbc21db79f9687ec7c0b6326702f48a0d4`: **STOP**, not **PASS**. New isolated HOME and fixture. N0–N6 and N8 passed. Post-PREPARED close and status-bar reopen passed. N7 in-flight non-reopen stayed **NOT_OBSERVED**. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §7.
-- 2026-10-26 clean `main` `d7754d30f671a4f2a97100a3825ac4eba0d6fc0b`: diagnostic only, not production Native **PASS**. A new isolated HOME started with zero prepared rename operations. Console-driven observation wrapped `renameApi.prepare` once, without delaying the promise. During that IPC the drawer closed and the status bar did not reopen it. After `prepared`, the same operation reopened. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8.
+- 2026-10-26 clean `main` `d7754d30f671a4f2a97100a3825ac4eba0d6fc0b`: diagnostic only, not a manual Native **PASS**. A new isolated HOME started with zero prepared rename operations. Console-driven observation wrapped `renameApi.prepare` once, without delaying the promise. During that IPC the drawer closed and the status bar did not reopen it. After `prepared`, the same operation reopened. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8.
+
+### 5.1 N7 composite acceptance (approved 2026-10-27)
+
+- Work ID: `MO-M6-06-N7-ACCEPTANCE-POLICY-1`
+- Decision: **APPROVE_COMPOSITE** (acceptance owner, 2026-10-27)
+- Scope: a Rename Prepare that starts with zero prepared operations. During that prepare the drawer may close and the status bar must not reopen it. After PREPARED, the same operation reopens. An existing prepared operation may still be shown during a later prepare; that viewing rule is unchanged, and Continue / Apply / Recover stay disabled while prepare is busy.
+- The console session is `NATIVE_REAL_IPC_DIAGNOSTIC`. It is not a manual Native operation. `isTrusted=false` leaves the trusted key and click path during the 222ms window unsampled. The dismiss handler does not read `isTrusted`, and the diagnostic Escape was `defaultPrevented=true`.
+- `src/` and `src-tauri/` are identical from operator SHA `4fbae7bbc21db79f9687ec7c0b6326702f48a0d4` through diagnostic SHA `d7754d30f671a4f2a97100a3825ac4eba0d6fc0b`. The only change between those SHAs outside docs is `e2e/operations-drawer-prepare-close.spec.ts` (PR #249).
+
+| Evidence | Result | Execution |
+| --- | --- | --- |
+| Deterministic E2E | **PASS** | PR #249, `1d3ee39b`, merged `6be21e43`. Mock IPC. CI run `40302749379`: Frontend, E2E, Rust, Gate C synthetic macOS, Gate C synthetic Ubuntu **pass** |
+| Real IPC diagnostic | **PASS** | `d7754d30`, smoke §8. `CONSOLE_DRIVEN`, `isTrusted=false`, prepared count 0, one undelayed `renameApi.prepare`, 222ms |
+| Operator post-PREPARED | **PASS** | `4fbae7bb`, smoke §7. Escape closed the drawer. Status bar reopened the same prepared rename. In-flight manual window **NOT_OBSERVED** |
+| Managed clone and prepare | **PASS** | §7 N3 VERIFIED and N6 prepare. §8 repeated clone and prepare on a new HOME. Apply was not invoked |
+| Source integrity | **PASS** | §7 and §8 inventory 12 entries. RANGE SHA `43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1` |
+| No Apply / Continue | **PASS** | §6, §7, and §8. Recover was not invoked on §8 |
+| Required CI | **PASS** | PR #249 run `40302749379` on the product tree that §7 and §8 share. Docs checks on PR #250 and PR #251 passed. This judgment does not claim a new Rust or frontend run |
+
+```text
+N7_STRICT_MANUAL = NOT_OBSERVED
+N7_COMPOSITE = PASS
+M6-06 = COMPLETE
+```
+
+§6 and §7 remain **STOP** against the former strict bar. Decision record: [`M6_06_N7_COMPOSITE_ACCEPTANCE_PROPOSAL.md`](./M6_06_N7_COMPOSITE_ACCEPTANCE_PROPOSAL.md).
 
 ---
 

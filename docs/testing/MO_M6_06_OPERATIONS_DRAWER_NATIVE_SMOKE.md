@@ -3,7 +3,7 @@
 - Work ID: `MO-M6-06-DRAWER-SPEC-AND-NATIVE-1`
 - Spec: [`../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - Shared harness: [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](./MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) (fixture generator, isolated `HOME`, launcher)
-- **Native run: `STOP`** (macOS operator sessions 2026-10-26). Not a named-SHA **PASS**. §6 is the earlier dirty-tree session. §7 is the clean `4fbae7bb` re-run. §8 is a later console-driven diagnostic on `d7754d30` with zero prepared operations. None of these is a production Native **PASS**.
+- **Strict operator bar: `STOP`.** §6 is the earlier dirty-tree session. §7 is the clean `4fbae7bb` re-run. §8 is a console-driven diagnostic on `d7754d30` (`isTrusted=false`). None of §6–§8 is a strict manual in-flight **PASS**. §9 is the later composite score under `MO-M6-06-N7-ACCEPTANCE-POLICY-1`.
 
 Mock IPC / Vitest / Playwright success is **not** Native acceptance.
 
@@ -204,4 +204,12 @@ RANGE_SHA:             PASS (43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cb
 
 `renameApi.prepare` was an own writable and configurable method. The wrapper called the original once and returned its promise without delaying it. The resolved state was `prepared`. Escape during the IPC reached the drawer dismiss handler (`defaultPrevented=true`). After the following React update, and still before IPC end, the drawer was closed, the status-bar button 「操作ドロワーで詳細を確認」 was clicked, and the drawer stayed closed. After `prepared`, the same operation id reopened in the drawer. The clone file remained `ops_rename_src.wav`. The production catalog mtime stayed 2026-09-17.
 
-An earlier same-day console trace on a different HOME reopened the drawer during a second prepare because a previous PREPARED operation already existed. That trace is not this result and is not a Native PASS. With prepared count 0, `resolveRenameDrawerPin({ operatorOnly: true })` returns closed. With prepared count greater than 0, the status bar may open the existing operator view even while `renamePrepareBusy` is true. `openOperations` does not swap `pinnedAsset` during that busy flag. Continue, Apply, and Recover on `RenameOperatorPanel` stay disabled while the panel `disabled` prop (session busy, including `renamePrepareBusy`) is set. Seeing the older prepared card during a later prepare is therefore the current pin rule, not by itself a defect, and it must not be confused with the zero-prepared N7 block. No acceptance-criteria or product change is made here.
+An earlier same-day console trace on a different HOME reopened the drawer during a second prepare because a previous PREPARED operation already existed. That trace is not this result and is not a Native PASS. With prepared count 0, `resolveRenameDrawerPin({ operatorOnly: true })` returns closed. With prepared count greater than 0, the status bar may open the existing operator view even while `renamePrepareBusy` is true. `openOperations` does not swap `pinnedAsset` during that busy flag. Continue, Apply, and Recover on `RenameOperatorPanel` stay disabled while the panel `disabled` prop (session busy, including `renamePrepareBusy`) is set. Seeing the older prepared card during a later prepare is therefore the current pin rule, not by itself a defect, and it must not be confused with the zero-prepared N7 block.
+
+---
+
+## 9. Composite score (2026-10-27)
+
+This section does not rewrite §6, §7, or §8. Those sessions stay classified as written. The acceptance owner approved `MO-M6-06-N7-ACCEPTANCE-POLICY-1` as **APPROVE_COMPOSITE**. The score against that bar is **PASS**. The strict manual in-flight window stays **NOT_OBSERVED**. `isTrusted=false` stays an unsampled trusted-input gap. Prepare semantics were not changed.
+
+Evidence and SHAs: [`../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) §5.1.

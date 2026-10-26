@@ -9,7 +9,7 @@
 
 本文書は baseline **`6f68ff1` に対する M6 完了判定の記録**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。
 
-その後の `main` は判定表を書き換えない。#239 で pane split の localStorage 復元、#240 で Library キーボード最小セット（Up/Down、Space、Ctrl/Cmd+F）、#241 で Drawer 受入と close-without-cancel が入った。現行の M6 行は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) を見る。M6 は引き続き **IN_PROGRESS**（Native write smoke と configurable Copy/Rename）。2026-10-26 の clean `main` 再受入は §10 に別記録する。§9 の判定表は変えない。
+その後の `main` は §9 の判定表を書き換えない。#239 で pane split の localStorage 復元、#240 で Library キーボード最小セット（Up/Down、Space、Ctrl/Cmd+F）、#241 で Drawer 受入と close-without-cancel が入った。2026-10-19 時点の残件は Native write smoke と configurable Copy/Rename だった。2026-10-26 の clean `main` 再受入は §10、診断は §11。2026-10-27 の複合受入判定は §12。現行の M6 行は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) を見る。§9 の判定表は変えない。
 
 **M6-06 決定: DECIDED (C)** — 2026-10-19、ユーザー。Operations Drawer が唯一の操作 overlay。中央 Modal は作らない。operator パネルは Drawer 内に残す。configurable shortcut は M6-06 から外し **M6-08** へ移す。`MO-M6-06-OPERATION-MODAL-1` は **不採用**。
 
@@ -502,4 +502,34 @@ M6:                    IN_PROGRESS
 Issue #178:            OPEN
 ```
 
-詳細は [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8。正式な N0–N8 の手動受入が残る。既存 PREPARED が 1 件以上あるときのステータスバー再表示は、ゼロ件の N7 禁止とは別条件であり、この節では製品仕様を変えない。
+詳細は [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8。既存 PREPARED が 1 件以上あるときのステータスバー再表示は、ゼロ件の N7 禁止とは別条件であり、この節では製品仕様を変えない。
+
+---
+
+## 12. Composite N7 judgment (2026-10-27) — does not revise §9
+
+§9、§10、§11 は変えない。この節は受入責任者が `APPROVE_COMPOSITE` としたあとの判定である。承認そのものは COMPLETE の根拠ではない。根拠は下表と、`4fbae7bb` から `d7754d30` まで `src/` と `src-tauri/` の差分が空であること。
+
+```text
+POLICY:                MO-M6-06-N7-ACCEPTANCE-POLICY-1
+DECISION:              APPROVE_COMPOSITE
+SCOPE:                 zero-prepared Rename Prepare;
+                       in-flight close and status-bar block;
+                       same operation reopen after PREPARED
+N7_STRICT_MANUAL:      NOT_OBSERVED (preserved)
+N7_COMPOSITE:          PASS
+INTERACTION_GAP:       diagnostic events are isTrusted=false
+PRODUCT_CODE:          identical 4fbae7bb .. d7754d30
+REQUIRED_CI:           PR #249 run 40302749379 PASS
+M6-01 .. M6-05:        COMPLETE (unchanged)
+M6-06:                 COMPLETE
+M6-07:                 COMPLETE (unchanged)
+M6-08:                 COMPLETE
+M6:                    COMPLETE
+ISSUE_178_CLOSE_READY: YES
+PREPARE_SEMANTICS:     unchanged
+APPLY_CONTROL:         unchanged
+GATE_C:                unchanged
+```
+
+判定の詳細は [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) §5.1。公開配布は引き続き **NOT AUTHORIZED**。
