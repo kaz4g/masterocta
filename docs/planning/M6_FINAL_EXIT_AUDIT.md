@@ -9,7 +9,7 @@
 
 本文書は baseline **`6f68ff1` に対する M6 完了判定の記録**である。Gate C / RC7 / RC8、M7 Exit Audit、Bank Editor（Project Structure / ChangePlan / Apply）は再評価しない。
 
-その後の `main` は判定表を書き換えない。#239 で pane split の localStorage 復元、#240 で Library キーボード最小セット（Up/Down、Space、Ctrl/Cmd+F）、#241 で Drawer 受入と close-without-cancel が入った。現行の M6 行は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) を見る。M6 は引き続き **IN_PROGRESS**（Native write smoke と configurable Copy/Rename）。
+その後の `main` は判定表を書き換えない。#239 で pane split の localStorage 復元、#240 で Library キーボード最小セット（Up/Down、Space、Ctrl/Cmd+F）、#241 で Drawer 受入と close-without-cancel が入った。現行の M6 行は [`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md) を見る。M6 は引き続き **IN_PROGRESS**（Native write smoke と configurable Copy/Rename）。2026-10-26 の clean `main` 再受入は §10 に別記録する。§9 の判定表は変えない。
 
 **M6-06 決定: DECIDED (C)** — 2026-10-19、ユーザー。Operations Drawer が唯一の操作 overlay。中央 Modal は作らない。operator パネルは Drawer 内に残す。configurable shortcut は M6-06 から外し **M6-08** へ移す。`MO-M6-06-OPERATION-MODAL-1` は **不採用**。
 
@@ -463,3 +463,23 @@ M6 COMPLETE は Bank Apply を待たない。逆に Bank Editor は M6-06 Drawer
 次の製品作業: FU-1（M6-06 残テスト）、独立して FU-2 / FU-3 / FU-9（いずれも M6-08）。FU-4 は開かない。
 
 関連: [#178](https://github.com/kaz4g/masterocta/issues/178)、[`DEVELOPMENT_STATUS.md`](./DEVELOPMENT_STATUS.md)、[`MILESTONE_INDEX.md`](./MILESTONE_INDEX.md)、[`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md)。
+
+---
+
+## 10. Later native session (2026-10-26) — does not revise §9
+
+§9 は 2026-10-19、`6f68ff1` の判定表のままである。この節は clean `main` の再受入記録であり、上の表を PASS に書き換えるものではない。
+
+```text
+Product SHA:           4fbae7bbc21db79f9687ec7c0b6326702f48a0d4
+Native run:            STOP
+N0–N8:                 N0–N6 PASS; N8 PASS;
+                       N7 post-PREPARED close / status-bar reopen PASS;
+                       N7 in-flight non-reopen NOT_OBSERVED
+Apply invoked:         NO
+M6-06_NATIVE:          not PASS
+M6:                    IN_PROGRESS
+Issue #178:            OPEN
+```
+
+詳細は [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §7。次の作業は、本番の Prepare 意味論を変えずに N7 実行中を観測すること。テスト専用の待機を入れる場合は通常ビルドでは無効とし、その PASS を本番 Native PASS に昇格しない。

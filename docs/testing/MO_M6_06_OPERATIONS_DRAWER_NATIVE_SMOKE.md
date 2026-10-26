@@ -3,7 +3,7 @@
 - Work ID: `MO-M6-06-DRAWER-SPEC-AND-NATIVE-1`
 - Spec: [`../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - Shared harness: [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](./MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) (fixture generator, isolated `HOME`, launcher)
-- **Native run: `STOP`** (macOS operator session 2026-10-26). Not a named-SHA **PASS**. See §6.
+- **Native run: `STOP`** (macOS operator sessions 2026-10-26). Not a named-SHA **PASS**. §6 is the earlier dirty-tree session. §7 is the clean `4fbae7bb` re-run. Neither is **PASS**.
 
 Mock IPC / Vitest / Playwright success is **not** Native acceptance.
 
@@ -29,7 +29,7 @@ Mock IPC / Vitest / Playwright success is **not** Native acceptance.
 | Prepare script contracts | Same | **RUN** (`scripts/prepare-m6-06-operations-drawer-native-smoke.test.mjs`) |
 | Frontend close-without-cancel | Vitest | **RUN** |
 | Drawer write path (mock IPC) | Playwright `e2e/operations-drawer-prepare-close.spec.ts` + existing `e2e/rename-prepare.spec.ts` | **RUN** in CI E2E |
-| **Native Tauri WebView + real IPC write** | **macOS** with GTK-free Tauri shell: `scripts/launch-native-acceptance-tauri.sh` after the prepare script | **STOP** (2026-10-26 macOS session, §6). A new prepare still prints `native_write_status=NOT_RUN` until that session is executed |
+| **Native Tauri WebView + real IPC write** | **macOS** with GTK-free Tauri shell: `scripts/launch-native-acceptance-tauri.sh` after the prepare script | **STOP** (2026-10-26 macOS sessions, §6 and §7). A new prepare still prints `native_write_status=NOT_RUN` until a session is executed |
 
 Linux Cloud Agents may compile Tauri with WebKitGTK, but this smoke is defined as the **macOS native launcher + isolated catalog `lsof`**, same class as `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`. Do not record a Linux `tauri:dev` click-through as this row.
 
@@ -138,3 +138,34 @@ Journal status after N6 was `prepared`. The clone file remained `ops_rename_src.
 N7 in-flight was not sampled: Approve & Prepare finished before Escape, so the status-bar control was not clicked while the request was still pending. That clause is required for **PASS**. Do not treat this record as M6-06 **COMPLETE**.
 
 macOS 26.6.2 `diskutil info` accepts a mount point, disk identifier, device node, or UUID. Passing the registered subdirectory returns no Volume UUID, so clone creation failed closed with `UNSTABLE_DEVICE_IDENTITY` until `root_registry` resolved the `statfs` mount point. That fix is not in `ad13ba9b`. A **PASS** record needs a commit that contains it, then a session whose N7 in-flight check is observed.
+
+---
+
+## 7. Session record (2026-10-26, clean `main`)
+
+Filled on the macOS host that ran a new isolated HOME and a new fixture. This does **not** replace §6. It is **not** `Native run: PASS`. M6 stays **IN_PROGRESS**.
+
+```text
+Native run:            STOP
+Host OS:               macOS 26.6.2 (25G83)
+Product SHA:           4fbae7bbc21db79f9687ec7c0b6326702f48a0d4
+                       clean worktree; no uncommitted product changes
+Isolated HOME:         /private/tmp/masterocta-m6-06-native-4fbae7bbc21d-20261026T095036Z
+Fixture root:          prepare-script managed temp (mo-ui-native-set-Jwif45)
+Catalog path observed: <isolated HOME>/Library/Application Support/MasterOCTa/catalog.sqlite3
+lsof catalog:          PASS (masterocta pid 72221)
+N0–N8:                 N0–N6 PASS; N7 post-PREPARED close and status-bar reopen PASS;
+                       N7 in-flight non-reopen NOT_OBSERVED; N8 PASS
+N3 managed clone:      PASS (VERIFIED CLONE)
+N6 rename prepare:     PASS (SET/AUDIO/ops_rename_src.wav → ops_rename_dst.wav)
+Apply invoked:         NO
+Continue invoked:      NO
+Source inventory:      PASS (entries=12)
+RANGE SHA after:       PASS (43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1)
+```
+
+Journal status after N6 was `prepared`. The clone file remained `ops_rename_src.wav`. The source fixture still listed only `ops_rename_src.wav`. The production catalog directory mtime stayed 2026-09-17.
+
+N7 after PREPARED: Escape closed the Drawer (`role=dialog` count 0). The status-bar control 「操作ドロワーで詳細を確認」 reopened 「リネーム」 with PREPARED and `ops_rename_dst.wav`. CONTINUE PREPARED RENAME was visible and was not clicked.
+
+N7 in-flight was **NOT_OBSERVED**. Approve & Prepare finished before a WebView accessibility walk could sample 「処理中…」 and click the status bar. `exists` on `window 1` does not see that WebView text, and `entire contents` takes longer than the prepare. No production prepare semantics were changed, and no test-only hold was enabled. Do not treat this record as M6-06 **COMPLETE**. Mock-IPC coverage of the pending status bar is a separate change and is not this Native result.

@@ -91,6 +91,7 @@ Protocol: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/M
 - Write: Drawer **rename prepare** on `SET/AUDIO/ops_rename_src.wav` after a Drawer **managed clone** of the synthetic Set (clone-first). Do **not** Apply.
 - Host: macOS Tauri (`scripts/launch-native-acceptance-tauri.sh`), isolated `HOME`.
 - 2026-10-26 macOS session: **STOP**, not **PASS**. N3 and N6 passed and Apply was not invoked. N7 in-flight non-reopen was not observed. The binary included an uncommitted macOS 26 volume-identity fix. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6.
+- 2026-10-26 clean `main` `4fbae7bbc21db79f9687ec7c0b6326702f48a0d4`: **STOP**, not **PASS**. New isolated HOME and fixture. N0–N6 and N8 passed. Post-PREPARED close and status-bar reopen passed. N7 in-flight non-reopen stayed **NOT_OBSERVED**. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §7.
 
 ---
 
