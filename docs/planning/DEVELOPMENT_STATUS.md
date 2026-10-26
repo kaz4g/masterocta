@@ -63,7 +63,7 @@ Historical WFM2 snapshot (`#145` / `95ca4cb`) remains valid for cache implementa
 | Milestone | Status | Summary |
 | --- | --- | --- |
 | **M5** | **COMPLETE** | Gate C PASS (personal/local); rename/reference-safe; RC8 ledger frozen |
-| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06 overlay **DECIDED (C)** (Drawer; Native/close tests remain); M6-08 persistence/keyboard/configurable shortcuts |
+| **M6** | **IN_PROGRESS** | Library workspace largely merged; M6-06 overlay **DECIDED (C)** (Drawer; 2026-10-26 Native write **STOP**, not PASS); M6-08 persistence/keyboard/configurable shortcuts |
 | **M7** | **COMPLETE** | Exit Gate **5/5 PASS**; Integrated Native session 5 **PASS** @ `40ba99c4`. M7-01–M7-06 **COMPLETE**; M7-07/08 **DEFERRED** (M11). See [`M7_EXIT_AUDIT.md`](./M7_EXIT_AUDIT.md) |
 | **M8** | **PLANNED** | No PerformanceSession / MockNode on `main` |
 | **M9** | **PLANNED** | No OCTA-node prototype in repo |
@@ -96,11 +96,11 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-03 Navigation Pane | **COMPLETE** | #132 | CI | Native doc | Location nav |
 | M6-04 Sample Browser v2 | **COMPLETE** | #122, #132 | CI + frontend tests | Native doc | Search/sort/pagination |
 | M6-05 Sample Inspector v2 | **COMPLETE** | #133, #135, #138 | CI | Native doc | Tabbed inspector + slice workspace |
-| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel | Native Drawer write **NOT_RUN** | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
+| M6-06 Operation Modal | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | #134 `OperationsDrawerHost` is the **single overlay** (option **C**, 2026-10-19) | CI + close-without-cancel | Native Drawer write **STOP** (2026-10-26; not PASS) | Historical WP name “Operation Modal”. No central Modal. Gate C panels stay **inside** the Drawer. Configurable shortcuts → **M6-08**. N3/N6 passed, Apply was not invoked, N7 in-flight was not observed. The session binary was dirty against `ad13ba9b` (mount-point identity fix). [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6 |
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
 | M6-08 keyboard / resize / persisted UI | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search); configurable Copy/Rename shortcuts (`MO-M6-08-OPERATION-SHORTCUTS-1`, versioned `masterocta.workspace.operation-shortcuts.v1`) | CI + frontend/e2e shortcut tests | Narrow layout verified #140. Native Drawer write remains M6-06 | Shortcuts only open the existing Drawer. They do not prepare or apply. Milestone stays open until M6-06 Native acceptance |
 
-**M6 exit gate (v0.1):** Partially met. **M6-06** Native write smoke still prevents calling M6 **COMPLETE**. Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
+**M6 exit gate (v0.1):** Partially met. **M6-06** Native write smoke (2026-10-26 **STOP**, not PASS) still prevents calling M6 **COMPLETE**. Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
 
 ---
 
@@ -260,7 +260,7 @@ at **`04725cb3`**. Do not rewrite it.
 
 ## Unresolved ambiguities
 
-1. **M6-06:** Option **(C)** adopted 2026-10-19: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. `MO-M6-06-OPERATION-MODAL-1` is not adopted. Close-without-cancel is covered by tests. Native write smoke remains **NOT_RUN**. [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.
+1. **M6-06:** Option **(C)** adopted 2026-10-19: Operations Drawer is the only overlay; no central Operation Modal; operator panels stay in the Drawer. `MO-M6-06-OPERATION-MODAL-1` is not adopted. Close-without-cancel is covered by tests. Native write smoke was executed on macOS on 2026-10-26 and recorded **STOP**, not **PASS** ([`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6). [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md). Snapshot: [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) §6.
 2. **M6-08:** Pane split persistence is implemented (`MO-M6-08-PANE-PERSISTENCE-1`). The Library keyboard minimum set (Up/Down, Space play/stop, Ctrl/Cmd+F) is included. Configurable Copy/Rename shortcuts are implemented (`MO-M6-08-OPERATION-SHORTCUTS-1`) and only open the Operations Drawer. M6-08 is not a milestone COMPLETE by itself; M6-06 Native write acceptance is still required.
 3. **M7-04 Canvas:** **Resolved (2026-09-21 exit audit).** v0.1 Exit Gate does not name Canvas; WAVEFORM_V2 §13.2/§13.5 treats it as follow-on. M7-04 is **COMPLETE** with SVG/DOM zoom/pan/range. Canvas remains post-M7 quality unless a later ADR elevates it.
 4. **`docs/OCTATRACK_PERFORMANCE_SYSTEM.md`:** Exists in user’s other clone but **not** on GitHub `main`; canonical ingest is `planning/sources/MASTA_OCTA_*_v0.1.md` only.

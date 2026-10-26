@@ -90,7 +90,7 @@ Protocol: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/M
 - Fixture: existing UI workspace generator (`scripts/generate-ui-workspace-native-fixture.mjs`) via `scripts/prepare-m6-06-operations-drawer-native-smoke.sh` — managed temp only.
 - Write: Drawer **rename prepare** on `SET/AUDIO/ops_rename_src.wav` after a Drawer **managed clone** of the synthetic Set (clone-first). Do **not** Apply.
 - Host: macOS Tauri (`scripts/launch-native-acceptance-tauri.sh`), isolated `HOME`.
-- This Cloud Agent VM: Native **NOT_RUN**.
+- 2026-10-26 macOS session: **STOP**, not **PASS**. N3 and N6 passed and Apply was not invoked. N7 in-flight non-reopen was not observed. The binary included an uncommitted macOS 26 volume-identity fix. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6.
 
 ---
 
