@@ -10,6 +10,7 @@ import {
   DEFAULT_SOURCES_SPLIT_PERCENT,
   PANE_SPLIT_STORAGE_KEY,
 } from "./paneSplitStorage";
+import { OPERATION_SHORTCUT_STORAGE_KEY, resetOperationShortcutSession } from "../workspace/operationShortcutStorage";
 import { RootRegistryPanel } from "./RootRegistryPanel";
 
 function fakeChangeApi(): ChangeApi {
@@ -160,11 +161,15 @@ function mockSplitRect(element: HTMLElement, width = 200) {
 
 describe("RootRegistryPanel workspace layout", () => {
   beforeEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
+    window.localStorage.removeItem(OPERATION_SHORTCUT_STORAGE_KEY);
   });
 
   afterEach(() => {
+    resetOperationShortcutSession();
     window.localStorage.removeItem(PANE_SPLIT_STORAGE_KEY);
+    window.localStorage.removeItem(OPERATION_SHORTCUT_STORAGE_KEY);
   });
 
   it("updates the center list when a catalog location is selected in the left nav", async () => {
@@ -444,5 +449,65 @@ describe("RootRegistryPanel workspace layout", () => {
     expect(document.querySelector(".mo-app-shell__main")).toHaveStyle({
       width: `${DEFAULT_MAIN_SPLIT_PERCENT}%`,
     });
+  });
+
+  it("opens the copy drawer from the shortcut without planning or applying", async () => {
+    const changeClient = fakeChangeApi();
+    const renameClient = fakeRenameApi();
+    render(
+      <LocaleProvider initialLocaleId="ja">
+        <ThemeProvider>
+          <RootRegistryPanel
+            api={catalogWorkspaceApi()}
+            audioClient={audioClient}
+            metadataClient={metadataClient}
+            changeClient={changeClient}
+            cloneClient={fakeCloneApi()}
+            renameClient={renameClient}
+            selectDirectory={vi.fn().mockResolvedValue("/tmp/fixture-root")}
+          />
+        </ThemeProvider>
+      </LocaleProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: tJa("sources.chooseRoot") }));
+    expect(await screen.findByText("POOL.wav")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("row", { name: /POOL\.wav/ }));
+    const chord = {
+      code: "KeyC",
+      key: "C",
+      altKey: true,
+      shiftKey: true,
+      ctrlKey: false,
+      metaKey: false,
+    };
+    await waitFor(() => {
+      fireEvent.keyDown(window, chord);
+      expect(screen.getByRole("dialog", { name: tJa("operations.drawerCopyTitle") })).toBeInTheDocument();
+    });
+    expect(changeClient.planAdditiveCopy).not.toHaveBeenCalled();
+    expect(changeClient.applyChange).not.toHaveBeenCalled();
+    expect(renameClient.plan).not.toHaveBeenCalled();
+    expect(renameClient.prepare).not.toHaveBeenCalled();
+    expect(renameClient.authorize).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { code: "KeyR", key: "R", altKey: true, shiftKey: true, ctrlKey: false, metaKey: false });
+    expect(screen.getByRole("dialog", { name: tJa("operations.drawerCopyTitle") })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: tJa("operations.drawerRenameTitle") })).toBeNull();
+
+    fireEvent.keyDown(screen.getByRole("dialog", { name: tJa("operations.drawerCopyTitle") }), { key: "Escape", code: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: tJa("operations.drawerCopyTitle") })).toBeNull();
+    });
+    fireEvent.keyDown(window, { code: "KeyR", key: "R", altKey: true, shiftKey: true, ctrlKey: false, metaKey: false });
+    expect(screen.queryByRole("dialog", { name: tJa("operations.drawerRenameTitle") })).toBeNull();
+    expect(renameClient.prepare).not.toHaveBeenCalled();
+    expect(renameClient.plan).not.toHaveBeenCalled();
+    expect(renameClient.apply).not.toHaveBeenCalled();
+
+    const search = screen.getByRole("searchbox", { name: tJa("library.searchAria") });
+    search.focus();
+    fireEvent.keyDown(search, chord);
+    expect(screen.queryByRole("dialog", { name: tJa("operations.drawerCopyTitle") })).toBeNull();
+    expect(screen.getByRole("row", { name: /POOL\.wav/ })).toHaveAttribute("aria-selected", "true");
   });
 });

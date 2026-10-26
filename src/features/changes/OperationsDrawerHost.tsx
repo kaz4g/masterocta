@@ -10,6 +10,7 @@ import type {
 import { Drawer } from "../../design-system";
 import { useTranslate } from "../../i18n";
 import type { CatalogAssetSelection } from "../library/CatalogLibraryBrowser";
+import { LibraryOperationShortcutEditor } from "../workspace/LibraryOperationShortcutEditor";
 import { AdditiveCopyChangeDrawer } from "./AdditiveCopyChangeDrawer";
 import { CloneOperatorPanel } from "./CloneOperatorPanel";
 import { RenameOperatorPanel } from "./RenameOperatorPanel";
@@ -112,6 +113,7 @@ export function OperationsDrawerHost({
 
   const body: ReactNode = (
     <>
+      <LibraryOperationShortcutEditor open={open} />
       <div {...sectionProps(open && kind === "clone")}>
         <CloneOperatorPanel
           session={session}

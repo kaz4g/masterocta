@@ -43,6 +43,10 @@ import {
   readPaneSplitPercents,
   writePaneSplitPercents,
 } from "./paneSplitStorage";
+import {
+  readOperationShortcuts,
+  resolveLibraryOperationShortcut,
+} from "../workspace/operationShortcutStorage";
 import { applyWideSourcesNavTransition, resetWideSourcesNav } from "./wideSourcesNav";
 import { WorkspaceStatusBar } from "../workspace/WorkspaceStatusBar";
 import { WorkspaceTopBar } from "../workspace/WorkspaceTopBar";
@@ -690,6 +694,35 @@ export function RootRegistryPanel({
     operationsReturnFocusRef.current = focusTarget ?? document.activeElement as HTMLElement | null;
     openOperations("clone");
   }
+
+  const operationShortcutRef = useRef({
+    openRename: openRenameForSelection,
+    openCopy: openCopyForSelection,
+    blocked: renamePrepareBusy || changeBusy || busy,
+    drawerOpen: operationsOpen,
+  });
+  operationShortcutRef.current = {
+    openRename: openRenameForSelection,
+    openCopy: openCopyForSelection,
+    blocked: renamePrepareBusy || changeBusy || busy,
+    drawerOpen: operationsOpen,
+  };
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const current = operationShortcutRef.current;
+      const action = resolveLibraryOperationShortcut(event, readOperationShortcuts(), {
+        blocked: current.blocked,
+        drawerOpen: current.drawerOpen,
+      });
+      if (action === null) return;
+      event.preventDefault();
+      if (action === "rename") current.openRename();
+      else current.openCopy();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function showInspectorPane() {
     setCenterView("inspector");
