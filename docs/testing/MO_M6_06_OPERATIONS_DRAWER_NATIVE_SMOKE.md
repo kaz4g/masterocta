@@ -3,7 +3,7 @@
 - Work ID: `MO-M6-06-DRAWER-SPEC-AND-NATIVE-1`
 - Spec: [`../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](../planning/M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
 - Shared harness: [`MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`](./MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md) (fixture generator, isolated `HOME`, launcher)
-- **Native run: `STOP`** (macOS operator sessions 2026-10-26). Not a named-SHA **PASS**. §6 is the earlier dirty-tree session. §7 is the clean `4fbae7bb` re-run. Neither is **PASS**.
+- **Native run: `STOP`** (macOS operator sessions 2026-10-26). Not a named-SHA **PASS**. §6 is the earlier dirty-tree session. §7 is the clean `4fbae7bb` re-run. §8 is a later console-driven diagnostic on `d7754d30` with zero prepared operations. None of these is a production Native **PASS**.
 
 Mock IPC / Vitest / Playwright success is **not** Native acceptance.
 
@@ -169,3 +169,39 @@ Journal status after N6 was `prepared`. The clone file remained `ops_rename_src.
 N7 after PREPARED: Escape closed the Drawer (`role=dialog` count 0). The status-bar control 「操作ドロワーで詳細を確認」 reopened 「リネーム」 with PREPARED and `ops_rename_dst.wav`. CONTINUE PREPARED RENAME was visible and was not clicked.
 
 N7 in-flight was **NOT_OBSERVED**. Approve & Prepare finished before a WebView accessibility walk could sample 「処理中…」 and click the status bar. `exists` on `window 1` does not see that WebView text, and `entire contents` takes longer than the prepare. No production prepare semantics were changed, and no test-only hold was enabled. Do not treat this record as M6-06 **COMPLETE**. Mock-IPC coverage of the pending status bar is a separate change and is not this Native result.
+
+---
+
+## 8. Diagnostic session (2026-10-26, clean `main`, prepared count 0)
+
+This does **not** replace §6 or §7. It is **not** a production Native **PASS**. Interaction was `CONSOLE_DRIVEN` (`event.isTrusted=false`). Classify as `N7_DIAGNOSTIC=PASS` and `N7_PRODUCTION_NATIVE=NOT_YET_ACCEPTED`. M6 stays **IN_PROGRESS**.
+
+```text
+PRODUCT_SHA:           d7754d30f671a4f2a97100a3825ac4eba0d6fc0b
+WORKTREE_STATUS:       clean; origin/main matched
+HOST_OS:               macOS
+ISOLATED_HOME:         /private/tmp/masterocta-m6-06-native-d7754d30-20261026T133946Z
+FIXTURE_ROOT:          mo-ui-native-set-H6W1w4
+CATALOG_LSOF:          PASS (masterocta pid 22824 on that isolated catalog)
+PREPARED_COUNT_BEFORE: 0 (no rename journals before Approve)
+SOURCE:                SET/AUDIO/ops_rename_src.wav
+DESTINATION:           SET/AUDIO/ops_rename_dst.wav
+PLAN_ID:               plan:v1:59bc76cb47d637275c50c86503c7a48d8b62cd16d66f0a238d8db17c435ecb66
+OPERATION_ID:          operation:v1:59bc76cb47d637275c50c86503c7a48d8b62cd16d66f0a238d8db17c435ecb66
+IPC_START:             performance.now 692631
+IPC_END:               performance.now 692853
+PREPARE_DURATION:      222ms
+PREPARE_IPC_CALL_COUNT: 1
+INTERACTION_SOURCE:    CONSOLE_DRIVEN
+EVENT_IS_TRUSTED:      false
+N7_RESULT:             DIAGNOSTIC_PASS (reopen blocked while IPC open; same operation reopened after PREPARED)
+APPLY_INVOKED:         NO
+CONTINUE_INVOKED:      NO
+RECOVER_INVOKED:       NO
+SOURCE_INVENTORY:      PASS (entries=12)
+RANGE_SHA:             PASS (43ceb3dc7e42bd89ee1b83da57682cb0b2f846c5b12caf210cbf61ba29e429b1)
+```
+
+`renameApi.prepare` was an own writable and configurable method. The wrapper called the original once and returned its promise without delaying it. The resolved state was `prepared`. Escape during the IPC reached the drawer dismiss handler (`defaultPrevented=true`). After the following React update, and still before IPC end, the drawer was closed, the status-bar button 「操作ドロワーで詳細を確認」 was clicked, and the drawer stayed closed. After `prepared`, the same operation id reopened in the drawer. The clone file remained `ops_rename_src.wav`. The production catalog mtime stayed 2026-09-17.
+
+An earlier same-day console trace on a different HOME reopened the drawer during a second prepare because a previous PREPARED operation already existed. That trace is not this result and is not a Native PASS. With prepared count 0, `resolveRenameDrawerPin({ operatorOnly: true })` returns closed. With prepared count greater than 0, the status bar may open the existing operator view even while `renamePrepareBusy` is true. `openOperations` does not swap `pinnedAsset` during that busy flag. Continue, Apply, and Recover on `RenameOperatorPanel` stay disabled while the panel `disabled` prop (session busy, including `renamePrepareBusy`) is set. Seeing the older prepared card during a later prepare is therefore the current pin rule, not by itself a defect, and it must not be confused with the zero-prepared N7 block. No acceptance-criteria or product change is made here.
