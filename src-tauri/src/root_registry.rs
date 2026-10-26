@@ -279,7 +279,10 @@ fn macos_mount_point(root: &Path) -> Option<PathBuf> {
         return None;
     }
     let name = &info.f_mntonname;
-    let end = name.iter().position(|byte| *byte == 0).unwrap_or(name.len());
+    let end = name
+        .iter()
+        .position(|byte| *byte == 0)
+        .unwrap_or(name.len());
     if end == 0 {
         return None;
     }
@@ -1453,8 +1456,61 @@ mod tests {
             plist_string(plist, "VolumeUUID").as_deref(),
             Some("6ED4F43A-2D53-4F27-928B-6516BC333382")
         );
-        assert_eq!(plist_string(plist, "FilesystemType").as_deref(), Some("apfs"));
+        assert_eq!(
+            plist_string(plist, "FilesystemType").as_deref(),
+            Some("apfs")
+        );
         assert_eq!(plist_integer(plist, "TotalSize"), Some(494_384_795_648));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn same_volume_subdirectories_stay_distinct_roots() {
+        let parent = TempDir::new().unwrap();
+        let first = parent.path().join("set-a");
+        let second = parent.path().join("set-b");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+
+        let first_observation = SystemDeviceIdentityProvider.observe(&first).unwrap();
+        let second_observation = SystemDeviceIdentityProvider.observe(&second).unwrap();
+        assert!(first_observation.stable);
+        assert!(second_observation.stable);
+        assert!(first_observation.stable_key.starts_with("volume-uuid:"));
+        assert!(!first_observation.stable_key.starts_with("unix-device:"));
+        assert_eq!(first_observation.stable_key, second_observation.stable_key);
+
+        let registry = RootRegistry::new(
+            Arc::new(SystemDeviceIdentityProvider),
+            Duration::from_secs(60),
+        );
+        let first_session = registry.register(first.to_str().unwrap()).unwrap();
+        let second_session = registry.register(second.to_str().unwrap()).unwrap();
+        assert_ne!(first_session.root_id, second_session.root_id);
+        assert_eq!(
+            first_session.device_fingerprint,
+            second_session.device_fingerprint
+        );
+        assert_ne!(
+            first_session.canonical_directory_hash,
+            second_session.canonical_directory_hash
+        );
+        assert!(first_session.capabilities.stable_device_identity);
+        assert!(second_session.capabilities.stable_device_identity);
+        assert!(!first_session.capabilities.write);
+        assert!(!second_session.capabilities.write);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn volume_lookup_failure_does_not_become_a_stable_identity() {
+        assert!(diskutil_volume_info(Path::new("not-a-mount")).is_none());
+        let missing = Path::new("/no/such/masterocta-mount-point");
+        assert!(diskutil_volume_info(missing).is_none());
+        assert_eq!(
+            SystemDeviceIdentityProvider.observe(missing).unwrap_err(),
+            RootRegistryError::Removed
+        );
     }
 
     #[test]
