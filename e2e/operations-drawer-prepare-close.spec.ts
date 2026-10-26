@@ -15,6 +15,7 @@ test.describe("Operations Drawer close during prepare", () => {
     await page.addInitScript(({ planId, operationId, authorityId, snapshotId }) => {
       (window as any).__E2E_ROOT_PATH__ = "/tmp/fixture-root";
       (window as any).__E2E_INVOKE_CALLS__ = [];
+      let renamePrepareFinished = false;
       (window as any).__TAURI_INTERNALS__ = {
         transformCallback: () => {},
         invoke: async (cmd: string, args?: Record<string, unknown>) => {
@@ -71,13 +72,29 @@ test.describe("Operations Drawer close during prepare", () => {
               usageEdges: [],
             };
           }
-          if (cmd === "v2_change_recovery_status" || cmd === "v2_rename_recovery_status") {
+          if (cmd === "v2_change_recovery_status") {
             return {
-              schema: cmd === "v2_change_recovery_status"
-                ? "change-recovery-status:v1"
-                : "rename-recovery-status:v1",
+              schema: "change-recovery-status:v1",
               recoveryRequired: false,
               operations: [],
+            };
+          }
+          if (cmd === "v2_rename_recovery_status") {
+            return {
+              schema: "rename-recovery-status:v1",
+              recoveryRequired: false,
+              operations: renamePrepareFinished
+                ? [{
+                  schema: "rename-status:v1",
+                  operationId,
+                  planId,
+                  state: "prepared",
+                  backupSnapshotId: snapshotId,
+                  failureCode: null,
+                  planExpired: false,
+                  recoveryEligible: false,
+                }]
+                : [],
             };
           }
           if (cmd === "v2_rename_plan" || cmd === "v2_rename_get_plan") {
@@ -127,6 +144,7 @@ test.describe("Operations Drawer close during prepare", () => {
             await new Promise<void>((resolve) => {
               (window as any).__E2E_RELEASE_PREPARE__ = resolve;
             });
+            renamePrepareFinished = true;
             return {
               schema: "rename-prepare-status:v1",
               planId,
@@ -191,12 +209,34 @@ test.describe("Operations Drawer close during prepare", () => {
     const callsAfterClose = await page.evaluate(() => (window as any).__E2E_INVOKE_CALLS__ ?? []);
     expect(callsAfterClose.filter((cmd: string) => cmd === "v2_rename_prepare")).toHaveLength(1);
     expect(callsAfterClose.includes("v2_rename_apply")).toBe(false);
+    expect(callsAfterClose.includes("v2_rename_recover")).toBe(false);
+    expect(callsAfterClose.includes("v2_change_recover")).toBe(false);
     expect(callsAfterClose.some((cmd: string) => /cancel/i.test(cmd))).toBe(false);
+
+    const openOperations = page.getByRole("button", {
+      name: uiText("ja", "workspace.openOperationsAria"),
+    });
+    await expect(openOperations).toBeVisible();
+    await openOperations.click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    const callsWhilePending = await page.evaluate(() => (window as any).__E2E_INVOKE_CALLS__ ?? []);
+    expect(callsWhilePending.includes("v2_rename_apply")).toBe(false);
+    expect(callsWhilePending.includes("v2_rename_recover")).toBe(false);
+    expect(callsWhilePending.includes("v2_change_recover")).toBe(false);
+    expect(callsWhilePending.some((cmd: string) => /cancel/i.test(cmd))).toBe(false);
 
     await page.evaluate(() => {
       const release = (window as any).__E2E_RELEASE_PREPARE__;
       if (typeof release === "function") release();
     });
+
+    await expect(page.getByText(uiText("ja", "workspace.statusContinuation"))).toBeVisible();
+    await expect.poll(async () => {
+      const calls = await page.evaluate(() => (window as any).__E2E_INVOKE_CALLS__ ?? []);
+      return calls.filter((cmd: string) => cmd === "v2_rename_recovery_status").length;
+    }).toBeGreaterThan(
+      callsWhilePending.filter((cmd: string) => cmd === "v2_rename_recovery_status").length,
+    );
 
     const inspectorRename = page
       .getByTestId("inspector-workspace-host")
@@ -205,10 +245,22 @@ test.describe("Operations Drawer close during prepare", () => {
     await inspectorRename.click();
     const reopened = page.getByRole("dialog");
     await expect(reopened.getByText("Rename prepared")).toBeVisible();
+    await expect(reopened.getByText("Status: PREPARED")).toBeVisible();
+    await expect(reopened.getByText("KICK_DEEP.wav")).toBeVisible();
     await expect(reopened.getByText(/No Octatrack media changes have been applied/i)).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await openOperations.click();
+    const reopenedFromStatus = page.getByRole("dialog");
+    await expect(reopenedFromStatus.getByText("PREPARED", { exact: true })).toBeVisible();
+    await expect(reopenedFromStatus.getByText(operationId)).toBeVisible();
 
     const callsAfterReopen = await page.evaluate(() => (window as any).__E2E_INVOKE_CALLS__ ?? []);
     expect(callsAfterReopen.filter((cmd: string) => cmd === "v2_rename_prepare")).toHaveLength(1);
     expect(callsAfterReopen.includes("v2_rename_apply")).toBe(false);
+    expect(callsAfterReopen.includes("v2_rename_recover")).toBe(false);
+    expect(callsAfterReopen.includes("v2_change_recover")).toBe(false);
+    expect(callsAfterReopen.some((cmd: string) => /cancel/i.test(cmd))).toBe(false);
   });
 });
