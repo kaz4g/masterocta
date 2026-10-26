@@ -83,7 +83,7 @@ M6-06 **historical name** is Operation Modal. Adopted implementation (2026-10-19
 
 - [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) (2026-10-19; `main` `6f68ff1`; M6-06 **DECIDED (C)**; M6 remains IN_PROGRESS)
 - [`POST_M5_FEATURE_RESTART_AUDIT.md`](./POST_M5_FEATURE_RESTART_AUDIT.md) (historical investigation; #103–#105 reopen ban)
-- [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) (M6-06 option C; Native smoke still **NOT_RUN**)
+- [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md) (M6-06 option C; 2026-10-26 Native smoke **STOP**, not PASS)
 - [`WAVEFORM_V2_INTEGRATION.md`](./WAVEFORM_V2_INTEGRATION.md) (M7 WF2; depends on M6 layout)
 - Testing: `docs/testing/MO_UI_WORKSPACE_*`, `MO_UI_LIBRARY_INSPECTOR_*`, `MO_UI_OPERATIONS_DRAWER_*`, `MO_UI_WORKSPACE_NATIVE_ACCEPTANCE.md`, `MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`
 

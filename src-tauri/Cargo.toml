@@ -15,6 +15,7 @@ members = [
 resolver = "2"
 
 [package]
+default-run = "masterocta"
 name = "masterocta"
 version = "0.1.0"
 description = "Masta-Octa — a desktop application for safely managing Elektron Octatrack projects"
