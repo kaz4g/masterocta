@@ -483,3 +483,23 @@ Issue #178:            OPEN
 ```
 
 詳細は [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §7。次の作業は、本番の Prepare 意味論を変えずに N7 実行中を観測すること。テスト専用の待機を入れる場合は通常ビルドでは無効とし、その PASS を本番 Native PASS に昇格しない。
+
+---
+
+## 11. Diagnostic in-flight session (2026-10-26) — does not revise §9
+
+§9 の判定表は変えない。§10 も変えない。この節は prepared count 0 のコンソール駆動診断であり、本番 Native PASS ではない。
+
+```text
+Product SHA:           d7754d30f671a4f2a97100a3825ac4eba0d6fc0b
+Native run:            DIAGNOSTIC_PASS / PRODUCTION_NOT_YET_ACCEPTED
+N7 in-flight:          reopen blocked while the first prepare IPC was open;
+                       same operation reopened after PREPARED
+Interaction:           CONSOLE_DRIVEN (isTrusted false)
+Apply invoked:         NO
+M6-06_NATIVE:          not production PASS
+M6:                    IN_PROGRESS
+Issue #178:            OPEN
+```
+
+詳細は [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8。正式な N0–N8 の手動受入が残る。既存 PREPARED が 1 件以上あるときのステータスバー再表示は、ゼロ件の N7 禁止とは別条件であり、この節では製品仕様を変えない。

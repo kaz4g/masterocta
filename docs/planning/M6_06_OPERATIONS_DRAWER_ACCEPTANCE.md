@@ -92,6 +92,7 @@ Protocol: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/M
 - Host: macOS Tauri (`scripts/launch-native-acceptance-tauri.sh`), isolated `HOME`.
 - 2026-10-26 macOS session: **STOP**, not **PASS**. N3 and N6 passed and Apply was not invoked. N7 in-flight non-reopen was not observed. The binary included an uncommitted macOS 26 volume-identity fix. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §6.
 - 2026-10-26 clean `main` `4fbae7bbc21db79f9687ec7c0b6326702f48a0d4`: **STOP**, not **PASS**. New isolated HOME and fixture. N0–N6 and N8 passed. Post-PREPARED close and status-bar reopen passed. N7 in-flight non-reopen stayed **NOT_OBSERVED**. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §7.
+- 2026-10-26 clean `main` `d7754d30f671a4f2a97100a3825ac4eba0d6fc0b`: diagnostic only, not production Native **PASS**. A new isolated HOME started with zero prepared rename operations. Console-driven observation wrapped `renameApi.prepare` once, without delaying the promise. During that IPC the drawer closed and the status bar did not reopen it. After `prepared`, the same operation reopened. Apply and Continue were not invoked. Record: [`../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md`](../testing/MO_M6_06_OPERATIONS_DRAWER_NATIVE_SMOKE.md) §8.
 
 ---
 

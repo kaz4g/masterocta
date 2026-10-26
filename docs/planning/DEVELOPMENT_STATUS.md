@@ -1,7 +1,7 @@
 # Development status (canonical)
 
 - Work ID: `MO-M7-FINAL-EXIT-AUDIT-1`; prior: `MO-M7-INTEGRATED-NATIVE-ACCEPTANCE-5`
-- Updated: 2026-10-26 (clean `main` `4fbae7bb` M6-06 Native re-run **STOP**; N7 in-flight **NOT_OBSERVED**. M6 stays **IN_PROGRESS**. Prior note, 2026-10-25: #217 `P_BANK_COPY_STATE` salvage closed as **STOP_WITH_FINDINGS**; M5 **COMPLETE** and M7 **COMPLETE** unchanged)
+- Updated: 2026-10-26 (clean `main` `d7754d30` M6-06 N7 in-flight diagnostic **PASS** under console-driven observation with zero prepared operations; production Native acceptance **not** granted. M6 stays **IN_PROGRESS**. Prior same-day note: clean `4fbae7bb` re-run **STOP**, N7 in-flight **NOT_OBSERVED**. 2026-10-25: #217 `P_BANK_COPY_STATE` salvage closed as **STOP_WITH_FINDINGS**; M5 **COMPLETE** and M7 **COMPLETE** unchanged)
 - Product baseline (M7 completion): GitHub `origin/main` **`8bedd19cddb7cf2a498d0b8ff74fa729720d2c5d`**
 - M6 exit-audit snapshot: GitHub `origin/main` **`6f68ff127e25b8282c00ef77b783ddd149796673`** — [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md)
 - M6-06 acceptance (option C): [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md)
@@ -100,7 +100,7 @@ Judged by **responsibility**, not exact v0.1 widget names.
 | M6-07 AudioAsset baseline | **COMPLETE** | M3-C1 #13 (`AudioAsset` / `FileInstance`) | Catalog tests | — | v0.1 “migration-free read” satisfied via existing catalog |
 | M6-08 keyboard / resize / persisted UI | **IMPLEMENTED_NOT_FULLY_ACCEPTED** | Resize/split (#132, #139–#140); pane split localStorage (`MO-M6-08-PANE-PERSISTENCE-1`); Library keyboard (Up/Down, Space play/stop, Ctrl/Cmd+F search); configurable Copy/Rename shortcuts (`MO-M6-08-OPERATION-SHORTCUTS-1`, versioned `masterocta.workspace.operation-shortcuts.v1`) | CI + frontend/e2e shortcut tests | Narrow layout verified #140. Native Drawer write remains M6-06 | Shortcuts only open the existing Drawer. They do not prepare or apply. Milestone stays open until M6-06 Native acceptance |
 
-**M6 exit gate (v0.1):** Partially met. **M6-06** Native write smoke (2026-10-26 **STOP**, not PASS; clean `4fbae7bb` re-run included) still prevents calling M6 **COMPLETE**. N7 in-flight non-reopen remains **NOT_OBSERVED**. Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
+**M6 exit gate (v0.1):** Partially met. **M6-06** Native write smoke (2026-10-26 **STOP**, not PASS; clean `4fbae7bb` re-run included) still prevents calling M6 **COMPLETE**. A later `d7754d30` console-driven diagnostic with zero prepared operations observed the in-flight status-bar block; that is not production Native acceptance. N7 production Native remains **NOT_YET_ACCEPTED**. Configurable Copy/Rename shortcuts open the Operations Drawer only (`MO-M6-08-OPERATION-SHORTCUTS-1`). Overlay is the Operations Drawer (option C). Pane persistence (#239) and the Library keyboard minimum set (#240) landed after the `6f68ff1` audit snapshot. See [`M6_FINAL_EXIT_AUDIT.md`](./M6_FINAL_EXIT_AUDIT.md) and [`M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md`](./M6_06_OPERATIONS_DRAWER_ACCEPTANCE.md).
 
 ---
 
