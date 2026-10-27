@@ -10,8 +10,10 @@ PR #200 audit is in the base; no Read Model parser or schema is changed.
 Select a catalog Project in Sources. Its Project workspace has a separate
 Project Structure panel, above the sample list. Both shell and inline catalog
 entry points use the same Viewer. The API accepts a registered opaque RootId
-and project-relative path, invokes only `v2_project_structure_read`, and checks
-`masterocta.project-structure:v4` and response target identity.
+and project-relative path. Structure inspection invokes `v2_project_structure_read`
+and checks `masterocta.project-structure:v4` and response target identity.
+Pattern Copy preview, when the user calculates it, invokes only the read-only
+`v2_pattern_copy_preview` command and never an Apply command.
 
 Bank documents are selected by full root-relative source document identity.
 Working and SavedCheckpoint are separate options; they are never merged.

@@ -12,7 +12,7 @@ use ot_domain::{
 use ot_plan::pattern_copy_preview::{
     finalize_pattern_copy_preview, AffectedSampleReferencePreview, AffectedTrackPreview, ModeScope,
     PartAssignmentMode, PatternCopyBlocker, PatternCopyIntent, PatternCopyPreview,
-    PreviewObservation, TrackCopyMode,
+    PreviewObservation, SampleReferenceOrigin, TrackCopyMode,
 };
 use ot_tools_io::BankFile;
 
@@ -283,6 +283,8 @@ fn sample_references_for_pattern(
                 track_number: track_idx as u8,
                 step: None,
                 summary: format!("part_machine:{slot_ref:?}"),
+                origin: SampleReferenceOrigin::PartMachine,
+                slot: slot_ref,
             });
             if matches!(slot_ref, TrackSlotReference::Unrecognized(_)) {
                 blockers.push(PatternCopyBlocker::UnresolvedSampleReference);
@@ -313,6 +315,8 @@ fn sample_references_for_pattern(
                 summary: format!(
                     "sample_lock raw={lock} resolved={slot_ref:?} pattern={pattern_idx}"
                 ),
+                origin: SampleReferenceOrigin::SampleLock,
+                slot: slot_ref,
             });
             if matches!(slot_ref, TrackSlotReference::Unrecognized(_)) {
                 blockers.push(PatternCopyBlocker::UnresolvedSampleReference);

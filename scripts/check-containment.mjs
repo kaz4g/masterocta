@@ -412,6 +412,7 @@ const expectedV2Commands = [
   "v2_clone_verification_status",
   "v2_clone_verify_external",
   "v2_library_list",
+  "v2_pattern_copy_preview",
   "v2_project_structure_read",
   "v2_rename_authorize",
   "v2_rename_create_backup",

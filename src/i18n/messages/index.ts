@@ -70,6 +70,8 @@ export type MessageParams = {
   'pse.arrangementUnrecognized': { raw: number },
   'pse.catalogEvidence': { usage: string; slot: string; status: string },
   'pse.catalogEvidenceStep': { usage: string; slot: string; step: number; status: string },
+  'pse.preview.sampleLine': { track: string; usage: string; slot: string },
+  'pse.preview.sampleLineStep': { track: string; step: number; usage: string; slot: string },
 }
 
 export type MessageKeyWithParams = keyof MessageParams

@@ -3,7 +3,8 @@
 //! Not a ChangePlan Apply envelope and not authorized to write media.
 
 use ot_domain::project_structure::{
-    BankIndex, PartIndex, PatternIndex, UnmodeledDependency, BANK_UNMODELED_DEPENDENCIES,
+    BankIndex, PartIndex, PatternIndex, TrackSlotReference, UnmodeledDependency,
+    BANK_UNMODELED_DEPENDENCIES,
 };
 use ot_domain::{RootId, RootRelativePath, StateDocumentRole};
 use std::fmt;
@@ -76,11 +77,20 @@ pub struct AffectedTrackPreview {
     pub copied: bool,
 }
 
+/// Where a preview observed a sample slot. This is not a file-existence check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SampleReferenceOrigin {
+    PartMachine,
+    SampleLock,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AffectedSampleReferencePreview {
     pub track_number: u8,
     pub step: Option<u8>,
     pub summary: String,
+    pub origin: SampleReferenceOrigin,
+    pub slot: TrackSlotReference,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -102,6 +112,10 @@ pub enum PatternCopyBlocker {
     DocumentUnsupportedVersion,
     UnresolvedSampleReference,
     UnmodeledDependency(UnmodeledDependency),
+    /// `project.work` did not yield a definite master-track flag.
+    MasterTrackSettingUnavailable,
+    /// Bank or project bytes changed between the two reads of one preview.
+    DocumentChangedDuringRead,
 }
 
 impl fmt::Display for PatternCopyBlocker {
@@ -155,6 +169,13 @@ pub fn validate_pattern_copy_intent(intent: &PatternCopyIntent) -> Vec<PatternCo
     }
     if intent.source_role != intent.destination_role {
         blockers.push(PatternCopyBlocker::CrossRoleCopySemanticsUnknown);
+        blockers.push(PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved);
+    }
+    // SavedCheckpoint semantics stay unresolved even when both sides match.
+    // Working → Working is the only preview scope.
+    if intent.source_role != StateDocumentRole::Working
+        || intent.destination_role != StateDocumentRole::Working
+    {
         blockers.push(PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved);
     }
     if intent.source_bank == intent.destination_bank
@@ -283,5 +304,15 @@ mod tests {
         intent.destination_pattern = intent.source_pattern;
         let blockers = validate_pattern_copy_intent(&intent);
         assert!(blockers.contains(&PatternCopyBlocker::SourceEqualsDestinationPattern));
+    }
+
+    #[test]
+    fn saved_checkpoint_pair_is_blocked_without_bank_bytes() {
+        let mut intent = sample_intent();
+        intent.source_role = StateDocumentRole::SavedCheckpoint;
+        intent.destination_role = StateDocumentRole::SavedCheckpoint;
+        let blockers = validate_pattern_copy_intent(&intent);
+        assert!(blockers.contains(&PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved));
+        assert!(!blockers.contains(&PatternCopyBlocker::CrossRoleCopySemanticsUnknown));
     }
 }

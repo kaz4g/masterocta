@@ -4,8 +4,9 @@
  *
  * Fails closed while Bank Apply is unauthorized:
  * - production Rust in the Bank editor path may not reach a filesystem write API;
- * - the Project Structure frontend may only issue `v2_project_structure_read`;
- * - no v2 Bank / Project Structure command other than the read may exist;
+ * - the Project Structure frontend may issue only `v2_project_structure_read`
+ *   and the audited read-only `v2_pattern_copy_preview`;
+ * - no other v2 Bank / Project Structure / Pattern Copy command may exist;
  * - legacy Bank-family write commands must stay disabled;
  * - the ChangePlan / Mutation gate ledger must cover every #191 gate, and
  *   mutation / recovery gates stay BLOCKED until #182 and #183 exist.
@@ -34,7 +35,7 @@ export const REQUIRED_RUST_TARGETS = [
   "src-tauri/crates/ot-codec/src/project_structure.rs",
 ];
 const RUST_DISCOVERY_ROOTS = ["src-tauri/src", "src-tauri/crates"];
-const RUST_DISCOVERY_NAME = /(bank|project_structure)/i;
+const RUST_DISCOVERY_NAME = /(bank|project_structure|pattern_copy)/i;
 
 export const REQUIRED_FRONTEND_TARGETS = [
   "src/api/projectStructure.ts",
@@ -44,8 +45,11 @@ const FRONTEND_FEATURE_DISCOVERY = /^(project-structure|bank)/i;
 const FRONTEND_TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const FRONTEND_SOURCE_FILE = /\.[cm]?[jt]sx?$/;
 
-export const ALLOWED_PSE_IPC_COMMANDS = ["v2_project_structure_read"];
-const V2_COMMAND_FAMILY = /(bank|project_structure)/;
+export const ALLOWED_PSE_IPC_COMMANDS = [
+  "v2_pattern_copy_preview",
+  "v2_project_structure_read",
+];
+const V2_COMMAND_FAMILY = /(bank|project_structure|pattern_copy)/;
 
 export const LEGACY_BANK_FAMILY_COMMANDS = [
   "copy_bank",
@@ -343,10 +347,12 @@ export function scanV2CommandSurface(source) {
     return [finding("V2_SURFACE", "src-tauri/src/v2_api.rs", "no v2 commands parsed (fail closed)")];
   }
   const findings = [];
-  if (!commands.includes("v2_project_structure_read")) {
-    findings.push(
-      finding("V2_SURFACE", "src-tauri/src/v2_api.rs", "v2_project_structure_read is missing"),
-    );
+  for (const command of ALLOWED_PSE_IPC_COMMANDS) {
+    if (!commands.includes(command)) {
+      findings.push(
+        finding("V2_SURFACE", "src-tauri/src/v2_api.rs", `${command} is missing`),
+      );
+    }
   }
   for (const command of commands) {
     if (V2_COMMAND_FAMILY.test(command) && !ALLOWED_PSE_IPC_COMMANDS.includes(command)) {

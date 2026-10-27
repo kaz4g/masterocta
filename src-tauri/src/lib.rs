@@ -16,6 +16,7 @@ mod legacy_read_adapter;
 mod local_artifact;
 mod mutation_gate;
 mod pattern_copy_preview;
+mod pattern_copy_preview_command;
 mod prepared_rename_runtime;
 mod project_compatibility;
 pub mod project_manager;
@@ -1652,6 +1653,7 @@ pub fn run() {
             v2_api::v2_root_close,
             v2_api::v2_library_list,
             v2_api::v2_project_structure_read,
+            v2_api::v2_pattern_copy_preview,
             v2_api::v2_asset_metadata_get,
             v2_api::v2_asset_metadata_replace,
             v2_api::v2_audio_onsets_start,

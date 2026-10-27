@@ -410,10 +410,10 @@ the Bank editor line before #182 / #183 define how one is allowed.
 
 | Rule | Scope | Fails when |
 | --- | --- | --- |
-| `RUST_WRITE_API` | production code (outside `#[cfg(test)] mod`) of the five required Rust files plus any `*.rs` under `src-tauri/src` or `src-tauri/crates` whose file name contains `bank` or `project_structure` | std::fs write / rename / delete, write-mode `OpenOptions`, `File::create`, `io::Write`, libc write / create / delete flags or calls, `to_data_file`, or a dependency on an executor / backup / write runtime |
-| `FRONTEND_IPC` | `src/api/projectStructure.ts`, non-test files under `src/features/project-structure/` and any `src/features/bank*/` | a `v2_*` command other than `v2_project_structure_read`, or a legacy disabled / authorized write command name |
+| `RUST_WRITE_API` | production code (outside `#[cfg(test)] mod`) of the five required Rust files plus any `*.rs` under `src-tauri/src` or `src-tauri/crates` whose file name contains `bank`, `project_structure`, or `pattern_copy` | std::fs write / rename / delete, write-mode `OpenOptions`, `File::create`, `io::Write`, libc write / create / delete flags or calls, `to_data_file`, or a dependency on an executor / backup / write runtime |
+| `FRONTEND_IPC` | `src/api/projectStructure.ts`, non-test files under `src/features/project-structure/` and any `src/features/bank*/` | a `v2_*` command other than `v2_project_structure_read` or `v2_pattern_copy_preview`, or a legacy disabled / authorized write command name |
 | `FRONTEND_IMPORT` | same | a value import of `@tauri-apps/*`, the `src/api` barrel, or any `src/api` module other than `projectStructure` (the API file itself may use only `client`) |
-| `V2_SURFACE` | `src-tauri/src/v2_api.rs` | a v2 command whose name contains `bank` or `project_structure` other than the read |
+| `V2_SURFACE` | `src-tauri/src/v2_api.rs` | a v2 command whose name contains `bank`, `project_structure`, or `pattern_copy` other than `v2_project_structure_read` and `v2_pattern_copy_preview` |
 | `LEGACY_GATE` | `src-tauri/src/legacy_command_gate.rs` | a legacy Bank-family write leaves `DISABLED_COMMANDS` |
 | `LEDGER` | `scripts/pse-bank-mutation-gates.json` | a #191 gate is missing or unknown, a BLOCKED gate lists tests or has no blocker, a mutation / recovery gate is ACTIVE, `mutation_runner.implemented` is not `false`, or a set contract document does not exist |
 | `MISSING_TARGET` / `*_PARSE` | all of the above | a required file is missing or cannot be parsed |
@@ -429,8 +429,15 @@ guard's allowlist explicitly. The contract test
 generic media-mutating command list and fails if the composition code
 references Bank mutation types without the entry gate.
 
-Lifting a rule is part of the reviewed #182 / #183 change, together with the
+Lifting a write rule is part of the reviewed #182 / #183 change, together with the
 runtime mutation gates. Editing the ledger alone cannot unlock Apply.
+
+`v2_pattern_copy_preview` is an audited read-only exception for
+`MO-PSE-PATTERN-COPY-PREVIEW-UI-1`. The guard names that command in
+`ALLOWED_PSE_IPC_COMMANDS` and scans `pattern_copy` Rust files and v2 command
+names. It returns a preview DTO and does not authorize Apply. Any other
+`pattern_copy` command, including an apply or write command, still fails the
+guard. Mutation and recovery gates stay BLOCKED.
 
 ## 13. Gate ↔ #186 Native acceptance map
 

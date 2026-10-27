@@ -486,7 +486,7 @@ fn machine_dto(machine: MachineKind) -> MachineKindDto {
     }
 }
 
-fn slot_dto(slot: TrackSlotReference) -> TrackSlotReferenceDto {
+pub(crate) fn slot_dto(slot: TrackSlotReference) -> TrackSlotReferenceDto {
     match slot {
         TrackSlotReference::Slot(slot) => TrackSlotReferenceDto::Slot {
             slot_kind: match slot.kind() {

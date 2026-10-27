@@ -8,3 +8,9 @@
 .pse-viewer th, .pse-viewer td { padding: .5rem; border-bottom: 1px solid var(--mo-border); vertical-align: top; }
 .pse-viewer code { overflow-wrap: anywhere; }
 .pse-viewer ul { padding-left: 1rem; margin: 0; }
+.pse-preview { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--mo-border); min-width: 0; }
+.pse-preview h5 { margin: 0 0 .5rem; }
+.pse-preview__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; min-width: 0; }
+.pse-preview fieldset { min-width: 0; margin: 0 0 .75rem; border: 1px solid var(--mo-border); }
+.pse-preview label, .pse-preview select, .pse-preview button { max-width: 100%; }
+.pse-preview__tracks { display: flex; flex-wrap: wrap; gap: .25rem .75rem; }

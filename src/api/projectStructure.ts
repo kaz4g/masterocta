@@ -46,6 +46,57 @@ export interface ProjectStructure {
 }
 export interface ProjectStructureApi {
   read(rootId: string, projectRelativePath: string): Promise<ProjectStructure>;
+  previewPatternCopy?(request: PatternCopyPreviewRequest): Promise<PatternCopyPreview>;
+}
+export type PatternCopyTrackMode = 'all' | 'specific';
+export type PatternCopyModeScope = 'audio' | 'midi' | 'both';
+export type PatternCopyPartMode = 'keepOriginal' | 'copySourcePartAssignment' | 'selectSpecific';
+export interface PatternCopyPreviewRequest {
+  rootId: string;
+  projectRelativePath: string;
+  sourceBank: number;
+  sourcePattern: number;
+  destinationBank: number;
+  destinationPattern: number;
+  sourceRole: 'working';
+  destinationRole: 'working';
+  trackMode: PatternCopyTrackMode;
+  modeScope: PatternCopyModeScope;
+  specificTracks: number[];
+  partAssignmentMode: PatternCopyPartMode;
+  specificPart: number | null;
+}
+export interface PatternCopyPreview {
+  schema: 'masterocta.pattern-copy-preview:v1';
+  status: 'ready' | 'blocked';
+  applyAuthorized: false;
+  projectRelativePath: string;
+  sourceBank: number;
+  sourcePattern: number;
+  destinationBank: number;
+  destinationPattern: number;
+  sourceRole: string;
+  destinationRole: string;
+  trackMode: string;
+  modeScope: string;
+  partAssignmentMode: string;
+  observedDocumentDigest: string | null;
+  tracks: { trackNumber: number; inCopyScope: boolean; contentDiffers: boolean }[];
+  patternContent: { compared: boolean; differs: boolean };
+  partAssignment: { compared: boolean; differs: boolean };
+  partContentIncluded: boolean;
+  preservedDestinationFields: string[];
+  sampleReferences: {
+    trackNumber: number;
+    step: number | null;
+    origin: 'partMachine' | 'sampleLock';
+    slot: SlotReference;
+    summary: string;
+    classified: boolean;
+    confirmedOnMedia: boolean;
+  }[];
+  unmodeledDependencies: string[];
+  blockers: string[];
 }
 export function createProjectStructureApi(client: IpcClient = ipcClient): ProjectStructureApi {
   return {
@@ -53,6 +104,23 @@ export function createProjectStructureApi(client: IpcClient = ipcClient): Projec
       const result = await client.request<ProjectStructure>('v2_project_structure_read', { rootId, projectRelativePath });
       if (result.schema !== 'masterocta.project-structure:v4' || result.projectRelativePath !== projectRelativePath) {
         throw new Error('PROJECT_STRUCTURE_CONTRACT_MISMATCH');
+      }
+      return result;
+    },
+    async previewPatternCopy(request) {
+      const result = await client.request<PatternCopyPreview>('v2_pattern_copy_preview', { ...request });
+      if (
+        result.schema !== 'masterocta.pattern-copy-preview:v1' ||
+        result.projectRelativePath !== request.projectRelativePath ||
+        result.applyAuthorized !== false ||
+        result.partContentIncluded !== false ||
+        result.sampleReferences.some(reference =>
+          reference.confirmedOnMedia ||
+          (reference.origin !== 'partMachine' && reference.origin !== 'sampleLock') ||
+          reference.slot == null ||
+          !('kind' in reference.slot))
+      ) {
+        throw new Error('PATTERN_COPY_PREVIEW_CONTRACT_MISMATCH');
       }
       return result;
     },

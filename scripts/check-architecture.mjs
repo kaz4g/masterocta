@@ -215,6 +215,7 @@ const expectedV2Commands = [
   "v2_clone_verification_status",
   "v2_clone_verify_external",
   "v2_library_list",
+  "v2_pattern_copy_preview",
   "v2_project_structure_read",
   "v2_rename_apply",
   "v2_rename_authorize",
@@ -260,13 +261,16 @@ for (const [, commandName, parameters] of v2Commands) {
     ) {
       failures.push("v2_root_register must be the only raw path boundary");
     }
-  } else if (commandName === "v2_project_structure_read") {
+  } else if (
+    commandName === "v2_project_structure_read" ||
+    commandName === "v2_pattern_copy_preview"
+  ) {
     if (
       pathParameters.length !== 1 ||
       !pathParameters[0].startsWith("project_relative_path")
     ) {
       failures.push(
-        "v2_project_structure_read may accept only one explicitly named root-relative project path",
+        `${commandName} may accept only one explicitly named root-relative project path`,
       );
     }
   } else if (commandName === "v2_change_plan" || commandName === "v2_rename_plan") {
