@@ -112,6 +112,35 @@
       ]
     },
     {
+      "id": "ot-plan-pattern-copy-preview",
+      "package": "ot-plan",
+      "features": [],
+      "filter": "pattern_copy_preview::",
+      "required_tests": [
+        "apply_authorization_is_always_denied",
+        "cross_role_copy_is_blocked_without_bank_bytes",
+        "part_body_copy_request_is_blocked",
+        "same_source_and_destination_pattern_is_blocked"
+      ]
+    },
+    {
+      "id": "masterocta-pattern-copy-preview",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "pattern_copy_preview::",
+      "required_tests": [
+        "pattern_copy_preview_module_has_no_write_syscalls_in_source",
+        "a01_to_a05_same_bank_leaves_source_and_other_patterns_unchanged",
+        "a01_to_b03_cross_bank_uses_separate_bank_snapshots",
+        "copy_source_part_assignment_does_not_copy_part_bodies",
+        "part_body_copy_request_blocks_preview",
+        "sample_lock_zero_and_255_are_classified_without_blocking",
+        "unrecognized_sample_lock_blocks_preview",
+        "same_input_yields_deterministic_preview",
+        "malformed_source_parse_status_blocks_preview"
+      ]
+    },
+    {
       "id": "ot-plan-bank-changeplan",
       "package": "ot-plan",
       "features": [],
