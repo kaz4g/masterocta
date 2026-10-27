@@ -137,7 +137,9 @@
         "sample_lock_zero_and_255_are_classified_without_blocking",
         "unrecognized_sample_lock_blocks_preview",
         "same_input_yields_deterministic_preview",
-        "malformed_source_parse_status_blocks_preview"
+        "malformed_source_parse_status_blocks_preview",
+        "specific_track_past_midi_range_is_blocked_without_panic",
+        "master_track_leftover_lock_is_not_a_sample_reference"
       ]
     },
     {

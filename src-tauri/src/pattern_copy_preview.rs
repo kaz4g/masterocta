@@ -62,15 +62,27 @@ pub fn project_pattern_copy_in_memory(
             dest_slot.part_assignment = new_part_assignment;
         }
         TrackCopyMode::Specific => {
+            if intent.specific_tracks.iter().any(|track| *track > 15) {
+                return Err(PatternCopyBlocker::TrackIndicesOutOfRange);
+            }
             for track in &intent.specific_tracks {
                 let idx = *track;
                 if idx < 8 {
-                    dest_slot.audio_track_trigs.0[usize::from(idx)] =
-                        source_pattern.audio_track_trigs.0[usize::from(idx)].clone();
+                    let audio_idx = usize::from(idx);
+                    let audio = source_pattern
+                        .audio_track_trigs
+                        .0
+                        .get(audio_idx)
+                        .ok_or(PatternCopyBlocker::TrackIndicesOutOfRange)?;
+                    dest_slot.audio_track_trigs.0[audio_idx] = audio.clone();
                 } else {
                     let midi_idx = usize::from(idx - 8);
-                    dest_slot.midi_track_trigs.0[midi_idx] =
-                        source_pattern.midi_track_trigs.0[midi_idx].clone();
+                    let midi = source_pattern
+                        .midi_track_trigs
+                        .0
+                        .get(midi_idx)
+                        .ok_or(PatternCopyBlocker::TrackIndicesOutOfRange)?;
+                    dest_slot.midi_track_trigs.0[midi_idx] = midi.clone();
                 }
             }
             dest_slot.part_assignment = new_part_assignment;
@@ -86,6 +98,7 @@ pub fn plan_pattern_copy_preview(
     destination_bank: &BankFile,
     source_parse: StateDocumentParseStatus,
     destination_parse: StateDocumentParseStatus,
+    track_eight_is_master: bool,
 ) -> PatternCopyPreview {
     let mut blockers = Vec::new();
     if source_parse != StateDocumentParseStatus::Parsed {
@@ -149,8 +162,12 @@ pub fn plan_pattern_copy_preview(
         dest_after_pattern,
     );
 
-    let (sample_refs, sample_blockers) =
-        sample_references_for_pattern(&projected, dest_after_pattern, dst_idx);
+    let (sample_refs, sample_blockers) = sample_references_for_pattern(
+        &projected,
+        dest_after_pattern,
+        dst_idx,
+        track_eight_is_master,
+    );
     blockers.extend(sample_blockers);
 
     finalize_pattern_copy_preview(
@@ -242,6 +259,7 @@ fn sample_references_for_pattern(
     bank: &BankFile,
     pattern: &ot_tools_io::patterns::Pattern,
     pattern_idx: usize,
+    track_eight_is_master: bool,
 ) -> (Vec<AffectedSampleReferencePreview>, Vec<PatternCopyBlocker>) {
     let mut refs = Vec::new();
     let mut blockers = Vec::new();
@@ -249,6 +267,9 @@ fn sample_references_for_pattern(
     let part = &bank.parts.unsaved.0[part_idx];
 
     for track_idx in 0..8usize {
+        if track_eight_is_master && track_idx == 7 {
+            continue;
+        }
         let machine_type = part.audio_track_machine_types[track_idx];
         let slots = &part.audio_track_machine_slots[track_idx];
         let machine = ot_domain::project_structure::MachineKind::from_raw(machine_type);
@@ -269,15 +290,21 @@ fn sample_references_for_pattern(
         }
 
         let track_trigs = &pattern.audio_track_trigs.0[track_idx];
-        for step_idx in 0..64usize {
-            let lock = track_trigs.plocks.0[step_idx].flex_slot_id;
+        for (step_idx, parameter_lock) in track_trigs.plocks.0.iter().enumerate() {
+            let Some(lock) = locked_sample_slot_raw(
+                machine_type,
+                parameter_lock.static_slot_id,
+                parameter_lock.flex_slot_id,
+            ) else {
+                continue;
+            };
             if lock == SAMPLE_LOCK_NONE {
                 continue;
             }
-            let pool = match machine_type {
-                0 => SampleSlotKind::Static,
-                1 => SampleSlotKind::Flex,
-                _ => continue,
+            let pool = if machine_type == 0 {
+                SampleSlotKind::Static
+            } else {
+                SampleSlotKind::Flex
             };
             let slot_ref = track_slot_reference_from_raw(pool, lock);
             refs.push(AffectedSampleReferencePreview {
@@ -290,10 +317,6 @@ fn sample_references_for_pattern(
             if matches!(slot_ref, TrackSlotReference::Unrecognized(_)) {
                 blockers.push(PatternCopyBlocker::UnresolvedSampleReference);
             }
-            if matches!(slot_ref, TrackSlotReference::RecorderBuffer(_)) {
-                // Observed, not a normal sample slot — do not block.
-            }
-            let _ = locked_sample_slot_raw(machine_type, slots.static_slot_id, slots.flex_slot_id);
         }
     }
 
@@ -412,7 +435,7 @@ mod tests {
         let source_snapshot = bank.clone();
         let intent = base_intent(0, 0, 0, 4);
         let preview =
-            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
         assert_eq!(preview.status, PatternCopyPreviewStatus::Ready);
         assert_eq!(preview.pattern_content_change, PreviewObservation::Observed);
         let projected = project_pattern_copy_in_memory(&bank, &bank, &intent).unwrap();
@@ -439,8 +462,14 @@ mod tests {
         let bank_a = load_bank(&root, "bank01.work");
         let bank_b = load_bank(&root, "bank02.work");
         let intent = base_intent(0, 1, 0, 2);
-        let preview =
-            plan_pattern_copy_preview(&intent, &bank_a, &bank_b, parsed(&bank_a), parsed(&bank_b));
+        let preview = plan_pattern_copy_preview(
+            &intent,
+            &bank_a,
+            &bank_b,
+            parsed(&bank_a),
+            parsed(&bank_b),
+            false,
+        );
         assert_eq!(preview.status, PatternCopyPreviewStatus::Ready);
         let projected = project_pattern_copy_in_memory(&bank_a, &bank_b, &intent).unwrap();
         assert_eq!(projected.patterns.0[2], bank_a.patterns.0[0]);
@@ -469,7 +498,7 @@ mod tests {
         let mut intent = base_intent(0, 0, 0, 2);
         intent.include_part_body_copy = true;
         let preview =
-            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
         assert_eq!(preview.status, PatternCopyPreviewStatus::Blocked);
         assert!(preview
             .blockers
@@ -482,16 +511,23 @@ mod tests {
         let mut bank = load_bank(&root, "bank01.work");
         let part_idx = bank.patterns.0[0].part_assignment as usize;
         bank.parts.unsaved.0[part_idx].audio_track_machine_types[0] = 0;
-        bank.patterns.0[0].audio_track_trigs.0[0].plocks.0[0].flex_slot_id = 0;
-        bank.patterns.0[0].audio_track_trigs.0[0].plocks.0[1].flex_slot_id = 255;
+        let locks = &mut bank.patterns.0[0].audio_track_trigs.0[0].plocks.0;
+        locks[0].static_slot_id = 0;
+        locks[0].flex_slot_id = 255;
+        locks[1].static_slot_id = 255;
+        locks[1].flex_slot_id = 42;
         let intent = base_intent(0, 0, 0, 3);
         let preview =
-            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
         assert_eq!(preview.status, PatternCopyPreviewStatus::Ready);
         assert!(preview
             .affected_sample_references
             .iter()
             .any(|obs| obs.summary.contains("raw=0")));
+        assert!(preview
+            .affected_sample_references
+            .iter()
+            .all(|obs| !obs.summary.contains("raw=42")));
     }
 
     #[test]
@@ -500,10 +536,12 @@ mod tests {
         let mut bank = load_bank(&root, "bank01.work");
         let part_idx = bank.patterns.0[0].part_assignment as usize;
         bank.parts.unsaved.0[part_idx].audio_track_machine_types[0] = 0;
-        bank.patterns.0[0].audio_track_trigs.0[0].plocks.0[0].flex_slot_id = 200;
+        let lock = &mut bank.patterns.0[0].audio_track_trigs.0[0].plocks.0[0];
+        lock.static_slot_id = 200;
+        lock.flex_slot_id = 255;
         let intent = base_intent(0, 0, 0, 3);
         let preview =
-            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
         assert_eq!(preview.status, PatternCopyPreviewStatus::Blocked);
         assert!(preview
             .blockers
@@ -515,8 +553,10 @@ mod tests {
         let (_temp, root) = copied_project("real_device", &["bank01.work"]);
         let bank = load_bank(&root, "bank01.work");
         let intent = base_intent(0, 0, 0, 5);
-        let a = plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
-        let b = plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank));
+        let a =
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
+        let b =
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
         assert_eq!(a, b);
     }
 
@@ -531,10 +571,68 @@ mod tests {
             &bank,
             StateDocumentParseStatus::Malformed,
             StateDocumentParseStatus::Parsed,
+            false,
         );
         assert_eq!(preview.status, PatternCopyPreviewStatus::Blocked);
         assert!(preview
             .blockers
             .contains(&PatternCopyBlocker::DocumentMalformed));
+    }
+
+    #[test]
+    fn specific_track_past_midi_range_is_blocked_without_panic() {
+        let (_temp, root) = copied_project("real_device", &["bank01.work"]);
+        let bank = load_bank(&root, "bank01.work");
+        let mut intent = base_intent(0, 0, 0, 4);
+        intent.track_mode = TrackCopyMode::Specific;
+        intent.specific_tracks = vec![16];
+        let preview =
+            plan_pattern_copy_preview(&intent, &bank, &bank, parsed(&bank), parsed(&bank), false);
+        assert_eq!(preview.status, PatternCopyPreviewStatus::Blocked);
+        assert!(preview
+            .blockers
+            .contains(&PatternCopyBlocker::TrackIndicesOutOfRange));
+        assert!(matches!(
+            project_pattern_copy_in_memory(&bank, &bank, &intent),
+            Err(PatternCopyBlocker::TrackIndicesOutOfRange)
+        ));
+    }
+
+    #[test]
+    fn master_track_leftover_lock_is_not_a_sample_reference() {
+        let (_temp, root) = copied_project("real_device", &["bank01.work"]);
+        let mut bank = load_bank(&root, "bank01.work");
+        let part_idx = bank.patterns.0[0].part_assignment as usize;
+        bank.parts.unsaved.0[part_idx].audio_track_machine_types[7] = 0;
+        bank.parts.unsaved.0[part_idx].audio_track_machine_slots[7].static_slot_id = 200;
+        let lock = &mut bank.patterns.0[0].audio_track_trigs.0[7].plocks.0[0];
+        lock.static_slot_id = 200;
+        lock.flex_slot_id = 1;
+        let intent = base_intent(0, 0, 0, 4);
+        let as_master = plan_pattern_copy_preview(
+            &intent,
+            &bank,
+            &bank,
+            StateDocumentParseStatus::Parsed,
+            StateDocumentParseStatus::Parsed,
+            true,
+        );
+        assert_eq!(as_master.status, PatternCopyPreviewStatus::Ready);
+        assert!(as_master
+            .affected_sample_references
+            .iter()
+            .all(|obs| obs.track_number != 7));
+        let as_audio = plan_pattern_copy_preview(
+            &intent,
+            &bank,
+            &bank,
+            StateDocumentParseStatus::Parsed,
+            StateDocumentParseStatus::Parsed,
+            false,
+        );
+        assert_eq!(as_audio.status, PatternCopyPreviewStatus::Blocked);
+        assert!(as_audio
+            .blockers
+            .contains(&PatternCopyBlocker::UnresolvedSampleReference));
     }
 }
