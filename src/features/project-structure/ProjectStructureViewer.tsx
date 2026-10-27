@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { projectStructureApi, type ProjectStructureApi, type ProjectStructure, type PatternScale, type PlaybackScale, type SlotReference, type Machine, type ParseStatus } from '../../api/projectStructure';
 import type { SampleUsageEdge } from '../../api';
 import { useTranslate, type TranslateFn } from '../../i18n';
+import { PatternCopyPreviewPanel } from './PatternCopyPreviewPanel';
 import './ProjectStructureViewer.css';
 
 interface Props {
@@ -141,6 +142,7 @@ function ViewerSession({ rootId, projectRelativePath, usageEdges = [], client = 
             })}</tbody></table></div>}
         </>}
       </>}
+      <PatternCopyPreviewPanel rootId={rootId} projectRelativePath={projectRelativePath} structure={data} client={client} />
     </>}
   </section>;
 }

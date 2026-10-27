@@ -20,6 +20,13 @@ for (const width of [1280, 840]) {
             schema: 'masterocta.project-structure:v4', projectRelativePath: args.projectRelativePath, projectState: null,
             banks: ['working', 'savedCheckpoint'].map((role, i) => ({ index: 0, letter: 'A', role, sourceRelativePath: `PSE_PROJECT/bank01.${i === 0 ? 'work' : 'strd'}`, parseStatus: i === 0 ? 'parsed' : 'malformed', unmodeledDependencies: ['scenes'], patterns: [{ index: 0, partIndex: 0, scale: { kind: 'perTrack', masterLength: { kind: 'infinite' }, masterScale: { kind: 'times1' }, tracks: [{ track: 0, length: 12, scale: { kind: 'times1Over2' } }] } }], parts: [{ index: 0, tracks: [{ index: 0, playback: { kind: 'audio', machine: { kind: 'static' }, slot: { kind: 'slot', slotKind: 'static', number: 3 } } }, { index: 7, playback: { kind: 'master' } }] }] })),
           };
+          if (command === 'v2_pattern_copy_preview') return {
+            schema: 'masterocta.pattern-copy-preview:v1', status: 'ready', applyAuthorized: false, projectRelativePath: args.projectRelativePath,
+            sourceBank: args.sourceBank, sourcePattern: args.sourcePattern, destinationBank: args.destinationBank, destinationPattern: args.destinationPattern,
+            sourceRole: 'working', destinationRole: 'working', trackMode: 'all', modeScope: 'both', partAssignmentMode: 'keepOriginal', observedDocumentDigest: 'abc',
+            tracks: [{ trackNumber: 0, inCopyScope: true, contentDiffers: false }], patternContent: { compared: true, differs: false }, partAssignment: { compared: true, differs: false },
+            partContentIncluded: false, preservedDestinationFields: ['destination_part_bodies'], sampleReferences: [], unmodeledDependencies: ['scenes'], blockers: [],
+          };
           throw new Error(`Unexpected fixture IPC: ${command}`);
         },
       };
@@ -38,6 +45,12 @@ for (const width of [1280, 840]) {
     await expect(viewer).not.toContainText('Master');
     await expect(viewer).toContainText('INF');
     await expect(viewer).toContainText(uiText('ja', 'pse.deferred'));
+    await viewer.getByRole('button', { name: uiText('ja', 'pse.preview.calculate') }).click();
+    await expect(viewer.getByText(uiText('ja', 'pse.preview.ready'))).toBeVisible();
+    await expect(viewer.getByText(uiText('ja', 'pse.preview.noWrite'))).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'Apply', exact: true })).toHaveCount(0);
+    await expect(viewer.getByRole('button', { name: 'Move', exact: true })).toHaveCount(0);
+    await expect(viewer.getByRole('button', { name: 'Swap', exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await viewer.getByRole('rowheader', { name: '8' }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: test.info().outputPath(`pse-${width}.png`), fullPage: true });
@@ -49,6 +62,8 @@ for (const width of [1280, 840]) {
     expect(reads.length).toBeGreaterThan(0);
     // React StrictMode may perform two reads; both must use the same bounded target.
     for (const read of reads) expect(read.args).toEqual({ rootId: 'root-opaque', projectRelativePath: 'PSE_PROJECT' });
-    expect(commands.some((c: any) => /apply|enable_write|copy|move|swap/.test(c.command))).toBe(false);
+    expect(commands.some((c: any) => /apply|enable_write|copy|move|swap/.test(c.command) && c.command !== 'v2_pattern_copy_preview')).toBe(false);
+    expect(commands.some((c: any) => c.command === 'v2_pattern_copy_preview')).toBe(true);
+    expect(commands.some((c: any) => c.command === 'copy_patterns' || c.command === 'v2_pattern_copy_apply')).toBe(false);
   });
 }

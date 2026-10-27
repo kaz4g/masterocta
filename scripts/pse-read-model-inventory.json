@@ -120,7 +120,8 @@
         "apply_authorization_is_always_denied",
         "cross_role_copy_is_blocked_without_bank_bytes",
         "part_body_copy_request_is_blocked",
-        "same_source_and_destination_pattern_is_blocked"
+        "same_source_and_destination_pattern_is_blocked",
+        "saved_checkpoint_pair_is_blocked_without_bank_bytes"
       ]
     },
     {
@@ -140,6 +141,34 @@
         "malformed_source_parse_status_blocks_preview",
         "specific_track_past_midi_range_is_blocked_without_panic",
         "master_track_leftover_lock_is_not_a_sample_reference"
+      ]
+    },
+    {
+      "id": "masterocta-pattern-copy-preview-command",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "pattern_copy_preview_command::",
+      "required_tests": [
+        "a01_to_a05_preview_separates_scope_from_content_diff",
+        "a01_to_b03_preview_uses_separate_bank_files",
+        "static_and_flex_sample_locks_are_observations_not_confirmed_files",
+        "master_track_enabled_excludes_track_eight_sample_observation",
+        "master_track_disabled_can_observe_track_eight",
+        "master_track_unknown_blocks_without_assuming_audio",
+        "specific_track_out_of_range_is_blocked_before_projection",
+        "unknown_root_is_rejected",
+        "expired_root_is_rejected",
+        "project_path_escape_is_rejected",
+        "symlinked_bank_file_is_rejected",
+        "symlinked_project_component_is_rejected",
+        "malformed_bank_is_blocked",
+        "unsupported_bank_version_is_blocked",
+        "working_and_saved_checkpoint_mix_is_blocked_without_reading_strd",
+        "saved_checkpoint_pair_is_blocked",
+        "same_pattern_is_blocked",
+        "document_change_during_read_discards_the_preview",
+        "fixture_bytes_stay_unchanged_and_dto_has_no_absolute_path_or_raw_bank",
+        "preview_command_source_has_no_write_api"
       ]
     },
     {

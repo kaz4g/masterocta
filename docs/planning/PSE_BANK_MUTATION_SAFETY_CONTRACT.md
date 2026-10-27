@@ -229,7 +229,7 @@ Recovery の成功条件は、project scope 全体の manifest が Plan 時点�
 ## 12. UI と filesystem（BMS-UI）
 
 - frontend は filesystem へ直接書かない。`fs` / `shell` plugin とその capability を持たない
-- Bank 操作の v2 command は存在しない。Project Structure の command は `v2_project_structure_read` だけ
+- Bank 操作の書き込み v2 command は存在しない。Project Structure の読み取り command は `v2_project_structure_read` と、適用を許可しない `v2_pattern_copy_preview` だけ
 - legacy の Bank / Part / Pattern / Track / Slot 系 write command は DISABLED のまま
 - 将来の Bank command も `RootId` と root 相対 path だけを受け、raw absolute path を返さない。command の追加は `scripts/check-architecture.mjs` の command 一覧の更新を伴う
 

@@ -16,6 +16,7 @@ import {
   scanLegacyGate,
   scanRustSource,
   scanV2CommandSurface,
+  discoverTargets,
 } from "./pse-bank-mutation-guard.mjs";
 
 const repositoryRoot = path.resolve(
@@ -168,8 +169,22 @@ describe("frontend write-surface scan", () => {
     const api = [
       "import { ipcClient } from './client';",
       "client.request('v2_project_structure_read', {});",
+      "client.request('v2_pattern_copy_preview', {});",
     ].join("\n");
     assert.deepEqual(scanFrontendSource("src/api/projectStructure.ts", api, legacy), []);
+  });
+
+  it("rejects a pattern copy apply command in the viewer", () => {
+    assert.deepEqual(
+      rules(
+        scanFrontendSource(
+          "src/features/project-structure/Viewer.tsx",
+          "client.request('v2_pattern_copy_apply', {});",
+          legacy,
+        ),
+      ),
+      ["FRONTEND_IPC"],
+    );
   });
 
   const rejected = [
@@ -196,20 +211,47 @@ describe("v2 command surface and legacy gate", () => {
   const surface = (names) =>
     names.map((name) => `#[tauri::command]\npub async fn ${name}(\n) -> R {}`).join("\n");
 
-  it("allows only the Project Structure read in the Bank family", () => {
-    assert.deepEqual(scanV2CommandSurface(surface(["v2_project_structure_read", "v2_change_plan"])), []);
-    for (const name of ["v2_bank_copy_apply", "v2_project_structure_write", "v2_bank_swap_plan"]) {
+  it("allows the read commands and rejects pattern-copy writes", () => {
+    assert.deepEqual(
+      scanV2CommandSurface(
+        surface(["v2_project_structure_read", "v2_pattern_copy_preview", "v2_change_plan"]),
+      ),
+      [],
+    );
+    for (const name of [
+      "v2_bank_copy_apply",
+      "v2_project_structure_write",
+      "v2_bank_swap_plan",
+      "v2_pattern_copy_apply",
+    ]) {
       assert.deepEqual(
-        rules(scanV2CommandSurface(surface(["v2_project_structure_read", name]))),
+        rules(
+          scanV2CommandSurface(
+            surface(["v2_project_structure_read", "v2_pattern_copy_preview", name]),
+          ),
+        ),
         ["V2_SURFACE"],
         name,
       );
     }
+    assert.deepEqual(
+      rules(scanV2CommandSurface(surface(["v2_project_structure_read", "v2_change_plan"]))),
+      ["V2_SURFACE"],
+    );
   });
 
   it("fails closed when the read command or the surface cannot be found", () => {
-    assert.deepEqual(rules(scanV2CommandSurface(surface(["v2_change_plan"]))), ["V2_SURFACE"]);
+    assert.deepEqual(
+      rules(scanV2CommandSurface(surface(["v2_change_plan"]))),
+      ["V2_SURFACE", "V2_SURFACE"],
+    );
     assert.deepEqual(rules(scanV2CommandSurface("")), ["V2_SURFACE"]);
+  });
+
+  it("discovers pattern copy rust files so a preview command cannot hide", () => {
+    const rust = discoverTargets(repositoryRoot).rust;
+    assert.ok(rust.some((target) => target.endsWith("/pattern_copy_preview.rs")));
+    assert.ok(rust.some((target) => target.endsWith("/pattern_copy_preview_command.rs")));
   });
 
   it("requires every legacy Bank-family write to stay disabled", () => {

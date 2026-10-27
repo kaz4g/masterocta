@@ -341,9 +341,17 @@ mod tests {
         assert!(commands.contains(&"v2_project_structure_read"));
         let structure_commands: Vec<_> = commands
             .iter()
-            .filter(|name| name.contains("project_structure") || name.contains("bank"))
+            .copied()
+            .filter(|name| {
+                name.contains("project_structure")
+                    || name.contains("pattern_copy")
+                    || name.contains("bank")
+            })
             .collect();
-        assert_eq!(structure_commands, vec![&"v2_project_structure_read"]);
+        assert_eq!(
+            structure_commands,
+            vec!["v2_project_structure_read", "v2_pattern_copy_preview"]
+        );
 
         for legacy in [
             "copy_bank",

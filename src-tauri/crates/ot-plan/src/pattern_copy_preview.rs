@@ -102,6 +102,10 @@ pub enum PatternCopyBlocker {
     DocumentUnsupportedVersion,
     UnresolvedSampleReference,
     UnmodeledDependency(UnmodeledDependency),
+    /// `project.work` did not yield a definite master-track flag.
+    MasterTrackSettingUnavailable,
+    /// Bank or project bytes changed between the two reads of one preview.
+    DocumentChangedDuringRead,
 }
 
 impl fmt::Display for PatternCopyBlocker {
@@ -155,6 +159,13 @@ pub fn validate_pattern_copy_intent(intent: &PatternCopyIntent) -> Vec<PatternCo
     }
     if intent.source_role != intent.destination_role {
         blockers.push(PatternCopyBlocker::CrossRoleCopySemanticsUnknown);
+        blockers.push(PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved);
+    }
+    // SavedCheckpoint semantics stay unresolved even when both sides match.
+    // Working → Working is the only preview scope.
+    if intent.source_role != StateDocumentRole::Working
+        || intent.destination_role != StateDocumentRole::Working
+    {
         blockers.push(PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved);
     }
     if intent.source_bank == intent.destination_bank
@@ -283,5 +294,15 @@ mod tests {
         intent.destination_pattern = intent.source_pattern;
         let blockers = validate_pattern_copy_intent(&intent);
         assert!(blockers.contains(&PatternCopyBlocker::SourceEqualsDestinationPattern));
+    }
+
+    #[test]
+    fn saved_checkpoint_pair_is_blocked_without_bank_bytes() {
+        let mut intent = sample_intent();
+        intent.source_role = StateDocumentRole::SavedCheckpoint;
+        intent.destination_role = StateDocumentRole::SavedCheckpoint;
+        let blockers = validate_pattern_copy_intent(&intent);
+        assert!(blockers.contains(&PatternCopyBlocker::WorkingSavedCheckpointRuleUnresolved));
+        assert!(!blockers.contains(&PatternCopyBlocker::CrossRoleCopySemanticsUnknown));
     }
 }

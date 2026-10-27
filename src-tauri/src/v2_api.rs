@@ -4287,6 +4287,49 @@ pub async fn v2_project_structure_read(
 }
 
 #[tauri::command]
+pub async fn v2_pattern_copy_preview(
+    root_id: String,
+    project_relative_path: String,
+    source_bank: u8,
+    source_pattern: u8,
+    destination_bank: u8,
+    destination_pattern: u8,
+    source_role: String,
+    destination_role: String,
+    track_mode: String,
+    mode_scope: String,
+    specific_tracks: Vec<u8>,
+    part_assignment_mode: String,
+    specific_part: Option<u8>,
+    registry: State<'_, Arc<RootRegistry>>,
+) -> Result<crate::pattern_copy_preview_command::PatternCopyPreviewDto, ApiError> {
+    let root_id = parse_root_id(root_id)?;
+    let project_relative_path = parse_project_relative_path(project_relative_path)?;
+    let registry = Arc::clone(registry.inner());
+    let args = crate::pattern_copy_preview_command::PatternCopyPreviewArgs {
+        root_id,
+        project_relative_path,
+        source_bank,
+        source_pattern,
+        destination_bank,
+        destination_pattern,
+        source_role,
+        destination_role,
+        track_mode,
+        mode_scope,
+        specific_tracks,
+        part_assignment_mode,
+        specific_part,
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::pattern_copy_preview_command::read_pattern_copy_preview(&registry, args)
+            .map_err(|error| ApiError::new(error.code(), error.message(), error.recoverable()))
+    })
+    .await
+    .map_err(ApiError::task_failed)?
+}
+
+#[tauri::command]
 pub async fn v2_library_list(
     root_id: String,
     registry: State<'_, Arc<RootRegistry>>,

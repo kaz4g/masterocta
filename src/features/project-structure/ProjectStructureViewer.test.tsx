@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { ProjectStructure, StructureBank, SlotReference } from '../../api/projectStructure';
+import type { ProjectStructure, StructureBank, SlotReference, PatternCopyPreview } from '../../api/projectStructure';
 import type { SampleUsageEdge } from '../../api';
 import { LocaleProvider } from '../../i18n';
 import { ProjectStructureViewer } from './ProjectStructureViewer';
@@ -11,8 +11,20 @@ function bank(role: StructureBank['role'] = 'working'): StructureBank {
     parts: [{ index: 0, tracks: [...slots.map((slot, index) => ({ index, playback: { kind: 'audio' as const, machine: { kind: 'flex' as const }, slot } })), { index: 7, playback: { kind: 'master' } }] }, { index: 1, tracks: [{ index: 0, playback: { kind: 'audio', machine: { kind: 'thru' }, slot: { kind: 'noSampleMachine' } } }] }] };
 }
 const data: ProjectStructure = { schema: 'masterocta.project-structure:v4', projectRelativePath: 'SET/PROJECT', projectState: { role: 'working', sourceRelativePath: 'SET/PROJECT/project.work', parseStatus: 'parsed', bank: { kind: 'selected', index: 0 }, pattern: { kind: 'selected', index: 1 }, arrangement: { kind: 'selected', index: 7 }, masterTrack: true }, banks: [bank(), bank('savedCheckpoint')] };
-function view(read = vi.fn().mockResolvedValue(data), usageEdges: SampleUsageEdge[] = []) {
-  return render(<LocaleProvider initialLocaleId="en"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read }} usageEdges={usageEdges} /></LocaleProvider>);
+function view(read = vi.fn().mockResolvedValue(data), usageEdges: SampleUsageEdge[] = [], previewPatternCopy = vi.fn()) {
+  return render(<LocaleProvider initialLocaleId="en"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read, previewPatternCopy }} usageEdges={usageEdges} /></LocaleProvider>);
+}
+function copyPreview(status: PatternCopyPreview['status'], blockers: string[] = []): PatternCopyPreview {
+  return {
+    schema: 'masterocta.pattern-copy-preview:v1', status, applyAuthorized: false, projectRelativePath: 'SET/PROJECT',
+    sourceBank: 0, sourcePattern: 0, destinationBank: 0, destinationPattern: 1, sourceRole: 'working', destinationRole: 'working',
+    trackMode: 'all', modeScope: 'both', partAssignmentMode: 'keepOriginal', observedDocumentDigest: 'abc',
+    tracks: [{ trackNumber: 0, inCopyScope: true, contentDiffers: true }, { trackNumber: 8, inCopyScope: true, contentDiffers: false }],
+    patternContent: { compared: true, differs: status === 'ready' }, partAssignment: { compared: true, differs: false }, partContentIncluded: false,
+    preservedDestinationFields: ['destination_part_bodies', 'destination_part_assignment'],
+    sampleReferences: [{ trackNumber: 0, step: null, summary: 'part_machine', classified: true, confirmedOnMedia: false }],
+    unmodeledDependencies: ['scenes', 'arrangements', 'recorderSetup'], blockers,
+  };
 }
 describe('Project Structure Viewer', () => {
   it('traces Pattern to Part and Track; shows INF, per-track scale, Master and every slot variant', async () => {
@@ -131,5 +143,57 @@ describe('Project Structure Viewer', () => {
     const row = screen.getByRole('rowheader', { name: '8' }).closest('tr')!;
     expect(within(row).getByText('Pickup')).toBeInTheDocument();
     expect(within(row).getByText('Flex 99')).toBeInTheDocument();
+  });
+  it('calculates a read-only pattern preview and keeps write actions unavailable', async () => {
+    const previewPatternCopy = vi.fn().mockResolvedValue(copyPreview('ready'));
+    view(vi.fn().mockResolvedValue(data), [], previewPatternCopy);
+    await screen.findByRole('table');
+    expect(screen.getByLabelText('Preview source bank')).toHaveValue('working:0');
+    fireEvent.change(screen.getByLabelText('Preview destination pattern'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate preview' }));
+    expect(await screen.findByText('Preview calculated')).toBeInTheDocument();
+    expect(screen.getByText('Writing is not available')).toBeInTheDocument();
+    expect(screen.getByText('Apply authorization: no')).toBeInTheDocument();
+    expect(screen.getByText(/A01 → A02/)).toBeInTheDocument();
+    expect(screen.getByText('Tracks whose trigs differ: Audio 1')).toBeInTheDocument();
+    expect(screen.getByText('Sample references are observations. They do not confirm that a file exists.')).toBeInTheDocument();
+    const request = previewPatternCopy.mock.calls[0][0];
+    expect(request).toMatchObject({ rootId: 'root', projectRelativePath: 'SET/PROJECT', sourceRole: 'working', destinationRole: 'working', trackMode: 'all', modeScope: 'both', partAssignmentMode: 'keepOriginal' });
+    expect(JSON.stringify(request)).not.toContain('/Volumes/');
+    for (const name of ['Apply', 'Execute Copy', 'Move', 'Swap', 'Continue', 'Commit']) {
+      expect(screen.queryByRole('button', { name })).toBeNull();
+    }
+    expect(within(screen.getByLabelText('Preview source bank')).getByRole('option', { name: /Unavailable/ })).toBeDisabled();
+  });
+  it('shows a Japanese blocker and an API error without enabling a write', async () => {
+    const blocked = render(<LocaleProvider initialLocaleId="ja"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read: vi.fn().mockResolvedValue(data), previewPatternCopy: vi.fn().mockResolvedValue(copyPreview('blocked', ['sourceEqualsDestinationPattern'])) }} /></LocaleProvider>);
+    await screen.findByRole('table');
+    await waitFor(() => expect(screen.getByLabelText('プレビューのコピー元バンク')).toHaveValue('working:0'));
+    fireEvent.click(screen.getByRole('button', { name: 'プレビューを計算' }));
+    expect(await screen.findByText('同じパターンへのコピーは阻止されます。')).toBeInTheDocument();
+    expect(screen.getByText('書き込み機能は未提供です')).toBeInTheDocument();
+    blocked.unmount();
+    render(<LocaleProvider initialLocaleId="en"><ProjectStructureViewer rootId="root" projectRelativePath="SET/PROJECT" client={{ read: vi.fn().mockResolvedValue(data), previewPatternCopy: vi.fn().mockRejectedValue(new Error('offline')) }} /></LocaleProvider>);
+    await screen.findByRole('table');
+    await waitFor(() => expect(screen.getByLabelText('Preview source bank')).toHaveValue('working:0'));
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate preview' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Preview could not be calculated');
+  });
+  it('drops a stale preview and clears it when the project changes', async () => {
+    let resolveOld!: (value: ReturnType<typeof copyPreview>) => void;
+    const previewPatternCopy = vi.fn()
+      .mockImplementationOnce(() => new Promise<ReturnType<typeof copyPreview>>(resolve => { resolveOld = resolve; }))
+      .mockResolvedValue(copyPreview('blocked', ['documentMalformed']));
+    const rendered = view(vi.fn().mockResolvedValue(data), [], previewPatternCopy);
+    await screen.findByRole('table');
+    await waitFor(() => expect(screen.getByLabelText('Preview source bank')).toHaveValue('working:0'));
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate preview' }));
+    fireEvent.change(screen.getByLabelText('Preview destination pattern'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Calculate preview' }));
+    expect(await screen.findByText('A bank document is malformed.')).toBeInTheDocument();
+    await act(async () => { resolveOld(copyPreview('ready')); });
+    expect(screen.queryByText('Preview calculated')).toBeNull();
+    rendered.rerender(<LocaleProvider initialLocaleId="en"><ProjectStructureViewer rootId="root" projectRelativePath="OTHER" client={{ read: vi.fn().mockResolvedValue({ ...data, projectRelativePath: 'OTHER' }), previewPatternCopy }} /></LocaleProvider>);
+    await waitFor(() => expect(screen.queryByText('A bank document is malformed.')).toBeNull());
   });
 });
