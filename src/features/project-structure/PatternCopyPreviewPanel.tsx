@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PatternCopyModeScope, PatternCopyPartMode, PatternCopyPreview, PatternCopyPreviewRequest, PatternCopyTrackMode, ProjectStructure, ProjectStructureApi, StructureBank } from '../../api/projectStructure';
+import type { PatternCopyModeScope, PatternCopyPartMode, PatternCopyPreview, PatternCopyPreviewRequest, PatternCopyTrackMode, ProjectStructure, ProjectStructureApi, SlotReference, StructureBank } from '../../api/projectStructure';
 import { useTranslate, type MessageKey, type TranslateFn } from '../../i18n';
 
 type Phase =
@@ -64,6 +64,23 @@ function trackLabel(track: number, t: TranslateFn): string {
   return track < 8
     ? `${t('pse.preview.scopeAudio')} ${track + 1}`
     : `${t('pse.preview.scopeMidi')} ${track - 7}`;
+}
+function slotIdentity(slot: SlotReference, t: TranslateFn): string {
+  switch (slot.kind) {
+    case 'slot': return t(slot.slotKind === 'static' ? 'pse.slotStatic' : 'pse.slotFlex', { number: slot.number });
+    case 'recorderBuffer': return t('pse.recorder', { number: slot.bufferNumber });
+    case 'unassigned': return t('pse.unassigned');
+    case 'noSampleMachine': return t('pse.noSampleMachine');
+    case 'unrecognized': return t('pse.unreadRaw', { raw: slot.raw });
+  }
+}
+function sampleReferenceLabel(reference: PatternCopyPreview['sampleReferences'][number], t: TranslateFn): string {
+  const track = trackLabel(reference.trackNumber, t);
+  const usage = t(reference.origin === 'sampleLock' ? 'pse.usage.sampleLock' : 'pse.usage.machine');
+  const slot = slotIdentity(reference.slot, t);
+  return reference.step === null
+    ? t('pse.preview.sampleLine', { track, usage, slot })
+    : t('pse.preview.sampleLineStep', { track, step: reference.step + 1, usage, slot });
 }
 function observationLabel(observation: { compared: boolean; differs: boolean }, t: TranslateFn): string {
   if (!observation.compared) return t('pse.preview.notCompared');
@@ -239,7 +256,7 @@ export function PatternCopyPreviewPanel({ rootId, projectRelativePath, structure
       <p>{t('pse.preview.samples')}</p>
       <p>{t('pse.preview.samplesNote')}</p>
       {preview.sampleReferences.some(reference => !reference.classified) || preview.blockers.includes('unresolvedSampleReference') ? <p>{t('pse.preview.unresolved')}</p> : null}
-      <ul>{preview.sampleReferences.map((reference, index) => <li key={index}>{trackLabel(reference.trackNumber, t)}{reference.step === null ? '' : ` · ${reference.step + 1}`}{reference.classified ? '' : ` · ${t('pse.preview.unresolved')}`}</li>)}</ul>
+      <ul>{preview.sampleReferences.map((reference, index) => <li key={`${reference.trackNumber}-${reference.step ?? 'machine'}-${reference.origin}-${index}`}>{sampleReferenceLabel(reference, t)}</li>)}</ul>
       <p>{t('pse.preview.unmodeled')}: {preview.unmodeledDependencies.join(', ')}</p>
       {preview.blockers.length > 0 ? <ul>{preview.blockers.map(code => <li key={code}>{blockerLabel(code, t)}</li>)}</ul> : null}
     </div> : null}

@@ -40,6 +40,8 @@ export const jaMessages: Record<MessageKey, string> = {
   'pse.preview.preserved': 'コピー先に保持される項目',
   'pse.preview.samples': 'サンプル参照',
   'pse.preview.samplesNote': 'サンプル参照は観測です。ファイルの実在確認ではありません。',
+  'pse.preview.sampleLine': '{track} · {usage} · {slot}',
+  'pse.preview.sampleLineStep': '{track} · ステップ {step} · {usage} · {slot}',
   'pse.preview.unresolved': '未解決のスロットは、実在するサンプルとして扱いません。',
   'pse.preview.unmodeled': '未モデル化の依存',
   'pse.preview.idle': 'コピー元とコピー先を選んでから、プレビューを計算します。',

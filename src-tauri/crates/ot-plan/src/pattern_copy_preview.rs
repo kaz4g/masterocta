@@ -3,7 +3,8 @@
 //! Not a ChangePlan Apply envelope and not authorized to write media.
 
 use ot_domain::project_structure::{
-    BankIndex, PartIndex, PatternIndex, UnmodeledDependency, BANK_UNMODELED_DEPENDENCIES,
+    BankIndex, PartIndex, PatternIndex, TrackSlotReference, UnmodeledDependency,
+    BANK_UNMODELED_DEPENDENCIES,
 };
 use ot_domain::{RootId, RootRelativePath, StateDocumentRole};
 use std::fmt;
@@ -76,11 +77,20 @@ pub struct AffectedTrackPreview {
     pub copied: bool,
 }
 
+/// Where a preview observed a sample slot. This is not a file-existence check.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SampleReferenceOrigin {
+    PartMachine,
+    SampleLock,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AffectedSampleReferencePreview {
     pub track_number: u8,
     pub step: Option<u8>,
     pub summary: String,
+    pub origin: SampleReferenceOrigin,
+    pub slot: TrackSlotReference,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

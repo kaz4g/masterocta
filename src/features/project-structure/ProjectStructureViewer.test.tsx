@@ -22,7 +22,11 @@ function copyPreview(status: PatternCopyPreview['status'], blockers: string[] = 
     tracks: [{ trackNumber: 0, inCopyScope: true, contentDiffers: true }, { trackNumber: 8, inCopyScope: true, contentDiffers: false }],
     patternContent: { compared: true, differs: status === 'ready' }, partAssignment: { compared: true, differs: false }, partContentIncluded: false,
     preservedDestinationFields: ['destination_part_bodies', 'destination_part_assignment'],
-    sampleReferences: [{ trackNumber: 0, step: null, summary: 'part_machine', classified: true, confirmedOnMedia: false }],
+    sampleReferences: [
+      { trackNumber: 0, step: null, origin: 'partMachine', slot: { kind: 'slot', slotKind: 'static', number: 3 }, summary: 'part_machine', classified: true, confirmedOnMedia: false },
+      { trackNumber: 0, step: 0, origin: 'sampleLock', slot: { kind: 'slot', slotKind: 'flex', number: 2 }, summary: 'sample_lock', classified: true, confirmedOnMedia: false },
+      { trackNumber: 1, step: 4, origin: 'sampleLock', slot: { kind: 'recorderBuffer', bufferNumber: 2 }, summary: 'recorder', classified: true, confirmedOnMedia: false },
+    ],
     unmodeledDependencies: ['scenes', 'arrangements', 'recorderSetup'], blockers,
   };
 }
@@ -157,6 +161,9 @@ describe('Project Structure Viewer', () => {
     expect(screen.getByText(/A01 → A02/)).toBeInTheDocument();
     expect(screen.getByText('Tracks whose trigs differ: Audio 1')).toBeInTheDocument();
     expect(screen.getByText('Sample references are observations. They do not confirm that a file exists.')).toBeInTheDocument();
+    expect(screen.getByText('Audio 1 · Machine · Static 3')).toBeInTheDocument();
+    expect(screen.getByText('Audio 1 · Step 1 · Sample lock · Flex 2')).toBeInTheDocument();
+    expect(screen.getByText('Audio 2 · Step 5 · Sample lock · Recorder 2')).toBeInTheDocument();
     const request = previewPatternCopy.mock.calls[0][0];
     expect(request).toMatchObject({ rootId: 'root', projectRelativePath: 'SET/PROJECT', sourceRole: 'working', destinationRole: 'working', trackMode: 'all', modeScope: 'both', partAssignmentMode: 'keepOriginal' });
     expect(JSON.stringify(request)).not.toContain('/Volumes/');

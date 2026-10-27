@@ -38,6 +38,8 @@ export const enMessages = {
   'pse.preview.preserved': 'Kept on the destination',
   'pse.preview.samples': 'Sample references',
   'pse.preview.samplesNote': 'Sample references are observations. They do not confirm that a file exists.',
+  'pse.preview.sampleLine': '{track} · {usage} · {slot}',
+  'pse.preview.sampleLineStep': '{track} · Step {step} · {usage} · {slot}',
   'pse.preview.unresolved': 'Unresolved slots are not treated as real samples.',
   'pse.preview.unmodeled': 'Unmodeled dependencies',
   'pse.preview.idle': 'Choose a source and destination, then calculate a preview.',

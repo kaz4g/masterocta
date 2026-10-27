@@ -86,7 +86,15 @@ export interface PatternCopyPreview {
   partAssignment: { compared: boolean; differs: boolean };
   partContentIncluded: boolean;
   preservedDestinationFields: string[];
-  sampleReferences: { trackNumber: number; step: number | null; summary: string; classified: boolean; confirmedOnMedia: boolean }[];
+  sampleReferences: {
+    trackNumber: number;
+    step: number | null;
+    origin: 'partMachine' | 'sampleLock';
+    slot: SlotReference;
+    summary: string;
+    classified: boolean;
+    confirmedOnMedia: boolean;
+  }[];
   unmodeledDependencies: string[];
   blockers: string[];
 }
@@ -106,7 +114,11 @@ export function createProjectStructureApi(client: IpcClient = ipcClient): Projec
         result.projectRelativePath !== request.projectRelativePath ||
         result.applyAuthorized !== false ||
         result.partContentIncluded !== false ||
-        result.sampleReferences.some(reference => reference.confirmedOnMedia)
+        result.sampleReferences.some(reference =>
+          reference.confirmedOnMedia ||
+          (reference.origin !== 'partMachine' && reference.origin !== 'sampleLock') ||
+          reference.slot == null ||
+          !('kind' in reference.slot))
       ) {
         throw new Error('PATTERN_COPY_PREVIEW_CONTRACT_MISMATCH');
       }

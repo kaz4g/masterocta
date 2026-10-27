@@ -93,6 +93,10 @@ pub(crate) struct PatternCopyTrackEffectDto {
 pub(crate) struct PatternCopySampleObservationDto {
     pub track_number: u8,
     pub step: Option<u8>,
+    /// `partMachine` or `sampleLock`. Not a file-existence check.
+    pub origin: String,
+    /// Classified slot identity. Unrecognized raw values stay unrecognized.
+    pub slot: crate::project_structure_command::TrackSlotReferenceDto,
     /// Classification text from the preview engine. Not a media-existence check.
     pub summary: String,
     pub classified: bool,
@@ -596,7 +600,20 @@ fn dto_from_preview(
             .map(|reference| PatternCopySampleObservationDto {
                 track_number: reference.track_number,
                 step: reference.step,
-                classified: !reference.summary.contains("Unrecognized"),
+                origin: match reference.origin {
+                    ot_plan::pattern_copy_preview::SampleReferenceOrigin::PartMachine => {
+                        "partMachine"
+                    }
+                    ot_plan::pattern_copy_preview::SampleReferenceOrigin::SampleLock => {
+                        "sampleLock"
+                    }
+                }
+                .to_owned(),
+                slot: crate::project_structure_command::slot_dto(reference.slot),
+                classified: !matches!(
+                    reference.slot,
+                    ot_domain::project_structure::TrackSlotReference::Unrecognized(_)
+                ),
                 confirmed_on_media: false,
                 summary: reference.summary.clone(),
             })
@@ -872,14 +889,25 @@ mod tests {
             bank.to_data_file(&path).unwrap();
         });
         let dto = read_pattern_copy_preview(&registry, preview_args(root_id, 0, 0, 0, 4)).unwrap();
-        assert!(dto
-            .sample_references
-            .iter()
-            .any(|reference| reference.summary.contains("Static")));
-        assert!(dto
-            .sample_references
-            .iter()
-            .any(|reference| reference.summary.contains("Flex")));
+        assert!(dto.sample_references.iter().any(|reference| {
+            reference.origin == "sampleLock"
+                && reference.step == Some(0)
+                && reference.slot
+                    == crate::project_structure_command::TrackSlotReferenceDto::Slot {
+                        slot_kind: "static".to_owned(),
+                        number: 1,
+                    }
+                && reference.classified
+        }));
+        assert!(dto.sample_references.iter().any(|reference| {
+            reference.origin == "sampleLock"
+                && reference.slot
+                    == crate::project_structure_command::TrackSlotReferenceDto::Slot {
+                        slot_kind: "flex".to_owned(),
+                        number: 1,
+                    }
+                && reference.classified
+        }));
         assert!(dto
             .sample_references
             .iter()
