@@ -480,7 +480,7 @@ mod tests {
     fn copy_source_part_assignment_does_not_copy_part_bodies() {
         let (_temp, root) = copied_project("multipart", &["bank01.work"]);
         let bank = load_bank(&root, "bank01.work");
-        let parts_before = bank.parts.unsaved.0.clone();
+        let parts_before = bank.parts.unsaved.0;
         let mut intent = base_intent(0, 0, 0, 1);
         intent.part_assignment = PartAssignmentMode::CopySourcePartAssignment;
         let projected = project_pattern_copy_in_memory(&bank, &bank, &intent).unwrap();
