@@ -15,6 +15,7 @@ mod legacy_command_gate;
 mod legacy_read_adapter;
 mod local_artifact;
 mod mutation_gate;
+mod pattern_copy_preview;
 mod prepared_rename_runtime;
 mod project_compatibility;
 pub mod project_manager;

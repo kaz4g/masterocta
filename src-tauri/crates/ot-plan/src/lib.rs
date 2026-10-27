@@ -9,7 +9,15 @@ const PLAN_ID_PREFIX: &str = "plan:v1:";
 
 pub mod bank_changeplan;
 pub mod bank_mutation;
+pub mod pattern_copy_preview;
 pub mod rename;
+
+pub use pattern_copy_preview::{
+    finalize_pattern_copy_preview, validate_pattern_copy_intent, AffectedSampleReferencePreview,
+    AffectedTrackPreview, ModeScope, PartAssignmentMode, PatternCopyBlocker, PatternCopyIntent,
+    PatternCopyOperation, PatternCopyPreview, PatternCopyPreviewStatus, PatternCopyScope,
+    PreviewObservation, TrackCopyMode, PATTERN_COPY_PREVIEW_SCHEMA,
+};
 
 pub use rename::*;
 
