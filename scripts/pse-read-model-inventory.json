@@ -112,6 +112,48 @@
       ]
     },
     {
+      "id": "ot-plan-bank-copy-remap-preview",
+      "package": "ot-plan",
+      "features": [],
+      "filter": "bank_copy_remap_preview::",
+      "required_tests": [
+        "apply_authorization_is_always_denied",
+        "same_project_preserves_static_and_flex_slots",
+        "cross_project_uses_lowest_free_slot_without_filename_dedup",
+        "shared_source_slot_uses_one_candidate",
+        "capacity_conflict_blocks_cross_project_preview",
+        "saved_checkpoint_pair_is_blocked",
+        "unrecognized_reference_blocks_preview",
+        "master_track_enabled_with_track_eight_reference_blocks",
+        "same_input_yields_deterministic_snapshot_identity",
+        "bank_changeplan_alignment_uses_same_scoped_observations",
+        "snapshot_revision_mismatch_blocks_preview",
+        "static_and_flex_pools_are_independent",
+        "recorder_buffer_is_not_remap_candidate",
+        "working_and_saved_part_observations_stay_separate",
+        "bank_copy_remap_preview_module_has_no_write_syscalls_in_source",
+        "saved_checkpoint_document_slot_is_excluded_from_working_remap",
+        "cross_project_excludes_saved_checkpoint_document_role",
+        "resolved_unoccupied_snapshot_is_blocked",
+        "resolved_slot_missing_from_snapshot_is_blocked",
+        "contradictory_snapshot_entries_are_blocked",
+        "unproven_destination_occupancy_does_not_allocate_a_free_slot",
+        "same_project_slot_snapshot_mismatch_is_blocked",
+        "wrong_source_bank_on_source_content_is_rejected",
+        "snapshot_identity_is_stable_for_order_and_changes_with_meaning"
+      ]
+    },
+    {
+      "id": "masterocta-bank-copy-remap-preview",
+      "package": "masterocta",
+      "features": ["test-seams"],
+      "filter": "pse_bank_copy_remap_preview::",
+      "required_tests": [
+        "bank_copy_remap_fixture_bytes_stay_unchanged",
+        "bank_copy_remap_preview_on_fixture_is_read_only"
+      ]
+    },
+    {
       "id": "ot-plan-pattern-copy-preview",
       "package": "ot-plan",
       "features": [],

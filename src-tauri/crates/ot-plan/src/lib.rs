@@ -8,9 +8,18 @@ pub(crate) const ROOT_FINGERPRINT_PREFIX: &str = "rootfp:v1:";
 const PLAN_ID_PREFIX: &str = "plan:v1:";
 
 pub mod bank_changeplan;
+pub mod bank_copy_remap_preview;
 pub mod bank_mutation;
 pub mod pattern_copy_preview;
 pub mod rename;
+
+pub use bank_copy_remap_preview::{
+    compute_bank_copy_remap_preview, preview_input_from_inventory, scoped_observations,
+    BankCopyDocumentHealth, BankCopyRemapBlocker, BankCopyRemapPreview, BankCopyRemapPreviewInput,
+    BankCopyRemapPreviewStatus, BankCopySlotPlacementPolicy, MasterTrackSetting,
+    ObservedSlotReference, ProjectIdentity, SampleSlotSnapshot, SampleSlotSnapshotEntry,
+    SlotRemapCandidate, SlotRemapDisposition, BANK_COPY_REMAP_PREVIEW_SCHEMA,
+};
 
 pub use pattern_copy_preview::{
     finalize_pattern_copy_preview, validate_pattern_copy_intent, AffectedSampleReferencePreview,
