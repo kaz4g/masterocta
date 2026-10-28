@@ -37,6 +37,10 @@ pub struct SampleSlotSnapshotEntry {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SampleSlotSnapshot {
+    /// Project this occupancy table was read from. Must match the preview side.
+    pub bound_project: ProjectIdentity,
+    /// When true, slot numbers absent from `entries` are empty. When false, absence is unknown.
+    pub occupancy_complete: bool,
     pub entries: Vec<SampleSlotSnapshotEntry>,
 }
 
@@ -133,6 +137,14 @@ pub enum BankCopyRemapBlocker {
     IdentityConflict,
     InsufficientSlotCapacity,
     ReferenceObservationMismatch,
+    /// A resolved observation does not match the source snapshot entry.
+    SnapshotReferenceMismatch,
+    /// One slot appears twice with different occupancy or status.
+    SnapshotContradiction,
+    /// Snapshot `bound_project` does not match the preview side.
+    SnapshotProjectMismatch,
+    /// Destination occupancy is not proven, so a free slot must not be invented.
+    DestinationOccupancyUnproven,
 }
 
 impl fmt::Display for BankCopyRemapBlocker {
@@ -154,6 +166,7 @@ pub struct BankCopyRemapPreview {
     pub source_bank: BankIndex,
     pub destination_bank: BankIndex,
     pub unchanged_references: Vec<ObservedSlotReference>,
+    pub remapped_references: Vec<ObservedSlotReference>,
     pub static_remap_candidates: Vec<SlotRemapCandidate>,
     pub flex_remap_candidates: Vec<SlotRemapCandidate>,
     pub occupied_slots: Vec<SampleSlotId>,
@@ -257,6 +270,32 @@ fn validate_input(input: &BankCopyRemapPreviewInput) -> Vec<BankCopyRemapBlocker
     } else if input.placement_policy != BankCopySlotPlacementPolicy::KeepThenLowestFree {
         blockers.push(BankCopyRemapBlocker::UnsupportedPlacementPolicy);
     }
+    if !projects_match(
+        &input.source_slot_snapshot.bound_project,
+        &input.source_project,
+    ) || !projects_match(
+        &input.destination_slot_snapshot.bound_project,
+        &input.destination_project,
+    ) {
+        blockers.push(BankCopyRemapBlocker::SnapshotProjectMismatch);
+    }
+    if snapshot_has_contradiction(&input.source_slot_snapshot)
+        || snapshot_has_contradiction(&input.destination_slot_snapshot)
+    {
+        blockers.push(BankCopyRemapBlocker::SnapshotContradiction);
+    }
+    if resolved_observations_disagree_with_snapshot(input) {
+        blockers.push(BankCopyRemapBlocker::SnapshotReferenceMismatch);
+    }
+    if observation_scope_mismatch(input) {
+        blockers.push(BankCopyRemapBlocker::ReferenceObservationMismatch);
+    }
+    if !projects_match(&input.source_project, &input.destination_project)
+        && input.placement_policy == BankCopySlotPlacementPolicy::KeepThenLowestFree
+        && destination_occupancy_unproven(input)
+    {
+        blockers.push(BankCopyRemapBlocker::DestinationOccupancyUnproven);
+    }
     blockers
 }
 
@@ -324,6 +363,7 @@ fn compute_same_project_preview(
         source_bank: input.source_bank,
         destination_bank: input.destination_bank,
         unchanged_references: unchanged,
+        remapped_references: Vec::new(),
         static_remap_candidates: Vec::new(),
         flex_remap_candidates: Vec::new(),
         occupied_slots: occupied_slots(input),
@@ -342,6 +382,7 @@ fn compute_cross_project_preview(
     snapshot_identity: String,
 ) -> BankCopyRemapPreview {
     let mut unchanged = Vec::new();
+    let mut remapped = Vec::new();
     let mut unresolved = Vec::new();
     let mut static_candidates = Vec::new();
     let mut flex_candidates = Vec::new();
@@ -404,15 +445,17 @@ fn compute_cross_project_preview(
         } else {
             SlotRemapDisposition::RemapCandidate
         };
-        unchanged.push(classified_reference(
-            observation,
-            source_slot,
-            disposition,
-            Some(*candidate),
-        ));
+        let classified =
+            classified_reference(observation, source_slot, disposition, Some(*candidate));
+        if disposition == SlotRemapDisposition::Unchanged && *candidate == source_slot {
+            unchanged.push(classified);
+        } else if disposition == SlotRemapDisposition::RemapCandidate && *candidate != source_slot {
+            remapped.push(classified);
+        }
     }
 
     sort_references(&mut unchanged);
+    sort_references(&mut remapped);
     sort_references(&mut unresolved);
     static_candidates
         .sort_by_key(|entry| (entry.source_slot.number(), entry.candidate_slot.number()));
@@ -438,6 +481,7 @@ fn compute_cross_project_preview(
         source_bank: input.source_bank,
         destination_bank: input.destination_bank,
         unchanged_references: unchanged,
+        remapped_references: remapped,
         static_remap_candidates: static_candidates,
         flex_remap_candidates: flex_candidates,
         occupied_slots: occupied_slots(input),
@@ -475,7 +519,7 @@ fn build_pool_remap(
             .any(|entry| entry.occupied && entry.slot == *source_slot)
             || occupied.contains(&source_slot.number())
         {
-            if let Some(free) = lowest_free_slot(pool_kind, &occupied) {
+            if let Some(free) = lowest_free_slot(pool_kind, destination, &occupied) {
                 occupied.insert(free.number());
                 candidates_out.push(SlotRemapCandidate {
                     source_slot: *source_slot,
@@ -485,24 +529,48 @@ fn build_pool_remap(
             } else {
                 capacity_out.push(*source_slot);
             }
-        } else {
+        } else if slot_is_explicitly_free(destination, *source_slot)
+            || destination.occupancy_complete
+        {
             occupied.insert(source_slot.number());
             remap.insert(*source_slot, *source_slot);
+        } else {
+            capacity_out.push(*source_slot);
         }
     }
     remap
 }
 
+fn slot_is_explicitly_free(snapshot: &SampleSlotSnapshot, slot: SampleSlotId) -> bool {
+    snapshot.entry(slot).is_some_and(|entry| !entry.occupied)
+}
+
 fn lowest_free_slot(
     kind: SampleSlotKind,
+    destination: &SampleSlotSnapshot,
     occupied: &std::collections::BTreeSet<u16>,
 ) -> Option<SampleSlotId> {
-    for number in 1..=128u16 {
-        if !occupied.contains(&number) {
-            return SampleSlotId::new(kind, number).ok();
+    if destination.occupancy_complete {
+        for number in 1..=128u16 {
+            if !occupied.contains(&number) {
+                return SampleSlotId::new(kind, number).ok();
+            }
         }
+        return None;
     }
-    None
+    let mut free_numbers: Vec<u16> = destination
+        .entries
+        .iter()
+        .filter(|entry| entry.slot.kind() == kind && !entry.occupied)
+        .map(|entry| entry.slot.number())
+        .filter(|number| !occupied.contains(number))
+        .collect();
+    free_numbers.sort_unstable();
+    free_numbers.dedup();
+    free_numbers
+        .first()
+        .copied()
+        .and_then(|number| SampleSlotId::new(kind, number).ok())
 }
 
 fn blocked_preview(
@@ -515,6 +583,7 @@ fn blocked_preview(
         source_bank: input.source_bank,
         destination_bank: input.destination_bank,
         unchanged_references: Vec::new(),
+        remapped_references: Vec::new(),
         static_remap_candidates: Vec::new(),
         flex_remap_candidates: Vec::new(),
         occupied_slots: occupied_slots(input),
@@ -566,10 +635,103 @@ fn source_content_observations(
     let mut out: Vec<_> = input
         .reference_observations
         .iter()
-        .filter(|observation| observation.scope == ReferenceScopeRole::SourceContent)
+        .filter(|observation| {
+            observation.scope == ReferenceScopeRole::SourceContent
+                && observation.bank == input.source_bank
+                && observation.document_role == input.source_document_role
+        })
         .collect();
     out.sort_by(compare_observation_ptr);
     out
+}
+
+fn observation_scope_mismatch(input: &BankCopyRemapPreviewInput) -> bool {
+    input
+        .reference_observations
+        .iter()
+        .any(|observation| match observation.scope {
+            ReferenceScopeRole::SourceContent => observation.bank != input.source_bank,
+            ReferenceScopeRole::DestinationCurrent => observation.bank != input.destination_bank,
+            ReferenceScopeRole::OperatedBank => true,
+        })
+}
+
+fn snapshot_has_contradiction(snapshot: &SampleSlotSnapshot) -> bool {
+    let mut seen =
+        std::collections::BTreeMap::<(u8, u16), (bool, Option<SampleReferenceStatus>)>::new();
+    for entry in &snapshot.entries {
+        let key = (slot_kind_rank(entry.slot.kind()), entry.slot.number());
+        let value = (entry.occupied, entry.reference_status);
+        if let Some(previous) = seen.insert(key, value) {
+            if previous != value {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn resolved_observations_disagree_with_snapshot(input: &BankCopyRemapPreviewInput) -> bool {
+    source_content_observations(input)
+        .into_iter()
+        .any(|observation| {
+            let Some(slot) = slot_from_target(&observation.target) else {
+                return false;
+            };
+            let entry = input.source_slot_snapshot.entry(slot);
+            match observation.reference_status {
+                Some(SampleReferenceStatus::Resolved) => entry.is_none_or(|entry| {
+                    !entry.occupied
+                        || entry.reference_status != Some(SampleReferenceStatus::Resolved)
+                }),
+                Some(
+                    SampleReferenceStatus::Missing
+                    | SampleReferenceStatus::Ambiguous
+                    | SampleReferenceStatus::InvalidPath,
+                ) => entry.is_some_and(|entry| {
+                    entry.occupied
+                        && entry.reference_status == Some(SampleReferenceStatus::Resolved)
+                }),
+                _ => false,
+            }
+        })
+}
+
+fn destination_occupancy_unproven(input: &BankCopyRemapPreviewInput) -> bool {
+    if input.destination_slot_snapshot.occupancy_complete {
+        return false;
+    }
+    source_content_observations(input)
+        .into_iter()
+        .any(|observation| {
+            let Some(slot) = slot_from_target(&observation.target) else {
+                return false;
+            };
+            observation.reference_status == Some(SampleReferenceStatus::Resolved)
+                && input.destination_slot_snapshot.entry(slot).is_none()
+        })
+        || source_content_observations(input)
+            .into_iter()
+            .any(|observation| {
+                let Some(slot) = slot_from_target(&observation.target) else {
+                    return false;
+                };
+                if observation.reference_status != Some(SampleReferenceStatus::Resolved) {
+                    return false;
+                }
+                let Some(entry) = input.destination_slot_snapshot.entry(slot) else {
+                    return false;
+                };
+                entry.occupied
+                    && !explicit_free_exists(&input.destination_slot_snapshot, slot.kind())
+            })
+}
+
+fn explicit_free_exists(snapshot: &SampleSlotSnapshot, kind: SampleSlotKind) -> bool {
+    snapshot
+        .entries
+        .iter()
+        .any(|entry| entry.slot.kind() == kind && !entry.occupied)
 }
 
 fn compare_observation_ptr(
@@ -581,6 +743,7 @@ fn compare_observation_ptr(
         .then_with(|| left.bank.get().cmp(&right.bank.get()))
         .then_with(|| role_rank(left.document_role).cmp(&role_rank(right.document_role)))
         .then_with(|| origin_rank(left.origin).cmp(&origin_rank(right.origin)))
+        .then_with(|| part_state_rank(left.part_state).cmp(&part_state_rank(right.part_state)))
         .then_with(|| left.part.get().cmp(&right.part.get()))
         .then_with(|| pattern_key(left.pattern).cmp(&pattern_key(right.pattern)))
         .then_with(|| left.track.get().cmp(&right.track.get()))
@@ -592,6 +755,7 @@ fn sort_references(references: &mut [ObservedSlotReference]) {
         scope_rank(left.scope)
             .cmp(&scope_rank(right.scope))
             .then_with(|| origin_rank(left.origin).cmp(&origin_rank(right.origin)))
+            .then_with(|| part_state_rank(left.part_state).cmp(&part_state_rank(right.part_state)))
             .then_with(|| left.part.get().cmp(&right.part.get()))
             .then_with(|| pattern_key(left.pattern).cmp(&pattern_key(right.pattern)))
             .then_with(|| left.track.get().cmp(&right.track.get()))
@@ -632,6 +796,10 @@ fn derive_snapshot_identity(input: &BankCopyRemapPreviewInput) -> String {
     let mut hasher = Sha256::new();
     hasher.update(SNAPSHOT_ID_PREFIX.as_bytes());
     encode_u64(&mut hasher, input.snapshot_revision);
+    encode_u64(&mut hasher, input.inventory_revision);
+    encode_u8(&mut hasher, health_code(input.source_document_health));
+    encode_u8(&mut hasher, health_code(input.destination_document_health));
+    encode_coverage(&mut hasher, &input.reference_coverage);
     encode_str(&mut hasher, input.source_project.root_id.as_str());
     encode_str(
         &mut hasher,
@@ -741,14 +909,29 @@ fn compare_observation_value(
         .then_with(|| left.bank.get().cmp(&right.bank.get()))
         .then_with(|| role_rank(left.document_role).cmp(&role_rank(right.document_role)))
         .then_with(|| origin_rank(left.origin).cmp(&origin_rank(right.origin)))
+        .then_with(|| part_state_rank(left.part_state).cmp(&part_state_rank(right.part_state)))
         .then_with(|| left.part.get().cmp(&right.part.get()))
         .then_with(|| pattern_key(left.pattern).cmp(&pattern_key(right.pattern)))
         .then_with(|| left.track.get().cmp(&right.track.get()))
         .then_with(|| step_key(left.step).cmp(&step_key(right.step)))
         .then_with(|| format!("{:?}", left.target).cmp(&format!("{:?}", right.target)))
+        .then_with(|| {
+            reference_status_code_or_absent(left.reference_status)
+                .cmp(&reference_status_code_or_absent(right.reference_status))
+        })
+        .then_with(|| audible_code(left.audible).cmp(&audible_code(right.audible)))
+        .then_with(|| {
+            path_key(&left.referenced_relative_path).cmp(&path_key(&right.referenced_relative_path))
+        })
 }
 
 fn encode_snapshot(hasher: &mut Sha256, snapshot: &SampleSlotSnapshot) {
+    encode_str(hasher, snapshot.bound_project.root_id.as_str());
+    encode_str(
+        hasher,
+        snapshot.bound_project.project_relative_path.as_str(),
+    );
+    encode_u8(hasher, u8::from(snapshot.occupancy_complete));
     encode_u64(hasher, snapshot.entries.len() as u64);
     let mut entries = snapshot.entries.clone();
     entries.sort_by_key(|entry| (slot_kind_rank(entry.slot.kind()), entry.slot.number()));
@@ -758,12 +941,17 @@ fn encode_snapshot(hasher: &mut Sha256, snapshot: &SampleSlotSnapshot) {
         encode_u8(hasher, u8::from(entry.occupied));
         encode_u8(
             hasher,
-            entry
-                .reference_status
-                .map(reference_status_code)
-                .unwrap_or(255),
+            reference_status_code_or_absent(entry.reference_status),
         );
     }
+}
+
+fn encode_coverage(hasher: &mut Sha256, coverage: &ot_domain::ReferenceCoverage) {
+    encode_u8(hasher, class_code(coverage.active_machine));
+    encode_u8(hasher, class_code(coverage.sample_locks));
+    encode_u8(hasher, class_code(coverage.saved_parts));
+    encode_u8(hasher, class_code(coverage.inactive_machine_slots));
+    encode_u8(hasher, class_code(coverage.recorder_setup));
 }
 
 fn encode_observation(hasher: &mut Sha256, observation: &BankChangePlanReferenceObservation) {
@@ -771,18 +959,24 @@ fn encode_observation(hasher: &mut Sha256, observation: &BankChangePlanReference
     encode_u8(hasher, observation.bank.get());
     encode_u8(hasher, role_code(observation.document_role));
     encode_u8(hasher, origin_rank(observation.origin));
+    encode_u8(hasher, part_state_rank(observation.part_state));
     encode_u8(hasher, observation.part.get());
     encode_u8(hasher, pattern_key(observation.pattern));
     encode_u8(hasher, observation.track.get());
     encode_u8(hasher, step_key(observation.step));
+    encode_u8(hasher, audible_code(observation.audible));
     encode_str(hasher, &format!("{:?}", observation.target));
     encode_u8(
         hasher,
-        observation
-            .reference_status
-            .map(reference_status_code)
-            .unwrap_or(255),
+        reference_status_code_or_absent(observation.reference_status),
     );
+    match &observation.referenced_relative_path {
+        Some(path) => {
+            encode_u8(hasher, 1);
+            encode_str(hasher, path.as_str());
+        }
+        None => encode_u8(hasher, 0),
+    }
 }
 
 fn encode_u64(hasher: &mut Sha256, value: u64) {
@@ -856,6 +1050,48 @@ fn step_key(step: Option<u8>) -> u8 {
     step.unwrap_or(255)
 }
 
+fn part_state_rank(role: PartStateRole) -> u8 {
+    match role {
+        PartStateRole::Working => 0,
+        PartStateRole::Saved => 1,
+    }
+}
+
+fn health_code(health: BankCopyDocumentHealth) -> u8 {
+    match health {
+        BankCopyDocumentHealth::Ok => 0,
+        BankCopyDocumentHealth::Malformed => 1,
+        BankCopyDocumentHealth::UnsupportedVersion => 2,
+    }
+}
+
+fn class_code(status: ot_domain::ReferenceClassStatus) -> u8 {
+    match status {
+        ot_domain::ReferenceClassStatus::Covered => 0,
+        ot_domain::ReferenceClassStatus::ExcludedByContract => 1,
+        ot_domain::ReferenceClassStatus::Unmodeled => 2,
+    }
+}
+
+fn audible_code(audible: Option<bool>) -> u8 {
+    match audible {
+        None => 255,
+        Some(false) => 0,
+        Some(true) => 1,
+    }
+}
+
+fn path_key(path: &Option<RootRelativePath>) -> String {
+    path.as_ref()
+        .map(RootRelativePath::as_str)
+        .unwrap_or("")
+        .to_owned()
+}
+
+fn reference_status_code_or_absent(status: Option<SampleReferenceStatus>) -> u8 {
+    status.map(reference_status_code).unwrap_or(255)
+}
+
 fn reference_status_code(status: SampleReferenceStatus) -> u8 {
     match status {
         SampleReferenceStatus::Resolved => 0,
@@ -888,6 +1124,10 @@ fn blocker_rank(blocker: &BankCopyRemapBlocker) -> u8 {
         BankCopyRemapBlocker::IdentityConflict => 13,
         BankCopyRemapBlocker::InsufficientSlotCapacity => 14,
         BankCopyRemapBlocker::ReferenceObservationMismatch => 15,
+        BankCopyRemapBlocker::SnapshotReferenceMismatch => 16,
+        BankCopyRemapBlocker::SnapshotContradiction => 17,
+        BankCopyRemapBlocker::SnapshotProjectMismatch => 18,
+        BankCopyRemapBlocker::DestinationOccupancyUnproven => 19,
     }
 }
 
@@ -912,6 +1152,8 @@ mod tests {
         entries: &[(SampleSlotKind, u16, bool, Option<SampleReferenceStatus>)],
     ) -> SampleSlotSnapshot {
         SampleSlotSnapshot {
+            bound_project: project_id("snapshot"),
+            occupancy_complete: true,
             entries: entries
                 .iter()
                 .map(|(kind, number, occupied, status)| SampleSlotSnapshotEntry {
@@ -956,6 +1198,10 @@ mod tests {
         destination_snapshot: SampleSlotSnapshot,
         observations: Vec<BankChangePlanReferenceObservation>,
     ) -> BankCopyRemapPreviewInput {
+        let mut source_slot_snapshot = source_snapshot;
+        source_slot_snapshot.bound_project = source_project.clone();
+        let mut destination_slot_snapshot = destination_snapshot;
+        destination_slot_snapshot.bound_project = destination_project.clone();
         BankCopyRemapPreviewInput {
             source_project,
             destination_project,
@@ -963,8 +1209,8 @@ mod tests {
             destination_bank: BankIndex::new(1).unwrap(),
             source_document_role: StateDocumentRole::Working,
             destination_document_role: StateDocumentRole::Working,
-            source_slot_snapshot: source_snapshot,
-            destination_slot_snapshot: destination_snapshot,
+            source_slot_snapshot,
+            destination_slot_snapshot,
             reference_observations: observations,
             reference_coverage: ReferenceCoverage::complete_for_changeplan_review(),
             placement_policy: placement,
@@ -1209,6 +1455,14 @@ mod tests {
             preview.static_remap_candidates[0].candidate_slot.number(),
             1
         );
+        assert!(preview.remapped_references.iter().any(|reference| {
+            reference.source_slot.number() == 3
+                && reference.disposition == SlotRemapDisposition::RemapCandidate
+        }));
+        assert!(preview.unchanged_references.iter().all(|reference| {
+            reference.disposition == SlotRemapDisposition::Unchanged
+                && reference.candidate_slot == Some(reference.source_slot)
+        }));
         assert!(preview.unchanged_references.iter().any(|reference| {
             reference.source_slot.number() == 5
                 && reference.disposition == SlotRemapDisposition::Unchanged
@@ -1255,11 +1509,12 @@ mod tests {
             ],
         ));
         assert_eq!(preview.flex_remap_candidates.len(), 1);
-        assert_eq!(preview.unchanged_references.len(), 2);
-        assert!(preview
-            .unchanged_references
-            .iter()
-            .all(|reference| reference.candidate_slot == Some(slot(SampleSlotKind::Flex, 1))));
+        assert!(preview.unchanged_references.is_empty());
+        assert_eq!(preview.remapped_references.len(), 2);
+        assert!(preview.remapped_references.iter().all(|reference| {
+            reference.disposition == SlotRemapDisposition::RemapCandidate
+                && reference.candidate_slot == Some(slot(SampleSlotKind::Flex, 1))
+        }));
     }
 
     #[test]
@@ -1680,12 +1935,13 @@ mod tests {
             &ReadinessEvidence::current_main(),
         )
         .unwrap();
-        let snap = snapshot(&[(
+        let mut snap = snapshot(&[(
             SampleSlotKind::Static,
             9,
             true,
             Some(SampleReferenceStatus::Resolved),
         )]);
+        snap.bound_project = project_id("same");
         let preview = compute_bank_copy_remap_preview(&preview_input_from_inventory(
             project_id("same"),
             project_id("same"),
@@ -1704,5 +1960,361 @@ mod tests {
         let scoped = scoped_observations(&inventory, source, destination);
         assert_eq!(scoped, plan.reference_observations);
         assert_eq!(preview.unchanged_references[0].source_slot.number(), 9);
+    }
+
+    #[test]
+    fn saved_checkpoint_document_slot_is_excluded_from_working_remap() {
+        let snap = snapshot(&[(
+            SampleSlotKind::Static,
+            3,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        let mut saved_only = observation(
+            ReferenceScopeRole::SourceContent,
+            ReferenceOrigin::ActiveMachine,
+            PartStateRole::Working,
+            2,
+            TrackSlotReference::Slot(slot(SampleSlotKind::Static, 7)),
+            Some(SampleReferenceStatus::Missing),
+        );
+        saved_only.document_role = StateDocumentRole::SavedCheckpoint;
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            vec![
+                observation(
+                    ReferenceScopeRole::SourceContent,
+                    ReferenceOrigin::ActiveMachine,
+                    PartStateRole::Working,
+                    0,
+                    TrackSlotReference::Slot(slot(SampleSlotKind::Static, 3)),
+                    Some(SampleReferenceStatus::Resolved),
+                ),
+                saved_only,
+            ],
+        ));
+        assert_eq!(
+            preview.status,
+            BankCopyRemapPreviewStatus::SameProjectPreserved
+        );
+        assert!(preview
+            .blockers
+            .iter()
+            .all(|blocker| *blocker != BankCopyRemapBlocker::ReferenceObservationMismatch));
+        assert!(preview
+            .unchanged_references
+            .iter()
+            .all(|reference| reference.source_slot.number() == 3));
+        assert!(preview.unresolved_references.is_empty());
+        assert!(preview.remapped_references.is_empty());
+    }
+
+    #[test]
+    fn cross_project_excludes_saved_checkpoint_document_role() {
+        let source_snap = snapshot(&[(
+            SampleSlotKind::Flex,
+            8,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        let destination_snap = snapshot(&[(
+            SampleSlotKind::Flex,
+            8,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        let mut saved_only = observation(
+            ReferenceScopeRole::SourceContent,
+            ReferenceOrigin::ActiveMachine,
+            PartStateRole::Working,
+            3,
+            TrackSlotReference::Slot(slot(SampleSlotKind::Flex, 4)),
+            Some(SampleReferenceStatus::Resolved),
+        );
+        saved_only.document_role = StateDocumentRole::SavedCheckpoint;
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("a"),
+            project_id("b"),
+            BankCopySlotPlacementPolicy::KeepThenLowestFree,
+            source_snap,
+            destination_snap,
+            vec![
+                observation(
+                    ReferenceScopeRole::SourceContent,
+                    ReferenceOrigin::ActiveMachine,
+                    PartStateRole::Working,
+                    0,
+                    TrackSlotReference::Slot(slot(SampleSlotKind::Flex, 8)),
+                    Some(SampleReferenceStatus::Resolved),
+                ),
+                saved_only,
+            ],
+        ));
+        assert_eq!(
+            preview.status,
+            BankCopyRemapPreviewStatus::CrossProjectHypothetical
+        );
+        assert_eq!(preview.remapped_references.len(), 1);
+        assert_eq!(preview.remapped_references[0].source_slot.number(), 8);
+        assert_eq!(
+            preview.remapped_references[0]
+                .candidate_slot
+                .map(|candidate| candidate.number()),
+            Some(1)
+        );
+        assert!(preview.unchanged_references.is_empty());
+    }
+
+    #[test]
+    fn resolved_unoccupied_snapshot_is_blocked() {
+        let snap = snapshot(&[(SampleSlotKind::Static, 3, false, None)]);
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            vec![observation(
+                ReferenceScopeRole::SourceContent,
+                ReferenceOrigin::ActiveMachine,
+                PartStateRole::Working,
+                0,
+                TrackSlotReference::Slot(slot(SampleSlotKind::Static, 3)),
+                Some(SampleReferenceStatus::Resolved),
+            )],
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::SnapshotReferenceMismatch));
+        assert!(preview.unchanged_references.is_empty());
+    }
+
+    #[test]
+    fn resolved_slot_missing_from_snapshot_is_blocked() {
+        let snap = snapshot(&[]);
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            vec![observation(
+                ReferenceScopeRole::SourceContent,
+                ReferenceOrigin::ActiveMachine,
+                PartStateRole::Working,
+                0,
+                TrackSlotReference::Slot(slot(SampleSlotKind::Static, 3)),
+                Some(SampleReferenceStatus::Resolved),
+            )],
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::SnapshotReferenceMismatch));
+    }
+
+    #[test]
+    fn contradictory_snapshot_entries_are_blocked() {
+        let mut snap = snapshot(&[(
+            SampleSlotKind::Static,
+            1,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        snap.entries.push(SampleSlotSnapshotEntry {
+            slot: slot(SampleSlotKind::Static, 1),
+            occupied: false,
+            reference_status: Some(SampleReferenceStatus::Missing),
+        });
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            Vec::new(),
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::SnapshotContradiction));
+    }
+
+    #[test]
+    fn unproven_destination_occupancy_does_not_allocate_a_free_slot() {
+        let source_snap = snapshot(&[(
+            SampleSlotKind::Static,
+            3,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        let mut destination_snap = snapshot(&[]);
+        destination_snap.occupancy_complete = false;
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("a"),
+            project_id("b"),
+            BankCopySlotPlacementPolicy::KeepThenLowestFree,
+            source_snap,
+            destination_snap,
+            vec![observation(
+                ReferenceScopeRole::SourceContent,
+                ReferenceOrigin::ActiveMachine,
+                PartStateRole::Working,
+                0,
+                TrackSlotReference::Slot(slot(SampleSlotKind::Static, 3)),
+                Some(SampleReferenceStatus::Resolved),
+            )],
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::DestinationOccupancyUnproven));
+        assert!(preview.static_remap_candidates.is_empty());
+        assert!(preview.remapped_references.is_empty());
+    }
+
+    #[test]
+    fn same_project_slot_snapshot_mismatch_is_blocked() {
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snapshot(&[(
+                SampleSlotKind::Static,
+                1,
+                true,
+                Some(SampleReferenceStatus::Resolved),
+            )]),
+            snapshot(&[(
+                SampleSlotKind::Static,
+                2,
+                true,
+                Some(SampleReferenceStatus::Resolved),
+            )]),
+            Vec::new(),
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::SameProjectSnapshotMismatch));
+    }
+
+    #[test]
+    fn wrong_source_bank_on_source_content_is_rejected() {
+        let snap = snapshot(&[]);
+        let mut mismatched = observation(
+            ReferenceScopeRole::SourceContent,
+            ReferenceOrigin::ActiveMachine,
+            PartStateRole::Working,
+            0,
+            TrackSlotReference::NoSampleMachine,
+            None,
+        );
+        mismatched.bank = BankIndex::new(1).unwrap();
+        let preview = compute_bank_copy_remap_preview(&base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            vec![mismatched],
+        ));
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::ReferenceObservationMismatch));
+    }
+
+    #[test]
+    fn snapshot_identity_is_stable_for_order_and_changes_with_meaning() {
+        let observations = vec![
+            observation(
+                ReferenceScopeRole::SourceContent,
+                ReferenceOrigin::ActiveMachine,
+                PartStateRole::Working,
+                1,
+                TrackSlotReference::Slot(slot(SampleSlotKind::Static, 1)),
+                Some(SampleReferenceStatus::Resolved),
+            ),
+            observation(
+                ReferenceScopeRole::SourceContent,
+                ReferenceOrigin::SavedPartMachine,
+                PartStateRole::Saved,
+                0,
+                TrackSlotReference::Slot(slot(SampleSlotKind::Static, 1)),
+                Some(SampleReferenceStatus::Resolved),
+            ),
+        ];
+        let snap = snapshot(&[(
+            SampleSlotKind::Static,
+            1,
+            true,
+            Some(SampleReferenceStatus::Resolved),
+        )]);
+        let input = base_input(
+            project_id("same"),
+            project_id("same"),
+            BankCopySlotPlacementPolicy::PreserveSlotNumbers,
+            snap.clone(),
+            snap,
+            observations.clone(),
+        );
+        let baseline = compute_bank_copy_remap_preview(&input).snapshot_identity;
+        let mut reversed = input.clone();
+        reversed.reference_observations.reverse();
+        assert_eq!(
+            compute_bank_copy_remap_preview(&reversed).snapshot_identity,
+            baseline
+        );
+
+        let mut saved_part = input.clone();
+        saved_part.reference_observations[1].part_state = PartStateRole::Working;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&saved_part).snapshot_identity,
+            baseline
+        );
+
+        let mut missing = input.clone();
+        missing.reference_observations[0].reference_status = Some(SampleReferenceStatus::Missing);
+        assert_ne!(
+            compute_bank_copy_remap_preview(&missing).snapshot_identity,
+            baseline
+        );
+
+        let mut health = input.clone();
+        health.source_document_health = BankCopyDocumentHealth::Malformed;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&health).snapshot_identity,
+            baseline
+        );
+
+        let mut coverage = input.clone();
+        coverage.reference_coverage.sample_locks = ot_domain::ReferenceClassStatus::Unmodeled;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&coverage).snapshot_identity,
+            baseline
+        );
+
+        let mut revision = input.clone();
+        revision.inventory_revision = 2;
+        revision.snapshot_revision = 2;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&revision).snapshot_identity,
+            baseline
+        );
+
+        let mut master = input.clone();
+        master.master_track = MasterTrackSetting::Enabled;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&master).snapshot_identity,
+            baseline
+        );
+
+        let mut occupied = input.clone();
+        occupied.source_slot_snapshot.entries[0].occupied = false;
+        occupied.destination_slot_snapshot.entries[0].occupied = false;
+        assert_ne!(
+            compute_bank_copy_remap_preview(&occupied).snapshot_identity,
+            baseline
+        );
     }
 }

@@ -9,8 +9,8 @@ mod tests {
     use ot_domain::{RootId, RootRelativePath, SampleReferenceStatus, StateDocumentRole};
     use ot_plan::bank_copy_remap_preview::{
         compute_bank_copy_remap_preview, preview_input_from_inventory, BankCopyDocumentHealth,
-        BankCopyRemapPreviewStatus, BankCopySlotPlacementPolicy, MasterTrackSetting,
-        ProjectIdentity, SampleSlotSnapshot, SampleSlotSnapshotEntry,
+        BankCopyRemapBlocker, BankCopyRemapPreviewStatus, BankCopySlotPlacementPolicy,
+        MasterTrackSetting, ProjectIdentity, SampleSlotSnapshot, SampleSlotSnapshotEntry,
     };
     use sha2::{Digest, Sha256};
     use std::collections::BTreeMap;
@@ -77,7 +77,14 @@ mod tests {
                 entry.slot.number(),
             )
         });
-        SampleSlotSnapshot { entries }
+        SampleSlotSnapshot {
+            bound_project: ProjectIdentity {
+                root_id: RootId::new("root-session-fixture").unwrap(),
+                project_relative_path: project.clone(),
+            },
+            occupancy_complete: false,
+            entries,
+        }
     }
 
     #[test]
@@ -122,10 +129,10 @@ mod tests {
         );
         let preview = compute_bank_copy_remap_preview(&input);
         assert!(!preview.apply_authorized());
-        assert_eq!(
-            preview.status,
-            BankCopyRemapPreviewStatus::SameProjectPreserved
-        );
+        assert_eq!(preview.status, BankCopyRemapPreviewStatus::Blocked);
+        assert!(preview
+            .blockers
+            .contains(&BankCopyRemapBlocker::SnapshotReferenceMismatch));
         let after = tree_digest(&root.join("pse_bank_copy_persistence"));
         assert_eq!(before, after);
     }

@@ -131,7 +131,16 @@
         "static_and_flex_pools_are_independent",
         "recorder_buffer_is_not_remap_candidate",
         "working_and_saved_part_observations_stay_separate",
-        "bank_copy_remap_preview_module_has_no_write_syscalls_in_source"
+        "bank_copy_remap_preview_module_has_no_write_syscalls_in_source",
+        "saved_checkpoint_document_slot_is_excluded_from_working_remap",
+        "cross_project_excludes_saved_checkpoint_document_role",
+        "resolved_unoccupied_snapshot_is_blocked",
+        "resolved_slot_missing_from_snapshot_is_blocked",
+        "contradictory_snapshot_entries_are_blocked",
+        "unproven_destination_occupancy_does_not_allocate_a_free_slot",
+        "same_project_slot_snapshot_mismatch_is_blocked",
+        "wrong_source_bank_on_source_content_is_rejected",
+        "snapshot_identity_is_stable_for_order_and_changes_with_meaning"
       ]
     },
     {

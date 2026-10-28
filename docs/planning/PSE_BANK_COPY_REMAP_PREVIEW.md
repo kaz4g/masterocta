@@ -79,7 +79,7 @@ Device truth that either interpretation is universally correct on hardware:
 Same-project rules:
 
 - Slot table is shared; preview never allocates new slots.
-- Source and destination slot snapshots must match; mismatch → `IdentityConflict` / blocked.
+- Source and destination slot snapshots must match; mismatch → `SameProjectSnapshotMismatch` / blocked.
 - Working document role only; SavedCheckpoint pairs → blocked (`CopySavedCheckpointSemanticsUnknown`).
 
 Cross-project rules:
@@ -95,6 +95,12 @@ Cross-project rules:
 - Remap preview success does **not** upgrade `BANK_CHANGEPLAN_READINESS`.
 - Alignment test: `scoped_observations()` output equals `BankChangePlan.reference_observations` for a synthetic Copy plan.
 
+- Working document role is the only analyzed role. SavedCheckpoint **documents** stay in `scoped_observations()` for ChangePlan parity, and are excluded from remap classification. `PartStateRole::Saved` inside a Working bank document is kept.
+- `unchanged_references` contains only `Unchanged` rows whose candidate equals the source slot. `remapped_references` contains `RemapCandidate` rows whose candidate differs.
+- A `Resolved` observation must match an occupied `Resolved` source snapshot entry. Duplicate contradictory snapshot rows, unbound projects, and unproven destination occupancy block the preview. `snapshot_identity` hashes document health, coverage, both revisions, part state, audibility, and referenced path. It identifies the analysis input, not live media freshness.
+
+`BANK_CHANGEPLAN_READINESS = NOT_READY` and `APPLY_AUTHORIZED = NO` stay unchanged.
+
 ## Unresolved dependencies (unchanged gates)
 
 | Topic | Classification |
@@ -107,7 +113,7 @@ Cross-project rules:
 ## Implementation map
 
 - Pure model: [`ot_plan::bank_copy_remap_preview`](../../src-tauri/crates/ot-plan/src/bank_copy_remap_preview.rs)
-- Fixture read-only proof: [`pse_bank_copy_remap_preview.rs`](../../src-tauri/src/pse_bank_copy_remap_preview.rs) (`#[cfg(test)]`)
+- Committed `s0_baseline_saved` proves byte identity around the preview. Its PATH-derived slot snapshot does **not** agree with Working `Resolved` bank observations, so that fixture run is `Blocked` / `SnapshotReferenceMismatch`. Same-project preservation is proven by the pure unit tests with a consistent snapshot, not by treating every non-empty `PATH` as `Resolved`.
 - PSE inventory: [`scripts/pse-read-model-inventory.json`](../../scripts/pse-read-model-inventory.json) suites `ot-plan-bank-copy-remap-preview`, `masterocta-bank-copy-remap-preview`
 
 ## Tests run (local)
