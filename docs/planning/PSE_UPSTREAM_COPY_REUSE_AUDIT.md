@@ -136,7 +136,7 @@ Upstream test pass: **UNIT_TEST_CONFIRMED** upstream only — **BLOCKED** as Mas
 ## Next work IDs (not in this PR)
 
 1. **MO-PSE-PATTERN-COPY-PREVIEW-UI-1** — Project Structure Viewer, read-only diff display.
-2. **MO-PSE-BANK-COPY-PREVIEW-REMAP-1** — Align `build_remap_table` with `BankChangePlan`.
+2. **MO-PSE-BANK-COPY-PREVIEW-REMAP-1** — Read-only Bank Copy slot remap preview aligned with `BankChangePlan` observations ([`PSE_BANK_COPY_REMAP_PREVIEW.md`](./PSE_BANK_COPY_REMAP_PREVIEW.md); legacy `build_remap_table` remains Apply-blocked).
 3. **MO-PSE-MOVE-SWAP-SPEC-1** — Move/Swap semantics independent of copy+clear.
 
 ## Safety gates (unchanged)
