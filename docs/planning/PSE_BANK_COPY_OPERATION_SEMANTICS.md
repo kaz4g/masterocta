@@ -153,7 +153,10 @@ Runbook: [`PSE_BANK_FILE_COPY_DEVICE_ACCEPTANCE.md`](../testing/PSE_BANK_FILE_CO
 Experiment A fills **capture_transport** and **post-reload UI sentinel** gaps
 from `P_BANK_PERSIST` without extending Pattern paste conclusions to Operation B.
 
-Experiment B is **`MO-PSE-BANK-FILE-COPY-DEVICE-CAPTURE-1`** (not started in this PR).
+Experiment B harness is **`MO-PSE-BANK-FILE-COPY-DEVICE-CAPTURE-1`** (merged:
+[`scripts/pse-bank-file-copy-device-capture.mjs`](../../scripts/pse-bank-file-copy-device-capture.mjs),
+runbook updated). **Device capture not run** in that PR (`DEVICE_CAPTURE = NOT_RUN`).
+Operator execution: **`MO-PSE-BANK-FILE-COPY-DEVICE-EXECUTE-1`** (follow-on).
 
 ## Safety gates (unchanged)
 
@@ -172,6 +175,8 @@ LEGACY_WRITE_GATE = UNCHANGED
 node scripts/pse-bank-copy-state-doc-device-evidence.mjs status
 node --test scripts/pse-bank-copy-state-doc-device-evidence.test.mjs
 node --test scripts/pse-bank-copy-operation-classification.test.mjs
+node scripts/pse-bank-file-copy-device-capture.mjs status
+node --test scripts/pse-bank-file-copy-device-capture.test.mjs
 node scripts/pse-read-model-check.mjs
 pnpm run check:pse-bank-mutation
 ```
