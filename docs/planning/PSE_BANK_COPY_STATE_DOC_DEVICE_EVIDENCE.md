@@ -391,3 +391,5 @@ APPLY_AUTHORIZED = NO
 ```
 
 `#217` and `#181` stay **OPEN**. No Bank Apply path is authorized.
+
+Operation classification canonical source: [`PSE_BANK_COPY_OPERATION_SEMANTICS.md`](./PSE_BANK_COPY_OPERATION_SEMANTICS.md) (`MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1`).

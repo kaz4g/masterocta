@@ -218,3 +218,5 @@ APPLY_AUTHORIZED = NO
 ```
 
 These keys are document audit items. No runtime schema change. Salvage of this capture is closed.
+
+Operation classification canonical source: [`PSE_BANK_COPY_OPERATION_SEMANTICS.md`](./PSE_BANK_COPY_OPERATION_SEMANTICS.md) (`MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1`).

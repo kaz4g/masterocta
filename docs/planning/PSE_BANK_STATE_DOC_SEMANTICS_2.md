@@ -256,3 +256,5 @@ Addendum. The classification and the blocked rules in this file are unchanged.
 `COPY_STATE_DOC_RULE`, `MOVE_STATE_DOC_RULE`, and `SWAP_STATE_DOC_RULE` stay **BLOCKED**. `COPY_SAVED_CHECKPOINT_SEMANTICS` stays **UNKNOWN**. The separate Pattern Paste observation stays recorded and is not promoted to a Bank operation rule. `ISSUE_217_CLOSE_READY = NO`. `BANK_CHANGEPLAN_READINESS = NOT_READY`. `APPLY_AUTHORIZED = NO`.
 
 No further repair of that capture is in scope. A new disposable device capture, if authorized later, is a separate task before any Bank write implementation.
+
+Operation classification canonical source: [`PSE_BANK_COPY_OPERATION_SEMANTICS.md`](./PSE_BANK_COPY_OPERATION_SEMANTICS.md) (`MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1`).
