@@ -133,3 +133,5 @@ Record exact PASS/FAIL in the PR body at merge time; do not treat skipped comman
 1. Optional read-only UI surfacing of remap preview (no Apply).
 2. Device evidence for Bank Copy state-document roles (#217) before any Apply design.
 3. Cross-project copy remains out of scope until identity and slot policy are proven.
+
+Operation classification canonical source: [`PSE_BANK_COPY_OPERATION_SEMANTICS.md`](./PSE_BANK_COPY_OPERATION_SEMANTICS.md) (`MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1`).

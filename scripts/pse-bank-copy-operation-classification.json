@@ -1,0 +1,134 @@
+{
+  "schema": "masterocta.pse-bank-copy-operation-classification:v1",
+  "work_id": "MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1",
+  "base_sha": "aa0226136a7d46d6667bb5e30286bdcf46d3e9e3",
+  "operations": {
+    "A_PATTERN_COPY_PASTE": {
+      "label": "Pattern Copy/Paste (Sequencer)",
+      "device_operation": true,
+      "masterocta_product_operation": false,
+      "mutually_exclusive_with": ["B_FILE_MANAGER_BANK_FILE_COPY", "C_MASTEROCTA_BANK_COPY"]
+    },
+    "B_FILE_MANAGER_BANK_FILE_COPY": {
+      "label": "File Manager Bank file copy (firmware)",
+      "device_operation": true,
+      "masterocta_product_operation": false,
+      "mutually_exclusive_with": ["A_PATTERN_COPY_PASTE", "C_MASTEROCTA_BANK_COPY"]
+    },
+    "C_MASTEROCTA_BANK_COPY": {
+      "label": "MasterOCTa whole-bank Copy (product)",
+      "device_operation": false,
+      "masterocta_product_operation": true,
+      "mutually_exclusive_with": ["A_PATTERN_COPY_PASTE", "B_FILE_MANAGER_BANK_FILE_COPY"]
+    }
+  },
+  "legacy_aliases": {
+    "NATIVE_BANK_COPY": {
+      "maps_to_operation": "A_PATTERN_COPY_PASTE",
+      "whole_bank_copy_device_confirmed": false,
+      "note": "Compatibility alias in pse-bank-copy-state-doc-device-evidence harness only; not proof of firmware whole-bank copy."
+    }
+  },
+  "evidence_records": [
+    {
+      "id": "P_BANK_PERSIST",
+      "source_document": "docs/planning/PSE_PATTERN_PASTE_PERSISTENCE.md",
+      "operation": "A_PATTERN_COPY_PASTE",
+      "classification": "DEVICE_CONFIRMED",
+      "capture_integrity": "PASS",
+      "promotion": "ALLOWED",
+      "applicability_to_masterocta_bank_copy": "TIMING_OBSERVATION_ONLY",
+      "proven_behavior": "Cross-bank Pattern Paste persistence timing on bank02 (work flush on control switch; strd on project save).",
+      "unproven_behavior": "Whole-bank copy; destination SavedCheckpoint rule; post-reload UI sentinel when not recorded."
+    },
+    {
+      "id": "P_BANK_COPY_STATE",
+      "source_document": "docs/planning/PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE.md",
+      "operation": "A_PATTERN_COPY_PASTE",
+      "classification": "REJECTED",
+      "capture_integrity": "FAIL",
+      "device_capture": "REJECTED",
+      "result": "STOP_WITH_FINDINGS",
+      "promotion": "BLOCKED",
+      "applicability_to_masterocta_bank_copy": "NONE",
+      "proven_behavior": "None promoted.",
+      "unproven_behavior": "Bank Copy state-document roles; copy-immediate attribution."
+    },
+    {
+      "id": "P_BANK_COPY_STATE_PHASE_B",
+      "source_document": "docs/planning/PSE_BANK_COPY_STATE_DOC_DEVICE_EVIDENCE_PHASE_B_MATRIX.md",
+      "operation": "A_PATTERN_COPY_PASTE",
+      "classification": "REJECTED",
+      "capture_integrity": "FAIL",
+      "device_capture": "REJECTED",
+      "result": "STOP_WITH_FINDINGS",
+      "promotion": "BLOCKED",
+      "applicability_to_masterocta_bank_copy": "NONE"
+    },
+    {
+      "id": "P_BANK_ID2_DEVICE_COPY",
+      "source_document": "docs/planning/PSE_BANK_INTERNAL_IDENTITY.md",
+      "operation": "UNKNOWN",
+      "operation_note": "Procedure says device-copy A to B/C; File Manager vs Sequencer not proven in metadata.",
+      "classification": "DEVICE_CONFIRMED",
+      "capture_integrity": "PASS",
+      "promotion": "NOT_APPLICABLE",
+      "applicability_to_masterocta_bank_copy": "BANK_INTERNAL_IDENTITY_ONLY",
+      "proven_behavior": "Post-save bank bytes; typed inequality across A/B/C; no internal slot field in parser.",
+      "unproven_behavior": "Operation kind B vs A; same-content slot identity."
+    },
+    {
+      "id": "BANK_COPY_REMAP_PREVIEW",
+      "source_document": "docs/planning/PSE_BANK_COPY_REMAP_PREVIEW.md",
+      "operation": "C_MASTEROCTA_BANK_COPY",
+      "classification": "CODE_CONFIRMED",
+      "capture_integrity": "NOT_APPLICABLE",
+      "promotion": "NOT_APPLICABLE",
+      "applicability_to_masterocta_bank_copy": "READ_ONLY_PREVIEW_MODEL",
+      "proven_behavior": "Deterministic slot remap preview on inventory snapshots.",
+      "unproven_behavior": "Apply-safe Bank Copy; device SavedCheckpoint roles."
+    },
+    {
+      "id": "CHANGEPLAN_CLOSEOUT",
+      "source_document": "docs/planning/PSE_BANK_CHANGEPLAN_CLOSEOUT.md",
+      "operation": "C_MASTEROCTA_BANK_COPY",
+      "classification": "CODE_CONFIRMED",
+      "capture_integrity": "NOT_APPLICABLE",
+      "applicability_to_masterocta_bank_copy": "PLANNER_SCAFFOLD_ONLY",
+      "copy_state_doc_rule": "BLOCKED"
+    },
+    {
+      "id": "STATE_DOC_SEMANTICS_2",
+      "source_document": "docs/planning/PSE_BANK_STATE_DOC_SEMANTICS_2.md",
+      "operation": "C_MASTEROCTA_BANK_COPY",
+      "classification": "UNKNOWN",
+      "capture_integrity": "NOT_APPLICABLE",
+      "applicability_to_masterocta_bank_copy": "CLASSIFICATION_ONLY",
+      "copy_state_doc_rule": "BLOCKED",
+      "copy_saved_checkpoint_semantics": "DEVICE_EVIDENCE_REQUIRED"
+    },
+    {
+      "id": "FILE_MANAGER_BANK_FILE_COPY_MANUAL",
+      "source_document": "docs/planning/PSE_BANK_COPY_OPERATION_SEMANTICS.md",
+      "operation": "B_FILE_MANAGER_BANK_FILE_COPY",
+      "classification": "UNKNOWN",
+      "capture_integrity": "NOT_RUN",
+      "promotion": "BLOCKED",
+      "applicability_to_masterocta_bank_copy": "REFERENCE_ONLY",
+      "unproven_behavior": "Cross-project bank file copy; samples not copied; slot numbers preserved; per-file flush timing."
+    }
+  ],
+  "harness_contracts": {
+    "pattern_paste_capture_schema": "masterocta.pse-bank-copy-state-doc-capture:v1",
+    "pattern_paste_accepted_operation_kinds": ["pattern_copy_paste", "NATIVE_BANK_COPY"],
+    "pattern_paste_rejected_operation_kinds": ["bank_copy", "file_manager_bank_file_copy"],
+    "reserved_file_manager_capture_schema": "masterocta.pse-bank-file-copy-device-capture:v1",
+    "reserved_pattern_paste_gap_capture_schema": "masterocta.pse-pattern-paste-gap-capture:v1"
+  },
+  "safety_gates": {
+    "BANK_COPY_APPLY_AUTHORIZED": "NO",
+    "COPY_STATE_DOC_RULE": "BLOCKED",
+    "OLD_CAPTURE_PROMOTION": "BLOCKED",
+    "PRODUCT_COPY_POLICY": "PROPOSED"
+  }
+}

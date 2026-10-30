@@ -96,3 +96,5 @@ node scripts/pse-pattern-paste-persistence.mjs verify-manifest s0_baseline_saved
 ```
 
 Fixture root remains `src-tauri/tests/fixtures/pse_bank_copy_persistence/` so existing local copies can be renamed in place. Schema is `masterocta.pse-pattern-paste-persistence-capture:v1`.
+
+Operation classification canonical source: [`PSE_BANK_COPY_OPERATION_SEMANTICS.md`](./PSE_BANK_COPY_OPERATION_SEMANTICS.md) (`MO-PSE-BANK-COPY-SEMANTICS-RECONCILIATION-1`).
