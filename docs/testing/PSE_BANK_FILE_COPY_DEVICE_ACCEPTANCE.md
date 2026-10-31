@@ -69,8 +69,9 @@ node scripts/pse-bank-file-copy-device-capture.mjs dataset "$CAPTURE_ROOT"
 node scripts/pse-bank-file-copy-device-capture.mjs write-manifest s0_baseline_both_projects_saved "$CAPTURE_ROOT"
 ```
 
-`status` on an empty root reports `CAPTURE_STATUS = WAITING_FOR_OPERATOR_CAPTURE`.
-That is **not** `DEVICE_CAPTURE = PASS`.
+`write-manifest` refuses a capture root that does not already exist, a root inside this repository, and any symlink on the supplied path or its ancestors (on macOS, `/tmp` and `/var` are symlinks — pass a real path such as `/private/var/...` or a non-symlink home directory). It does not create the root. A symlink `SHA256SUMS.json` is refused before replacement. Ancestor replacement between the `lstat` walk and `rename` is a residual TOCTOU; the final component is opened with `O_NOFOLLOW|O_EXCL`.
+
+Destination `project.work` / `project.strd` changes on File Manager entry, bank switch, destination save, or reload are `PROJECT_STATE_EFFECT`, not untouched-bank corruption. A project-document change whose transition is not one of those is `INCONCLUSIVE`. Banks `bank05`–`bank16`, when present in a stage, are part of untouched-bank invariance except the declared destination stem.
 
 ## Shared requirements (both experiments)
 

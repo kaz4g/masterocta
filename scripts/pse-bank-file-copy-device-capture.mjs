@@ -11,7 +11,6 @@ import {
   closeSync,
   constants,
   lstatSync,
-  mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -258,24 +257,68 @@ function assertRegularDirectory(dirPath, label) {
   return st;
 }
 
+/**
+ * Walk a lexical absolute path with lstat. Never canonicalizes first.
+ * A missing final component is reported; any symlink component is reported.
+ * Residual TOCTOU: an ancestor can be replaced with a symlink after this walk
+ * and before open/rename. Callers use O_NOFOLLOW|O_EXCL on the final component.
+ * Closing the ancestor race would require an openat directory-fd chain, which
+ * this script does not claim.
+ */
+export function walkLexicalPath(absPath) {
+  const normalized = path.resolve(absPath);
+  const root = path.parse(normalized).root;
+  const parts = normalized.slice(root.length).split(path.sep).filter(Boolean);
+  let cursor = root;
+  for (const part of parts) {
+    cursor = path.join(cursor, part);
+    let st;
+    try {
+      st = lstatSync(cursor);
+    } catch (err) {
+      if (err && err.code === "ENOENT") return { path: normalized, missing: cursor, symlink: null };
+      throw err;
+    }
+    if (st.isSymbolicLink()) return { path: normalized, missing: null, symlink: cursor };
+  }
+  return { path: normalized, missing: null, symlink: null };
+}
+
+function pathInsideRepository(candidate) {
+  const resolved = path.resolve(candidate);
+  const repoLexical = path.resolve(REPOSITORY_ROOT);
+  const lexicalRel = path.relative(repoLexical, resolved);
+  if (lexicalRel === "" || (!lexicalRel.startsWith("..") && !path.isAbsolute(lexicalRel))) return true;
+  let repoReal = repoLexical;
+  try {
+    repoReal = realpathSync(repoLexical);
+  } catch {
+    return false;
+  }
+  const walked = walkLexicalPath(resolved);
+  if (walked.symlink || walked.missing) return false;
+  const rel = path.relative(repoReal, realpathSync(resolved));
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
 export function assertWriteManifestRoot(root) {
   const resolved = path.resolve(root);
-  const repoReal = realpathSync(REPOSITORY_ROOT);
-  let rootReal;
-  try {
-    rootReal = realpathSync(resolved);
-  } catch {
-    mkdirSync(resolved, { recursive: true });
-    rootReal = realpathSync(resolved);
-  }
+  const insideRepo = pathInsideRepository(resolved) || (() => {
+    const repoLexical = path.resolve(REPOSITORY_ROOT);
+    const lexicalRel = path.relative(repoLexical, resolved);
+    return lexicalRel === "" || (!lexicalRel.startsWith("..") && !path.isAbsolute(lexicalRel));
+  })();
+  const walked = walkLexicalPath(resolved);
+  if (walked.symlink) throw new Error("write-manifest refuses symlink capture roots");
+  if (insideRepo) throw new Error("write-manifest refuses repository capture roots");
+  if (walked.missing) throw new Error("write-manifest requires an existing capture root");
+  const rootReal = realpathSync(resolved);
+  const repoReal = realpathSync(path.resolve(REPOSITORY_ROOT));
   const rel = path.relative(repoReal, rootReal);
   if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
     throw new Error("write-manifest refuses repository capture roots");
   }
-  if (lstatSync(rootReal).isSymbolicLink()) {
-    throw new Error("write-manifest refuses symlink capture roots");
-  }
-  return rootReal;
+  return resolved;
 }
 
 export function assertCanonicalCaptureRoot(root) {
@@ -474,6 +517,9 @@ export function setManifestWriteImpl(fn) {
 
 export function writeRegularFileAtomic(filePath, contents) {
   const destination = path.resolve(filePath);
+  const parentWalk = walkLexicalPath(path.dirname(destination));
+  if (parentWalk.symlink) throw new Error("write-manifest refuses symlink capture roots");
+  if (parentWalk.missing) throw new Error("write-manifest requires an existing capture root");
   let existing = null;
   try {
     existing = lstatSync(destination);
@@ -483,8 +529,11 @@ export function writeRegularFileAtomic(filePath, contents) {
   if (existing && (existing.isSymbolicLink() || !existing.isFile())) {
     throw new Error("Refusing non-regular manifest destination: SHA256SUMS.json");
   }
-  mkdirSync(path.dirname(destination), { recursive: true });
   const partial = `${destination}.partial-${process.pid}`;
+  const partialWalk = walkLexicalPath(path.dirname(partial));
+  if (partialWalk.symlink || partialWalk.missing) {
+    throw new Error("write-manifest refuses symlink capture roots");
+  }
   const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW ?? 0);
   let fd;
   try {
@@ -492,6 +541,8 @@ export function writeRegularFileAtomic(filePath, contents) {
     (manifestWriteImpl ?? writeFileSync)(fd, contents);
     closeSync(fd);
     fd = null;
+    const replaced = lstatSync(path.dirname(destination));
+    if (replaced.isSymbolicLink()) throw new Error("write-manifest refuses symlink capture roots");
     renameSync(partial, destination);
   } catch (err) {
     if (fd != null) {
@@ -812,15 +863,52 @@ function destStemFromMeta(meta) {
   return null;
 }
 
-function untouchedBankPaths(meta) {
-  const copyDest = destStemFromMeta(meta);
+function recordedStageObservation(stages, key) {
+  const stage = stages.find((entry) => entry.stage_id === "S2");
+  const value = stage?.meta?.[key];
+  if (!nonEmptyString(value) || normalizedUnknown(value)) return null;
+  return value.trim();
+}
+
+function isDestinationBankFile(relPath) {
+  return /^destination\/bank(?:0[1-9]|1[0-6])\.(work|strd)$/.test(relPath);
+}
+
+function untouchedBankPaths(stages) {
+  const copyDest = destStemFromMeta(stages.find((stage) => stage.stage_id === "S2")?.meta);
+  const stems = new Set();
+  for (const stage of stages) {
+    for (const relPath of Object.keys(stage.files ?? {})) {
+      const match = relPath.match(/^destination\/(bank(?:0[1-9]|1[0-6]))\.(work|strd)$/);
+      if (match) stems.add(match[1]);
+    }
+  }
   const paths = [];
-  for (let i = 1; i <= 4; i += 1) {
-    const stem = `bank${String(i).padStart(2, "0")}`;
+  for (const stem of [...stems].sort()) {
     if (copyDest && stem === copyDest) continue;
     paths.push(`destination/${stem}.work`, `destination/${stem}.strd`);
   }
   return paths;
+}
+
+const ATTRIBUTED_PROJECT_TRANSITIONS = new Set([
+  "FILE_MANAGER_ENTRY_SYNC",
+  "BANK_SWITCH",
+  "DESTINATION_PROJECT_SAVE",
+  "DESTINATION_PROJECT_RELOAD",
+]);
+
+function projectStateEffect(matrix) {
+  const paths = ["destination/project.work", "destination/project.strd"];
+  const hits = [];
+  for (const transition of matrix.transitions) {
+    for (const cell of transition.cells) {
+      if (paths.includes(cell.path) && cell.change === "YES") hits.push(transition.transition);
+    }
+  }
+  if (hits.length === 0) return "BYTE_UNCHANGED";
+  if (hits.every((label) => ATTRIBUTED_PROJECT_TRANSITIONS.has(label))) return "BYTE_CHANGED";
+  return "INCONCLUSIVE";
 }
 
 function classifyFileManagerEvidence(dataset) {
@@ -877,7 +965,6 @@ function classifyFileManagerEvidence(dataset) {
   if (!s0 || !s1 || !s2) return shell;
 
   const sourcePaths = Object.keys(s0.files).filter((rel) => rel.startsWith("source/"));
-  const destPaths = Object.keys(s0.files).filter((rel) => rel.startsWith("destination/"));
   const sourceStable = sourcePaths.every((relPath) =>
     ["S0", "S1", "S2", "S3", "S4", "S5"].every((stageId) => {
       const stage = stages.find((entry) => entry.stage_id === stageId);
@@ -895,15 +982,24 @@ function classifyFileManagerEvidence(dataset) {
     : null;
 
   let destIntegrity = "PASS";
-  for (const relPath of destPaths) {
-    const hashS0 = sha256SideFile(s0.files, relPath);
-    const hashS5 = sha256SideFile(stages.find((entry) => entry.stage_id === "S5").files, relPath);
-    if (hashS0 == null || hashS5 == null) {
+  const s5 = stages.find((entry) => entry.stage_id === "S5");
+  for (const relPath of ["destination/project.work", "destination/project.strd"]) {
+    if (!s0.files[relPath] || !s5?.files?.[relPath]) destIntegrity = "FAIL";
+  }
+  const destBankPaths = new Set();
+  for (const stage of stages) {
+    for (const relPath of Object.keys(stage.files ?? {})) {
+      if (isDestinationBankFile(relPath)) destBankPaths.add(relPath);
+    }
+  }
+  for (const relPath of destBankPaths) {
+    const hashes = stages.map((stage) => sha256SideFile(stage.files, relPath));
+    if (hashes.some((hash) => hash == null)) {
       destIntegrity = "FAIL";
       continue;
     }
     const isCopyTarget = relPath === destWork || relPath === destStrd;
-    if (!isCopyTarget && hashS0 !== hashS5) destIntegrity = "FAIL";
+    if (!isCopyTarget && hashes.some((hash) => hash !== hashes[0])) destIntegrity = "FAIL";
   }
   shell.DESTINATION_INTEGRITY = destIntegrity;
 
@@ -951,12 +1047,14 @@ function classifyFileManagerEvidence(dataset) {
 
   const projectWork = "destination/project.work";
   const projectStrd = "destination/project.strd";
-  const projectChanges = matrix.transitions.flatMap((transition) =>
-    transition.cells.filter((cell) =>
-      (cell.path === projectWork || cell.path === projectStrd) && cell.change === "YES"));
-  shell.PROJECT_STATE_EFFECT = projectChanges.length > 0 ? "BYTE_CHANGED" : "BYTE_UNCHANGED";
+  if (!s0.files[projectWork] || !s0.files[projectStrd]) {
+    shell.PROJECT_STATE_EFFECT = "INCONCLUSIVE";
+    shell.DESTINATION_INTEGRITY = "FAIL";
+  } else {
+    shell.PROJECT_STATE_EFFECT = projectStateEffect(matrix);
+  }
 
-  const untouched = untouchedBankPaths(s2.meta);
+  const untouched = untouchedBankPaths(stages);
   const untouchedOk = untouched.every((relPath) =>
     ["S0", "S1", "S2", "S3", "S4", "S5"].every((stageId, index, arr) => {
       if (stageId === "S0") return true;
@@ -966,21 +1064,20 @@ function classifyFileManagerEvidence(dataset) {
     }));
   shell.UNTOUCHED_BANK_INVARIANCE = untouchedOk ? "PASS" : "FAIL";
 
-  if (
-    nonEmptyString(dataset?.sample_slot_reference_observation)
-    && !normalizedUnknown(dataset.sample_slot_reference_observation)
-  ) {
-    shell.SAMPLE_SLOT_REFERENCE_OBSERVATION = dataset.sample_slot_reference_observation;
+  const slotObservation = recordedStageObservation(stages, "sample_slot_reference_observation")
+    ?? dataset?.sample_slot_reference_observation;
+  const audioObservation = recordedStageObservation(stages, "sample_audio_copy_observation")
+    ?? dataset?.sample_audio_copy_observation;
+  if (nonEmptyString(slotObservation) && !normalizedUnknown(slotObservation)) {
+    shell.SAMPLE_SLOT_REFERENCE_OBSERVATION = String(slotObservation).trim();
   }
-  if (
-    nonEmptyString(dataset?.sample_audio_copy_observation)
-    && !normalizedUnknown(dataset.sample_audio_copy_observation)
-  ) {
-    shell.SAMPLE_AUDIO_COPY_OBSERVATION = dataset.sample_audio_copy_observation;
+  if (nonEmptyString(audioObservation) && !normalizedUnknown(audioObservation)) {
+    shell.SAMPLE_AUDIO_COPY_OBSERVATION = String(audioObservation).trim();
   }
 
-  const promotableStructure =
-    shell.STAGE_MANIFEST_INTEGRITY === "PASS"
+  const provenanceAccepted = dataset?.provenance_accepted === true;
+  const promotableStructure = provenanceAccepted
+    && shell.STAGE_MANIFEST_INTEGRITY === "PASS"
     && shell.SOURCE_INTEGRITY === "PASS"
     && shell.DESTINATION_INTEGRITY === "PASS"
     && shell.SESSION_CONTINUITY === "PROVEN"
@@ -988,11 +1085,14 @@ function classifyFileManagerEvidence(dataset) {
     && renameRecordedIfNeeded(s2.meta)
     && fileManagerEntryRecorded(s1.meta);
 
-  shell.DEVICE_CAPTURE = promotableStructure ? "PASS" : "INCONCLUSIVE";
+  shell.DEVICE_CAPTURE = provenanceAccepted && promotableStructure ? "PASS" : "NOT_RUN";
+  if (provenanceAccepted && !promotableStructure) shell.DEVICE_CAPTURE = "INCONCLUSIVE";
   shell.DEVICE_EVIDENCE_PROMOTION = "BLOCKED";
-  shell.RESULT = promotableStructure && shell.COPY_OPERATION_ATTRIBUTION !== "INCONCLUSIVE"
+  shell.RESULT = provenanceAccepted && promotableStructure && shell.COPY_OPERATION_ATTRIBUTION !== "INCONCLUSIVE"
     ? "READY_FOR_OPERATOR"
-    : "STOP_WITH_FINDINGS";
+    : provenanceAccepted
+      ? "STOP_WITH_FINDINGS"
+      : "STOP_WITH_FINDINGS";
   return shell;
 }
 
@@ -1034,7 +1134,10 @@ export function buildDatasetFromRoot(root) {
   return {
     stages,
     manifest_integrity: "PASS",
+    provenance_accepted: true,
     power_cycle_control: loadPowerCycleControl(root),
+    sample_slot_reference_observation: recordedStageObservation(stages, "sample_slot_reference_observation"),
+    sample_audio_copy_observation: recordedStageObservation(stages, "sample_audio_copy_observation"),
   };
 }
 
@@ -1107,18 +1210,32 @@ function loadAnalyzableStages(root) {
   });
 }
 
+const ACCEPTANCE_KEYS = [
+  "CAPTURE_STATUS",
+  "DEVICE_CAPTURE",
+  "DEVICE_EVIDENCE_PROMOTION",
+  "RESULT",
+  "capture_sequence_proven",
+];
+
 export function analyzeFileManagerCapture(root = FIXTURE_ROOT) {
   const status = evidenceStatus(root);
   const stages = loadAnalyzableStages(root);
-  if (stages.length === 0) {
-    return { ...status, fixture_no_write: "PASS" };
-  }
-  const judged = classifyFileManagerEvidence({
+  const diagnostic = stages.length === 0 ? null : classifyFileManagerEvidence({
     stages,
     manifest_integrity: manifestIntegrityForRoot(root),
+    provenance_accepted: false,
     power_cycle_control: loadPowerCycleControl(root),
   });
-  return { ...status, ...judged, fixture_no_write: "PASS" };
+  const report = {
+    ...status,
+    ...(diagnostic ?? {}),
+    fixture_no_write: "PASS",
+    byte_diagnosis: diagnostic,
+  };
+  for (const key of ACCEPTANCE_KEYS) report[key] = status[key];
+  report.DEVICE_EVIDENCE_PROMOTION = "BLOCKED";
+  return report;
 }
 
 export function buildDatasetCommand(root = FIXTURE_ROOT) {

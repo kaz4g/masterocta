@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import {
+import { realpathSync, existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -40,6 +41,7 @@ import {
 } from "./pse-bank-copy-state-doc-device-evidence.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const SAFE_TEMP = realpathSync(tmpdir());
 
 test("schema constants match operation classification ledger", () => {
   const ledger = JSON.parse(
@@ -52,7 +54,7 @@ test("schema constants match operation classification ledger", () => {
 });
 
 test("empty receptacle reports WAITING_FOR_OPERATOR_CAPTURE without DEVICE_CAPTURE pass", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "pse-fm-empty-"));
+  const root = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-empty-"));
   try {
     const status = evidenceStatus(root);
     assert.equal(status.CAPTURE_STATUS, "WAITING_FOR_OPERATOR_CAPTURE");
@@ -128,8 +130,11 @@ function syntheticStageFiles(planned, options = {}) {
       destination["bank04.strd"] = Buffer.from(source["bank01.strd"]);
     }
   }
-  if (options.mutateDestProjectAt && rank >= stageRank(options.mutateDestProjectAt)) {
-    destination["project.work"] = Buffer.from("[STATES]\nBANK=3\nPATTERN=0\n[/STATES]\n", "latin1");
+  if (options.destProjectWorkAt && rank >= stageRank(options.destProjectWorkAt)) {
+    destination["project.work"] = Buffer.from("[STATES]\nBANK=3\nPATTERN=1\n[/STATES]\n", "latin1");
+  }
+  if (options.destProjectStrdAt && rank >= stageRank(options.destProjectStrdAt)) {
+    destination["project.strd"] = Buffer.from("[STATES]\nBANK=3\nPATTERN=2\n[/STATES]\n", "latin1");
   }
   return { source, destination };
 }
@@ -159,7 +164,7 @@ function operatorFields(planned) {
 }
 
 function materializeSyntheticCapture(options = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), "pse-fm-synth-"));
+  const root = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-synth-"));
   for (const planned of PLANNED_CAPTURES) {
     const stageDir = path.join(root, planned.name);
     mkdirSync(stageDir, { recursive: true });
@@ -237,7 +242,7 @@ test("synthetic happy path is deterministic and keeps promotion blocked", () => 
 });
 
 test("rejects NATIVE_BANK_COPY and pattern paste schema roots", () => {
-  const root = mkdtempSync(path.join(tmpdir(), "pse-fm-reject-a-"));
+  const root = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-reject-a-"));
   try {
     const stageDir = path.join(root, PLANNED_CAPTURES[0].name);
     mkdirSync(stageDir, { recursive: true });
@@ -402,4 +407,227 @@ test("meta template uses UNKNOWN manual citation without quote", () => {
   assert.equal(template.manual_citation.status, "UNKNOWN");
   assert.equal(template.manual_citation.quote, null);
   assert.equal(template.source_project, "P_FM_SRC");
+});
+
+function snapshotTree(dir) {
+  const rows = [];
+  const walk = (current) => {
+    for (const name of readdirSync(current)) {
+      const full = path.join(current, name);
+      const st = lstatSync(full);
+      if (st.isSymbolicLink()) {
+        rows.push(`${full} -> symlink`);
+        continue;
+      }
+      if (st.isDirectory()) walk(full);
+      else rows.push(`${full}:${st.size}:${readFileSync(full).toString("hex")}`);
+    }
+  };
+  walk(dir);
+  return rows.sort();
+}
+
+test("write-manifest rejects a symlink capture root without touching the target", () => {
+  const real = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-real-"));
+  const linkParent = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-link-"));
+  const link = path.join(linkParent, "root");
+  writeFileSync(path.join(real, "marker"), "stay");
+  symlinkSync(real, link);
+  const before = snapshotTree(real);
+  try {
+    assert.throws(() => writeManifest(PLANNED_CAPTURES[0].name, link), /symlink/);
+    assert.deepEqual(snapshotTree(real), before);
+    assert.equal(lstatSync(link).isSymbolicLink(), true);
+  } finally {
+    rmSync(real, { recursive: true, force: true });
+    rmSync(linkParent, { recursive: true, force: true });
+  }
+});
+
+test("write-manifest rejects a symlink parent without creating the capture root", () => {
+  const realParent = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-parent-real-"));
+  const outside = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-parent-out-"));
+  const link = path.join(outside, "parent");
+  symlinkSync(realParent, link);
+  const capture = path.join(link, "capture");
+  const before = snapshotTree(realParent);
+  try {
+    assert.throws(() => writeManifest(PLANNED_CAPTURES[0].name, capture), /symlink/);
+    assert.deepEqual(snapshotTree(realParent), before);
+    assert.equal(existsSync(path.join(realParent, "capture")), false);
+  } finally {
+    rmSync(realParent, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test("write-manifest does not create a missing repository capture root", () => {
+  const missing = path.join(SCRIPT_DIR, "..", "pse-fm-missing-root-not-created");
+  assert.equal(existsSync(missing), false);
+  assert.throws(() => writeManifest(PLANNED_CAPTURES[0].name, missing), /repository/);
+  assert.equal(existsSync(missing), false);
+});
+
+test("write-manifest accepts an existing regular root outside the repository", () => {
+  const root = materializeSyntheticCapture();
+  try {
+    const manifest = writeManifest(PLANNED_CAPTURES[0].name, root);
+    assert.ok(manifest.files.length > 0);
+    const sums = path.join(root, PLANNED_CAPTURES[0].name, "SHA256SUMS.json");
+    assert.equal(lstatSync(sums).isSymbolicLink(), false);
+    assert.equal(verifyManifest(PLANNED_CAPTURES[0].name, root).ok, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("write-manifest refuses a symlinked SHA256SUMS.json and leaves the target unchanged", () => {
+  const root = materializeSyntheticCapture();
+  const externalDir = mkdtempSync(path.join(SAFE_TEMP, "pse-fm-sums-"));
+  const external = path.join(externalDir, "SHA256SUMS.json");
+  writeFileSync(external, "original-manifest\n");
+  const sums = path.join(root, PLANNED_CAPTURES[0].name, "SHA256SUMS.json");
+  try {
+    rmSync(sums);
+    symlinkSync(external, sums);
+    assert.throws(() => writeManifest(PLANNED_CAPTURES[0].name, root), /symlink|non-regular/);
+    assert.equal(readFileSync(external, "utf8"), "original-manifest\n");
+    assert.equal(lstatSync(sums).isSymbolicLink(), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(externalDir, { recursive: true, force: true });
+  }
+});
+
+function patchStageMeta(root, patch) {
+  for (const planned of PLANNED_CAPTURES) {
+    const metaPath = path.join(root, planned.name, "capture.meta.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    patch(meta, planned);
+    writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
+  }
+}
+
+function assertRejectedEverywhere(root) {
+  const status = evidenceStatus(root);
+  const analyzed = analyzeFileManagerCapture(root);
+  assert.equal(analyzed.DEVICE_CAPTURE, status.DEVICE_CAPTURE);
+  assert.equal(analyzed.RESULT, status.RESULT);
+  assert.notEqual(analyzed.DEVICE_CAPTURE, "PASS");
+  assert.notEqual(analyzed.RESULT, "READY_FOR_OPERATOR");
+  assert.equal(analyzed.DEVICE_EVIDENCE_PROMOTION, "BLOCKED");
+  assert.equal(status.DEVICE_EVIDENCE_PROMOTION, "BLOCKED");
+  assert.throws(() => buildDatasetCommand(root));
+}
+
+test("manifest-valid captures with failed provenance are not accepted", () => {
+  const cases = [
+    (meta) => { meta.device_generated = false; },
+    (meta) => { meta.capture_sequence_proven = false; },
+    (meta) => { meta.os_release = "invalid"; },
+    (meta, planned) => {
+      if (planned.stage_id === "S4" || planned.stage_id === "S5") meta.capture_run_id = "other-run";
+    },
+    (meta) => { meta.operation_kind = "NATIVE_BANK_COPY"; },
+  ];
+  for (const patch of cases) {
+    const root = materializeSyntheticCapture();
+    try {
+      patchStageMeta(root, patch);
+      assertRejectedEverywhere(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("destination project document changes stay out of untouched-bank integrity", () => {
+  const entry = materializeSyntheticCapture({ destProjectWorkAt: "S1" });
+  const save = materializeSyntheticCapture({ destProjectStrdAt: "S4" });
+  try {
+    const entryStatus = evidenceStatus(entry);
+    assert.equal(entryStatus.PROJECT_STATE_EFFECT, "BYTE_CHANGED");
+    assert.equal(entryStatus.DESTINATION_INTEGRITY, "PASS");
+    assert.equal(entryStatus.UNTOUCHED_BANK_INVARIANCE, "PASS");
+    assert.equal(entryStatus.FILE_MANAGER_ENTRY_SYNC, "OBSERVED");
+    assert.doesNotThrow(() => buildDatasetCommand(entry));
+
+    const saveStatus = evidenceStatus(save);
+    assert.equal(saveStatus.PROJECT_STATE_EFFECT, "BYTE_CHANGED");
+    assert.equal(saveStatus.DESTINATION_INTEGRITY, "PASS");
+    assert.equal(saveStatus.UNTOUCHED_BANK_INVARIANCE, "PASS");
+    assert.doesNotThrow(() => buildDatasetCommand(save));
+  } finally {
+    rmSync(entry, { recursive: true, force: true });
+    rmSync(save, { recursive: true, force: true });
+  }
+});
+
+test("missing destination project document and stale manifest are rejected", () => {
+  const missing = materializeSyntheticCapture();
+  const stale = materializeSyntheticCapture();
+  try {
+    rmSync(path.join(missing, PLANNED_CAPTURES[0].name, "destination", "project.work"));
+    const missingStatus = evidenceStatus(missing);
+    assert.notEqual(missingStatus.DEVICE_CAPTURE, "PASS");
+    assert.throws(() => buildDatasetCommand(missing));
+
+    const staleFile = path.join(stale, PLANNED_CAPTURES[1].name, "destination", "project.strd");
+    writeFileSync(staleFile, Buffer.from("stale"));
+    assert.equal(verifyManifest(PLANNED_CAPTURES[1].name, stale).ok, false);
+    assert.throws(() => buildDatasetCommand(stale));
+  } finally {
+    rmSync(missing, { recursive: true, force: true });
+    rmSync(stale, { recursive: true, force: true });
+  }
+});
+
+test("bank05 changed only at S2 fails untouched invariance", () => {
+  const root = materializeSyntheticCapture();
+  try {
+    const original = Buffer.from("bank05-stable");
+    const changed = Buffer.from("bank05-changed");
+    for (const planned of [...PLANNED_CAPTURES, { name: POWER_CYCLE_CONTROL_CAPTURE }]) {
+      for (const side of ["source", "destination"]) {
+        const dir = path.join(root, planned.name, side);
+        writeFileSync(path.join(dir, "bank05.work"), original);
+        writeFileSync(path.join(dir, "bank05.strd"), original);
+      }
+      writeManifest(planned.name, root);
+    }
+    const s2 = path.join(root, PLANNED_CAPTURES[2].name, "destination");
+    writeFileSync(path.join(s2, "bank05.work"), changed);
+    writeFileSync(path.join(s2, "bank05.strd"), changed);
+    writeManifest(PLANNED_CAPTURES[2].name, root);
+    const status = evidenceStatus(root);
+    assert.equal(status.UNTOUCHED_BANK_INVARIANCE, "FAIL");
+    assert.notEqual(status.DEVICE_CAPTURE, "PASS");
+    assert.throws(() => buildDatasetCommand(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("recorded S2 sample observations are forwarded and promotion stays blocked", () => {
+  const root = materializeSyntheticCapture({
+    metaOverrides: {
+      S2: {
+        sample_slot_reference_observation: "SLOTS_MATCH_SOURCE",
+        sample_audio_copy_observation: "AUDIO_FILES_ABSENT",
+      },
+    },
+  });
+  try {
+    const status = evidenceStatus(root);
+    const analyzed = analyzeFileManagerCapture(root);
+    const dataset = buildDatasetCommand(root);
+    assert.equal(status.SAMPLE_SLOT_REFERENCE_OBSERVATION, "SLOTS_MATCH_SOURCE");
+    assert.equal(status.SAMPLE_AUDIO_COPY_OBSERVATION, "AUDIO_FILES_ABSENT");
+    assert.equal(analyzed.SAMPLE_SLOT_REFERENCE_OBSERVATION, "SLOTS_MATCH_SOURCE");
+    assert.equal(dataset.judgment.SAMPLE_AUDIO_COPY_OBSERVATION, "AUDIO_FILES_ABSENT");
+    assert.equal(status.DEVICE_EVIDENCE_PROMOTION, "BLOCKED");
+    assert.equal(analyzed.DEVICE_EVIDENCE_PROMOTION, "BLOCKED");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
