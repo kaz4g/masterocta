@@ -65,6 +65,13 @@ describe("pse-ci workflow contract", () => {
     assert.match(job[1], /node --test [^\n]*scripts\/pse-bank-copy-state-doc-device-evidence\.test\.mjs/);
   });
 
+  it("runs File Manager bank copy harness and operation classification in script-contracts", () => {
+    const job = /\n  script-contracts:\n([\s\S]*?)(?=\n  [a-z-]+:\n)/.exec(workflow);
+    assert.ok(job, "script-contracts job is missing");
+    assert.match(job[1], /scripts\/pse-bank-file-copy-device-capture\.test\.mjs/);
+    assert.match(job[1], /scripts\/pse-bank-copy-operation-classification\.test\.mjs/);
+  });
+
   it("does not launch a signed release or Gate C candidate build", () => {
     assert.doesNotMatch(workflow, /gate-c-candidate/);
     assert.doesNotMatch(workflow, /tauri build/);
